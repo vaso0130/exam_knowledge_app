@@ -119,7 +119,7 @@ class MarkdownRenderer:
                 self._render_list_item(line)
             
             # 處理表格
-            elif '|' in line and line.strip().startswith('|'):
+            elif '|' in line and line.strip().startswith('|') and line.strip().endswith('|'):
                 self._render_table_row(line)
             
             # 處理普通段落
@@ -226,34 +226,46 @@ class MarkdownRenderer:
     
     def _render_table_row(self, line: str):
         """渲染表格行（改進版本）"""
-        # 移除首尾的 | 符號並分割
-        cells = [cell.strip() for cell in line.strip().split('|')]
+        stripped_line = line.strip()
         
-        # 過濾掉空的開頭和結尾元素
-        if cells and cells[0] == '':
-            cells = cells[1:]
-        if cells and cells[-1] == '':
-            cells = cells[:-1]
+        # 移除首尾的 | 符號並分割
+        if stripped_line.startswith('|') and stripped_line.endswith('|'):
+            cells = [cell.strip() for cell in stripped_line[1:-1].split('|')]
+        else:
+            return  # 不是正確的表格格式
         
         # 檢查是否為表格分隔線（如 |---|---|）
-        if all(cell.strip().replace('-', '').replace(':', '').strip() == '' for cell in cells if cell.strip()):
+        if all(cell.replace('-', '').replace(':', '').strip() == '' for cell in cells):
             # 這是表格分隔線，繪製一條線
             self.text_widget.insert(tk.END, '─' * 60 + '\n', "hr")
             return
         
+        # 檢查是否為表頭（第一行或前面沒有表格內容）
+        current_pos = self.text_widget.index("end-1c")
+        lines_before = self.text_widget.get("1.0", current_pos).split('\n')
+        is_header = len([l for l in lines_before if '│' in l]) == 0
+        
         # 渲染表格行
+        row_text = ""
         for i, cell in enumerate(cells):
             if i > 0:
-                # 使用更明顯的分隔符
-                self.text_widget.insert(tk.END, " │ ", "table_cell")
+                row_text += " │ "
             
-            # 處理單元格內容的格式
+            # 處理單元格內容
             if cell.strip():
-                self._render_inline_formatting(cell.strip())
+                row_text += cell.strip()
             else:
-                self.text_widget.insert(tk.END, " ", "table_cell")
+                row_text += " "
         
+        # 插入行內容
+        tag = "table_header" if is_header else "table_cell"
+        self.text_widget.insert(tk.END, row_text, tag)
         self.text_widget.insert(tk.END, '\n')
+        
+        # 如果是表頭，添加分隔線
+        if is_header:
+            separator = "─" * len(row_text)
+            self.text_widget.insert(tk.END, separator + '\n', "hr")
 
 
 class MarkdownText(tk.Frame):

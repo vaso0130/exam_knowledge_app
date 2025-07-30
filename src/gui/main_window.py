@@ -211,21 +211,42 @@ class ModernGUI:
         self.create_right_panel(content_frame)
     
     def create_left_panel(self, parent):
-        """建立左側面板"""
-        left_panel = ctk.CTkFrame(parent)
-        left_panel.pack(side="left", fill="y", padx=(0, 5))
-        left_panel.configure(width=300)
+        """建立左側面板（可收起）"""
+        # 左側面板容器
+        self.left_panel_container = ctk.CTkFrame(parent)
+        self.left_panel_container.pack(side="left", fill="y", padx=(0, 5))
+        
+        # 切換按鈕框架
+        toggle_frame = ctk.CTkFrame(self.left_panel_container)
+        toggle_frame.pack(fill="x", padx=2, pady=2)
+        
+        # 面板切換按鈕
+        self.panel_toggle_btn = ctk.CTkButton(
+            toggle_frame,
+            text="◀ 收起",
+            command=self.toggle_left_panel,
+            font=ctk.CTkFont(size=12),
+            height=30,
+            width=80
+        )
+        self.panel_toggle_btn.pack(side="right", padx=5, pady=5)
+        
+        # 左側面板內容
+        self.left_panel = ctk.CTkFrame(self.left_panel_container)
+        self.left_panel.pack(fill="both", expand=True, padx=2, pady=(0, 2))
+        self.left_panel.configure(width=300)
+        self.left_panel_visible = True
         
         # 標題
         title_label = ctk.CTkLabel(
-            left_panel,
+            self.left_panel,
             text="科目與篩選",
             font=ctk.CTkFont(size=16, weight="bold")
         )
         title_label.pack(pady=(10, 5))
         
         # 科目選擇
-        subject_frame = ctk.CTkFrame(left_panel)
+        subject_frame = ctk.CTkFrame(self.left_panel)
         subject_frame.pack(fill="x", padx=10, pady=5)
         
         ctk.CTkLabel(
@@ -245,7 +266,7 @@ class ModernGUI:
         self.subject_combo.pack(fill="x", padx=10, pady=(0, 10))
         
         # 搜尋區域
-        search_frame = ctk.CTkFrame(left_panel)
+        search_frame = ctk.CTkFrame(self.left_panel)
         search_frame.pack(fill="x", padx=10, pady=5)
         
         ctk.CTkLabel(
@@ -274,7 +295,7 @@ class ModernGUI:
         self.search_btn.pack(fill="x", padx=10, pady=(0, 10))
         
         # 知識庫管理區域
-        kb_frame = ctk.CTkFrame(left_panel)
+        kb_frame = ctk.CTkFrame(self.left_panel)
         kb_frame.pack(fill="x", padx=10, pady=5)
         
         ctk.CTkLabel(
@@ -317,7 +338,7 @@ class ModernGUI:
         self.quick_stats_label.pack(pady=5)
         
         # 標籤篩選區域
-        tags_frame = ctk.CTkFrame(left_panel)
+        tags_frame = ctk.CTkFrame(self.left_panel)
         tags_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
         ctk.CTkLabel(
@@ -333,7 +354,7 @@ class ModernGUI:
         self.tag_vars = {}  # 儲存標籤選擇狀態
         
         # 統計資訊
-        stats_frame = ctk.CTkFrame(left_panel)
+        stats_frame = ctk.CTkFrame(self.left_panel)
         stats_frame.pack(fill="x", padx=10, pady=(5, 10))
         
         ctk.CTkLabel(
@@ -748,6 +769,23 @@ class ModernGUI:
             self.expand_btn.configure(text="🔼 收起輸入")
             self.expanded_input_visible = True
     
+    def toggle_left_panel(self):
+        """切換左側面板顯示/隱藏"""
+        if self.left_panel_visible:
+            # 隱藏左側面板
+            self.left_panel.pack_forget()
+            self.panel_toggle_btn.configure(text="▶ 展開")
+            self.left_panel_visible = False
+            # 設定最小寬度
+            self.left_panel_container.configure(width=100)
+        else:
+            # 顯示左側面板
+            self.left_panel.pack(fill="both", expand=True, padx=2, pady=(0, 2))
+            self.panel_toggle_btn.configure(text="◀ 收起")
+            self.left_panel_visible = True
+            # 恢復正常寬度
+            self.left_panel_container.configure(width=300)
+    
     def process_large_input(self):
         """處理大型輸入區域的內容"""
         input_text = self.large_input_text.get("1.0", "end-1c").strip()
@@ -852,7 +890,7 @@ class ModernGUI:
     def on_subject_change(self, value):
         """科目變更事件"""
         self.current_subject = value
-        self.load_documents()
+        self.refresh_document_list()  # 改用正確的方法名稱
     
     def on_search_change(self, event):
         """搜尋變更事件"""
@@ -940,8 +978,18 @@ class ModernGUI:
                 'data': values
             }
             
-            question_id_str = values[0]  # 格式: "Q123"
-            question_id = int(question_id_str[1:])
+            # 處理不同的 values 格式
+            if isinstance(values, (list, tuple)) and len(values) > 0:
+                question_id_str = values[0]  # 格式: "Q123"
+                if isinstance(question_id_str, str) and question_id_str.startswith('Q'):
+                    question_id = int(question_id_str[1:])
+                else:
+                    # 如果不是期望的格式，嘗試直接轉換
+                    question_id = int(question_id_str)
+            elif isinstance(values, int):
+                question_id = values
+            else:
+                raise ValueError(f"無法解析問題ID: {values}")
             
             # 從資料庫獲取完整問題資訊
             cursor = self.db.cursor
@@ -1013,33 +1061,71 @@ class ModernGUI:
         self.load_tags()
     
     def load_tags(self):
-        """載入標籤資料"""
+        """載入標籤資料（基於內容關鍵詞）"""
         try:
-            # 從資料庫獲取所有不重複的標籤
-            cursor = self.db.cursor
-            cursor.execute('''
-                SELECT DISTINCT subject FROM documents 
-                WHERE subject IS NOT NULL AND subject != ""
-                ORDER BY subject
-            ''')
-            subjects = [row[0] for row in cursor.fetchall()]
-            
             # 清除現有標籤
             for widget in self.tags_scrollable.winfo_children():
                 widget.destroy()
             self.tag_vars.clear()
             
-            # 添加科目標籤
-            for subject in subjects:
+            # 從文件內容和題目中提取關鍵詞作為標籤
+            cursor = self.db.cursor
+            
+            # 獲取所有文件標題和內容
+            cursor.execute('''
+                SELECT title, content FROM documents 
+                WHERE title IS NOT NULL AND title != ""
+            ''')
+            documents = cursor.fetchall()
+            
+            # 獲取所有題目
+            cursor.execute('''
+                SELECT question_text FROM questions 
+                WHERE question_text IS NOT NULL AND question_text != ""
+            ''')
+            questions = cursor.fetchall()
+            
+            # 提取關鍵詞
+            keywords = set()
+            
+            # 從標題中提取關鍵詞
+            for title, content in documents:
+                if title:
+                    # 提取標題中的關鍵詞（長度3-8的中文詞彙）
+                    import re
+                    words = re.findall(r'[\u4e00-\u9fff]{3,8}', title)
+                    keywords.update(words)
+            
+            # 添加一些常見的技術標籤
+            common_tags = [
+                "資料結構", "演算法", "資料庫", "網路安全", "程式設計",
+                "系統分析", "專案管理", "資訊系統", "軟體工程", "資料庫設計",
+                "網路協定", "資訊安全", "系統設計", "軟體測試", "需求分析"
+            ]
+            
+            # 檢查哪些常見標籤在內容中出現
+            all_content = " ".join([doc[1] or "" for doc in documents])
+            all_content += " ".join([q[0] or "" for q in questions])
+            
+            relevant_tags = []
+            for tag in common_tags:
+                if tag in all_content:
+                    relevant_tags.append(tag)
+            
+            # 也添加從標題提取的關鍵詞
+            relevant_tags.extend(list(keywords)[:10])  # 限制數量
+            
+            # 創建標籤複選框
+            for tag in relevant_tags[:15]:  # 最多15個標籤
                 var = ctk.BooleanVar()
                 checkbox = ctk.CTkCheckBox(
                     self.tags_scrollable,
-                    text=subject,
+                    text=tag,
                     variable=var,
                     command=self.on_tag_filter_changed
                 )
                 checkbox.pack(anchor="w", padx=5, pady=2)
-                self.tag_vars[subject] = var
+                self.tag_vars[tag] = var
                 
         except Exception as e:
             print(f"載入標籤失敗: {e}")
@@ -1061,13 +1147,28 @@ class ModernGUI:
             # 獲取文件
             documents = self.db.get_all_documents()
             
-            # 根據選中的標籤篩選文件
+            # 首先根據科目篩選
+            if hasattr(self, 'current_subject') and self.current_subject and self.current_subject != "全部":
+                filtered_by_subject = []
+                for doc in documents:
+                    doc_id, title, content, doc_type, subject, file_path, created_at = doc
+                    if subject == self.current_subject:
+                        filtered_by_subject.append(doc)
+                documents = filtered_by_subject
+            
+            # 然後根據選中的標籤篩選文件
             if self.selected_tags:
                 filtered_documents = []
                 for doc in documents:
                     doc_id, title, content, doc_type, subject, file_path, created_at = doc
-                    if subject in self.selected_tags:
+                    
+                    # 檢查標題和內容是否包含選中的標籤
+                    doc_text = (title or "") + " " + (content or "")
+                    
+                    # 如果任何一個標籤在文件內容中出現，就包含這個文件
+                    if any(tag in doc_text for tag in self.selected_tags):
                         filtered_documents.append(doc)
+                        
                 documents = filtered_documents
             
             for doc in documents:
