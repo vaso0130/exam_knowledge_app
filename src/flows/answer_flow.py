@@ -16,10 +16,13 @@ class AnswerFlow:
         self.gemini = gemini_client
         self.db = db_manager
 
-    async def process_question(self, question_text: str, subject: str) -> Dict[str, Any]:
+    async def process_question(self, question_text: str, subject: str, additional_info: Dict = None) -> Dict[str, Any]:
         """
         處理單一問題的完整流程
         """
+        if additional_info is None:
+            additional_info = {}
+            
         try:
             # 1. 生成答案
             print("正在生成答案...")

@@ -145,6 +145,9 @@ class FileProcessor:
             elif file_ext in ['.html', '.htm']:
                 content = cls.read_html_file(input_data)
                 return content, 'html'
+            elif file_ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']:
+                # 圖片檔案，返回檔案路徑供 AI 分析
+                return input_data, 'image'
             else:
                 # 嘗試當作純文字檔案讀取
                 try:

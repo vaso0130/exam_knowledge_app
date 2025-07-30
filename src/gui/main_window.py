@@ -838,7 +838,7 @@ class ModernGUI:
         try:
             if self.current_view == "documents":
                 doc_id = int(values[0])
-                self.preview_document(doc_id)
+                self.preview_document(values)
             elif self.current_view == "questions":
                 question_id_str = values[0]
                 if question_id_str.startswith('Q'):
@@ -853,7 +853,7 @@ class ModernGUI:
         except (ValueError, IndexError) as e:
             print(f"無法預覽項目: {e}, values: {values}")
             # 可能點擊的是父節點（科目），可以選擇性地忽略或顯示科目資訊
-            self.markdown_text.set_content(f"# {values[0]}\n\n請選擇一個具體的知識點以查看關聯問題。")
+            self.markdown_text.set_markdown(f"# {values[0]}\n\n請選擇一個具體的知識點以查看關聯問題。")
             self.detail_text.delete(1.0, tk.END)
         self.mindmap_renderer.clear()
         self.current_preview_data = None
@@ -864,7 +864,7 @@ class ModernGUI:
             questions = self.db.get_questions_for_knowledge_point(kp_id)
             
             if not questions:
-                self.markdown_text.set_content(f"# 知識點 ID: {kp_id}\n\n此知識點尚無關聯問題。")
+                self.markdown_text.set_markdown(f"# 知識點 ID: {kp_id}\n\n此知識點尚無關聯問題。")
                 return
 
             # 獲取知識點名稱
@@ -882,7 +882,7 @@ class ModernGUI:
                     md_content += f"**答案:**\n{a_text}\n\n"
                 md_content += "---\n\n"
             
-            self.markdown_text.set_content(md_content)
+            self.markdown_text.set_markdown(md_content)
             self.detail_text.delete(1.0, tk.END)
             self.detail_text.insert(1.0, f"顯示知識點 '{kp_name}' (ID: {kp_id}) 的關聯問題。")
             self.mindmap_renderer.clear() # 知識點列表暫不顯示心智圖
@@ -892,6 +892,85 @@ class ModernGUI:
 
         except Exception as e:
             self.show_error(f"預覽知識點失敗: {e}")
+
+    def preview_question(self, question_info):
+        """預覽問題"""
+        try:
+            # 儲存預覽資料供重新載入使用
+            self.current_preview_data = {
+                'type': 'question',
+                'data': question_info
+            }
+            
+            # 處理不同的輸入格式
+            if isinstance(question_info, int):
+                question_id = question_info
+            elif isinstance(question_info, (list, tuple)) and len(question_info) > 0:
+                question_id_str = question_info[0]
+                if isinstance(question_id_str, str) and question_id_str.startswith('Q'):
+                    question_id = int(question_id_str[1:])
+                elif isinstance(question_id_str, str):
+                    question_id = int(question_id_str)
+                elif isinstance(question_id_str, int):
+                    question_id = question_id_str
+                else:
+                    raise ValueError(f"無法處理的問題ID格式: {type(question_id_str)} - {question_id_str}")
+            else:
+                raise ValueError(f"無法解析問題ID，未知格式: {type(question_info)} - {question_info}")
+            
+            # 從資料庫獲取完整問題資訊
+            cursor = self.db.cursor
+            cursor.execute("""
+                SELECT q.question_text, q.answer_text, q.subject, d.title 
+                FROM questions q 
+                LEFT JOIN documents d ON q.document_id = d.id 
+                WHERE q.id = ?
+            """, (question_id,))
+            
+            result = cursor.fetchone()
+            if result:
+                question_text, answer_text, subject, doc_title = result
+                
+                # 生成 Markdown 格式的內容
+                markdown_content = f"""# 📚 題目預覽
+
+> **科目**: {subject or '未分類'}  
+> **來源**: {doc_title or '未知'}
+
+## 📋 題目
+
+{question_text}
+
+## ✅ 參考答案
+
+{answer_text or '無答案'}
+"""
+                
+                # 根據答案顯示設定過濾內容
+                filtered_content = self.filter_content_for_answers(markdown_content)
+                self.markdown_text.set_markdown(filtered_content)
+                
+                # 更新詳細資訊
+                detail_content = f"""題目ID: Q{question_id}
+科目: {subject or '未分類'}
+來源文件: {doc_title or '未知'}
+
+題目內容:
+{question_text}
+
+答案內容:
+{answer_text or '無答案'}
+"""
+                self.detail_text.delete("1.0", tk.END)
+                self.detail_text.insert("1.0", detail_content)
+                
+            else:
+                raise ValueError("未找到對應的問題資料")
+            
+        except Exception as e:
+            self.show_error(f"預覽問題失敗: {str(e)}")
+            error_content = f"# 預覽失敗\n\n無法載入問題內容: {str(e)}"
+            self.markdown_text.set_markdown(error_content)
 
     def on_item_double_click(self, event):
         """處理項目雙擊事件"""
@@ -1213,11 +1292,14 @@ class ModernGUI:
     def select_file(self):
         """選擇檔案"""
         file_types = [
-            ("所有支援的檔案", "*.txt;*.pdf;*.docx;*.html;*.htm"),
             ("文字檔", "*.txt"),
             ("PDF檔", "*.pdf"),
             ("Word檔", "*.docx"),
-            ("HTML檔", "*.html;*.htm"),
+            ("HTML檔", "*.html"),
+            ("圖片檔", "*.jpg"),
+            ("圖片檔", "*.png"),
+            ("圖片檔", "*.bmp"),
+            ("圖片檔", "*.gif"),
             ("所有檔案", "*.*")
         ]
         
@@ -1365,36 +1447,99 @@ class ModernGUI:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
+            # 首先使用 FileProcessor 處理輸入
+            from ..utils.file_processor import FileProcessor
+            try:
+                processed_content, input_type = FileProcessor.process_input(input_text)
+                
+                # 如果是圖片，使用 AI 分析
+                if input_type == 'image':
+                    print("檢測到圖片檔案，正在使用 AI 分析...")
+                    processed_content = loop.run_until_complete(
+                        self.flow_manager.gemini_client.analyze_image(processed_content)
+                    )
+                    print("圖片分析完成")
+                
+                # 使用處理後的內容替換原始輸入
+                input_text = processed_content
+                print(f"輸入類型：{input_type}")
+                
+            except Exception as e:
+                print(f"檔案處理錯誤：{e}，將作為純文字處理")
+                # 如果處理失敗，繼續使用原始文本
+            
             # 獲取當前選擇的科目，如果是 "全部" 則讓 AI 自動分類
             subject = self.current_subject if self.current_subject != "全部" else None
             
-            # 先判斷輸入是否為問題
-            is_question = loop.run_until_complete(
-                self.flow_manager.gemini_client.detect_type(input_text)
-            )
+            # 首先使用 FileProcessor 處理輸入，支援檔案、URL、圖片等
+            from ..utils.file_processor import FileProcessor
             
-            if is_question:
-                # 如果沒有指定科目，讓 AI 自動判斷
+            try:
+                processed_content, input_type = FileProcessor.process_input(input_text)
+                print(f"檢測到輸入類型: {input_type}")
+                
+                # 如果是圖片，先用 AI 分析圖片內容
+                if input_type == 'image':
+                    print("正在分析圖片內容...")
+                    if not subject:
+                        # 嘗試從圖片路徑推測科目
+                        subject = "資訊管理"  # 預設科目
+                    
+                    analyzed_content = loop.run_until_complete(
+                        self.flow_manager.gemini_client.analyze_image(processed_content, subject)
+                    )
+                    processed_content = analyzed_content
+                    
+                # 更新輸入文本為處理後的內容
+                input_text = processed_content
+                
+            except Exception as e:
+                print(f"檔案處理警告: {e}")
+                # 如果檔案處理失敗，繼續使用原始輸入
+                input_type = 'text'
+            
+            # 檢測輸入內容類型並相應處理
+            if self._is_likely_exam_paper(input_text):
+                # 檢測到可能是試卷，進行自動分題處理
+                print("檢測到試卷內容，正在進行自動分題...")
                 if not subject:
                     subject = loop.run_until_complete(
                         self.flow_manager.gemini_client.classify_subject(input_text)
                     )
                 
-                # 處理單一問題
+                # 使用試卷分題處理
                 result = loop.run_until_complete(
-                    self.flow_manager.process_single_question(input_text, subject)
+                    self._process_exam_paper_async(input_text, subject)
                 )
             else:
-                # 如果沒有指定科目，讓 AI 自動判斷
-                if not subject:
-                    subject = loop.run_until_complete(
-                        self.flow_manager.gemini_client.classify_subject(input_text)
-                    )
-                
-                # 處理學習材料
-                result = loop.run_until_complete(
-                    self.flow_manager.process_learning_material(input_text, subject, "用戶輸入")
+                # 先判斷輸入是否為單一問題
+                is_question = loop.run_until_complete(
+                    self.flow_manager.gemini_client.detect_type(input_text)
                 )
+                
+                if is_question:
+                    # 如果沒有指定科目，讓 AI 自動判斷
+                    if not subject:
+                        subject = loop.run_until_complete(
+                            self.flow_manager.gemini_client.classify_subject(input_text)
+                        )
+                    
+                    # 處理單一問題
+                    result = loop.run_until_complete(
+                        self.flow_manager.process_single_question(input_text, subject)
+                    )
+                else:
+                    # 如果沒有指定科目，讓 AI 自動判斷
+                    if not subject:
+                        subject = loop.run_until_complete(
+                            self.flow_manager.gemini_client.classify_subject(input_text)
+                        )
+                    
+                    # 處理學習材料
+                    source_info = f"{input_type}輸入" if input_type != 'text' else "用戶輸入"
+                    result = loop.run_until_complete(
+                        self.flow_manager.process_learning_material(input_text, subject, source_info)
+                    )
             
             # 在主執行緒中更新 UI
             self.root.after(0, self._on_process_complete, result)
@@ -1426,6 +1571,16 @@ class ModernGUI:
             elif result.get('type') == 'exam' and result.get('question_ids'):
                 question_count = len(result.get('question_ids', []))
                 success_msg += f"\n📋 已解析 {question_count} 道考題"
+            
+            # 如果是試卷類型，顯示解答結果
+            elif result.get('type') == 'exam_paper':
+                total_questions = result.get('total_questions', 0)
+                success_count = result.get('success_count', 0)
+                success_msg += f"\n📄 試卷解答完成"
+                success_msg += f"\n✅ 成功解答: {success_count}/{total_questions} 題"
+                if success_count < total_questions:
+                    failed_count = total_questions - success_count
+                    success_msg += f"\n❌ 解答失敗: {failed_count} 題"
             
             messagebox.showinfo("成功", success_msg)
             
@@ -1520,132 +1675,6 @@ class ModernGUI:
                                      created_at
                                  ))
     
-    def on_item_select(self, event):
-        """項目選擇事件"""
-        # 清除舊的表格分頁和心智圖
-        self.clear_existing_table_tabs()
-        self.mindmap_renderer.clear()
-        
-        selection = self.file_tree.selection()
-        if selection:
-            item = self.file_tree.item(selection[0])
-            if self.current_view == "documents":
-                self.preview_document(item['values'])
-            else:
-                self.preview_question(item['values'])
-    
-    def on_item_double_click(self, event):
-        """項目雙擊事件"""
-        selection = self.file_tree.selection()
-        if selection:
-            item = self.file_tree.item(selection[0])
-            if self.current_view == "documents":
-                self.show_document_detail(item['values'])
-            else:
-                self.show_question_detail(item['values'])
-    
-    def preview_question(self, values):
-        """預覽問題"""
-        try:
-            # 儲存預覽資料供重新載入使用
-            self.current_preview_data = {
-                'type': 'question',
-                'data': values
-            }
-            
-            # 處理不同的 values 格式
-            question_id = None
-            
-            if isinstance(values, (list, tuple)) and len(values) > 0:
-                question_id_str = values[0]  # 格式: "Q123"
-                if isinstance(question_id_str, str) and question_id_str.startswith('Q'):
-                    try:
-                        question_id = int(question_id_str[1:])
-                    except ValueError:
-                        raise ValueError(f"無法從 '{question_id_str}' 解析問題ID")
-                elif isinstance(question_id_str, str):
-                    # 嘗試直接轉換字符串為整數
-                    try:
-                        question_id = int(question_id_str)
-                    except ValueError:
-                        raise ValueError(f"無法將 '{question_id_str}' 轉換為整數")
-                elif isinstance(question_id_str, int):
-                    question_id = question_id_str
-                else:
-                    raise ValueError(f"無法處理的問題ID格式: {type(question_id_str)} - {question_id_str}")
-            elif isinstance(values, int):
-                question_id = values
-            else:
-                raise ValueError(f"無法解析問題ID，未知格式: {type(values)} - {values}")
-            
-            if question_id is None:
-                raise ValueError("問題ID為空")
-            
-            # 從資料庫獲取完整問題資訊
-            cursor = self.db.cursor
-            cursor.execute("""
-                SELECT q.question_text, q.answer_text, q.subject, d.title 
-                FROM questions q 
-                LEFT JOIN documents d ON q.document_id = d.id 
-                WHERE q.id = ?
-            """, (question_id,))
-            
-            result = cursor.fetchone()
-            if result:
-                question_text, answer_text, subject, doc_title = result
-                
-                # 生成 Markdown 格式的內容
-                markdown_content = f"""# 📚 題目預覽
-
-> **科目**: {subject or '未分類'}  
-> **來源**: {doc_title or '未知'}
-
-## 📋 題目
-
-{question_text}
-
-## ✅ 參考答案
-
-{answer_text or '無答案'}
-"""
-                
-                # 根據答案顯示設定過濾內容
-                filtered_content = self.filter_content_for_answers(markdown_content)
-                self.markdown_text.set_markdown(filtered_content)
-                
-                # 更新詳細資訊
-                detail_content = f"""題目ID: Q{question_id}
-科目: {subject or '未分類'}
-來源文件: {doc_title or '未知'}
-
-題目內容:
-{question_text}
-
-答案內容:
-{answer_text or '無答案'}
-"""
-                self.detail_text.delete("1.0", tk.END)
-                self.detail_text.insert("1.0", detail_content)
-                
-            else:
-                raise ValueError("未找到對應的問題資料")
-            
-        except Exception as e:
-            self.show_error(f"預覽問題失敗: {str(e)}")
-            error_content = f"# 預覽失敗\n\n無法載入問題內容: {str(e)}"
-            self.markdown_text.set_markdown(error_content)
-    
-    def show_question_detail(self, values):
-        """顯示問題詳細資訊"""
-        try:
-            question_id_str = values[0]  # 格式: "Q123"
-            question_id = int(question_id_str[1:])
-            
-            # 這裡可以實作問題詳細檢視視窗
-            messagebox.showinfo("問題詳情", f"顯示問題 {question_id} 的詳細資訊")
-            
-        except Exception as e:
-            self.show_error(f"顯示問題詳情失敗: {str(e)}")
     
     def load_initial_data(self):
         """載入初始資料"""
@@ -2341,7 +2370,117 @@ class ModernGUI:
     
     def show_chart_window(self, viz_manager, stats):
         pass
-
+    
+    def _is_likely_exam_paper(self, text: str) -> bool:
+        """檢測輸入是否可能是試卷（包含多個題目）"""
+        # 檢查試卷的常見特徵
+        exam_indicators = [
+            # 中文題目編號
+            r'第[一二三四五六七八九十]+題',
+            r'[一二三四五六七八九十]+[、．]',
+            # 數字題目編號
+            r'^\s*\d+[、．\)]\s*',
+            r'題目\s*\d+',
+            # 多個題目的模式
+            r'(\d+[、．\)].*\n.*){2,}',  # 至少2個編號題目
+            # 試卷標題
+            r'試卷|考試|測驗|練習|習題'
+        ]
+        
+        import re
+        
+        # 檢查是否包含多個題目編號
+        question_count = 0
+        for pattern in exam_indicators[:4]:  # 只檢查題目編號模式
+            matches = re.findall(pattern, text, re.MULTILINE)
+            question_count += len(matches)
+        
+        # 如果包含2個以上的題目編號，或者包含試卷關鍵字且有編號，則認為是試卷
+        has_exam_keywords = any(re.search(pattern, text) for pattern in exam_indicators[5:])
+        
+        return question_count >= 2 or (has_exam_keywords and question_count >= 1)
+    
+    async def _process_exam_paper_async(self, text: str, subject: str) -> Dict:
+        """處理試卷，直接解答原始題目而不是生成新題目"""
+        try:
+            # 1. 使用AI自動分題分析
+            questions = await self.flow_manager.gemini_client.split_exam_paper(text, subject)
+            
+            if not questions:
+                print("無法分離題目，請檢查試卷格式...")
+                return {'success': False, 'error': '無法識別試卷中的題目，請檢查格式'}
+            
+            print(f"檢測到 {len(questions)} 個題目，開始逐題解答...")
+            
+            # 2. 創建試卷文檔記錄
+            doc_title = f"{subject} - 考試試卷 ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
+            doc_id = self.db.add_document(doc_title, text, "exam_paper", subject)
+            
+            # 3. 逐一處理每個題目 - 直接解答而不是生成新題目
+            processed_questions = []
+            for i, question_data in enumerate(questions):
+                try:
+                    question_text = question_data.get('stem', '')
+                    if not question_text:
+                        continue
+                        
+                    print(f"正在解答第 {i+1} 題...")
+                    
+                    # 使用 answer_flow 直接解答題目
+                    additional_info = {
+                        'source': f'考試試卷 - 第{i+1}題',
+                        'document_id': doc_id,
+                        'question_number': question_data.get('question_number', f'第{i+1}題'),
+                        'question_type': question_data.get('type', '未知')
+                    }
+                    
+                    result = await self.flow_manager.process_single_question(
+                        question_text, 
+                        subject, 
+                        additional_info
+                    )
+                    
+                    if result.get('success'):
+                        processed_questions.append({
+                            'question_number': additional_info['question_number'],
+                            'question_text': question_text,
+                            'question_id': result.get('question_id'),
+                            'status': 'answered'
+                        })
+                    else:
+                        processed_questions.append({
+                            'question_number': additional_info['question_number'],
+                            'question_text': question_text,
+                            'status': 'failed',
+                            'error': result.get('error', '未知錯誤')
+                        })
+                        
+                except Exception as e:
+                    print(f"處理第 {i+1} 題時發生錯誤: {e}")
+                    processed_questions.append({
+                        'question_number': f'第{i+1}題',
+                        'question_text': question_data.get('stem', ''),
+                        'status': 'error',
+                        'error': str(e)
+                    })
+            
+            success_count = len([q for q in processed_questions if q['status'] == 'answered'])
+            
+            return {
+                'success': True,
+                'type': 'exam_paper',
+                'document_id': doc_id,
+                'document_title': doc_title,
+                'total_questions': len(questions),
+                'processed_questions': processed_questions,
+                'success_count': success_count,
+                'message': f"試卷處理完成！成功解答 {success_count}/{len(questions)} 題"
+            }
+            
+        except Exception as e:
+            print(f"處理試卷時發生錯誤：{e}")
+            return {'success': False, 'error': str(e)}
+    
     def run(self):
         """啟動 GUI 主迴圈"""
         self.root.mainloop()

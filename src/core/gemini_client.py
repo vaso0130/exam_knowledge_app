@@ -318,6 +318,49 @@ class GeminiClient:
             return parsed_json.get("questions", [])
         return []
     
+    async def generate_questions_from_text(self, text: str, subject: str) -> List[Dict[str, Any]]:
+        """
+        根據完整文本內容生成模擬題，並為每個問題自動標註知識點標籤
+        這個方法專門用於處理整篇文章，並為每個生成的問題提供詳細的知識點標籤
+        """
+        prompt = f"""
+基於以下「{subject}」領域的完整文本內容，請生成3-5題深入的申論題。
+每題都應該附帶精確的知識點標籤，用於後續的知識點關聯。
+
+文本內容：
+{text}
+
+申論題要求：
+1. 題目需要學生進行深入分析、比較、評述或論證
+2. 答案應該包含多個要點，需要條理清晰的論述
+3. 每題必須標註其對應的具體知識點（2-4個關鍵知識點）
+4. 知識點應該是具體的技術概念、理論或方法，不要太泛化
+
+請以JSON格式回應：
+{{
+    "questions": [
+        {{
+            "stem": "申論題目內容（要求深入分析或論述）",
+            "answer": "詳細的參考答案（如果適合用表格，請使用 Markdown 表格格式）",
+            "type": "Essay",
+            "points": "評分要點或考查重點",
+            "knowledge_points": ["知識點1", "知識點2", "知識點3"],
+            "tags": ["標籤1", "標籤2", "標籤3"]
+        }},
+        ...
+    ]
+}}
+
+範例知識點格式：
+- 具體概念：「TCP三向交握」、「RSA加密演算法」、「正規化第三正規式」
+- 理論方法：「CAP理論」、「ACID特性」、「雜湊函數特性」
+- 技術架構：「微服務架構」、「負載平衡技術」、「防火牆規則設定」
+"""
+        parsed_json = await self._generate_with_json_parsing(prompt)
+        if parsed_json and 'questions' in parsed_json:
+            return parsed_json.get("questions", [])
+        return []
+    
     async def generate_mindmap(self, text: str) -> str:
         """
         根據輸入的文本，生成 Mermaid.js 格式的心智圖 Markdown。
@@ -430,3 +473,102 @@ class GeminiClient:
                     question['answer'] = answer_data.get('answer', '')
             return questions
         return []
+    
+    async def split_exam_paper(self, text: str, subject: str) -> List[Dict[str, Any]]:
+        """
+        自動分析試卷內容，將多個題目分離並逐一處理
+        """
+        prompt = f"""
+你是一位專業的{subject}科老師，請仔細分析以下試卷內容，將其中的主要題目分離出來。
+
+試卷內容：
+{text}
+
+請將每個主要題目提取出來，並以JSON格式返回：
+
+{{
+    "questions": [
+        {{
+            "question_number": "題目編號（如：1、2、3或第一題、第二題等）",
+            "stem": "完整的題目內容（包括題幹、所有子題、選項等）",
+            "type": "題目類型（選擇題、申論題、填充題、複合題等）",
+            "estimated_subject": "推測的更細分科目或領域"
+        }},
+        ...
+    ]
+}}
+
+重要注意事項：
+1. 只分離主要題目，不要將子題拆開成獨立題目
+2. 如果一個題目包含多個子題（如第1題有(1)(2)(3)小題），請將整個題目（包括所有子題）作為一個完整單位
+3. 每個題目都要完整提取，包括題幹、所有子題、所有選項
+4. 保留原始的題目編號和結構
+5. 如果是選擇題，要包含所有選項 (A)(B)(C)(D)
+6. 複合題（有多個小問的題目）應該保持完整，不要拆分
+
+範例：
+如果原題是：
+「第1題：
+(1) 請說明TCP的三向交握過程
+(2) 比較TCP和UDP的差異」
+
+請保持為一個完整題目，不要分成兩個獨立題目。
+"""
+        
+        parsed_json = await self._generate_with_json_parsing(prompt)
+        if parsed_json and 'questions' in parsed_json:
+            questions = parsed_json.get("questions", [])
+            # 為每個分離的題目生成答案
+            for question in questions:
+                if 'stem' in question:
+                    print(f"正在為題目 {question.get('question_number', '未知')} 生成答案...")
+                    answer_data = await self.generate_answer(question['stem'])
+                    question['answer'] = answer_data.get('answer', '答案生成失敗')
+            return questions
+        return []
+    
+    async def analyze_image(self, image_path: str, subject: str = None) -> str:
+        """
+        分析圖片內容，提取文字和描述
+        """
+        try:
+            import google.generativeai as genai
+            from PIL import Image
+            
+            # 打開圖片
+            image = Image.open(image_path)
+            
+            # 構建提示詞
+            if subject:
+                prompt = f"""
+請仔細分析這張圖片，並提取其中的所有文字內容和重要資訊。
+圖片可能包含{subject}領域的題目、圖表、公式或說明文字。
+
+請按以下格式輸出：
+1. 如果是題目或考試內容，請完整提取題目文字
+2. 如果是圖表或示意圖，請描述圖表內容和重要數據
+3. 如果包含公式，請用文字描述公式內容
+4. 提取圖片中的所有可見文字
+
+請用繁體中文回應，並盡可能詳細和準確。
+"""
+            else:
+                prompt = """
+請仔細分析這張圖片，並提取其中的所有文字內容和重要資訊。
+請按以下格式輸出：
+1. 圖片中的所有可見文字
+2. 圖片內容的描述
+3. 如果是題目、公式或圖表，請特別詳細說明
+
+請用繁體中文回應。
+"""
+            
+            # 使用 Gemini Vision 分析圖片
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content([prompt, image])
+            
+            return response.text if response.text else "無法解析圖片內容"
+            
+        except Exception as e:
+            print(f"圖片分析錯誤: {e}")
+            return f"圖片分析失敗: {str(e)}"
