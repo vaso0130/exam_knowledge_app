@@ -6,60 +6,61 @@
 
 ## 核心思路
 
-建立一個以 **知識點 (Knowledge Point)** 為中心的資料庫結構，打造一個輕量級的 **知識圖譜 (Knowledge Graph)**。
+建立一個以 **知識點 (Knowledge Point)** 為中心的資料庫結構，打造一個一定會考高分上榜的 **知識圖譜 (Knowledge Graph)**。
 
 ---
+基礎功能已經大致上完成
+1.現在需要在webUI上做出**知識圖譜 (Knowledge Graph)**
+           <!-- 上傳檔案 -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-1 mb-3">📁</div>
+                        <h3 class="card-title">分析題目</h3>
+                        <p class="card-text text-muted">自動解析考題與知識點，不限於檔案，也包含文字與url</p>
+                        <a href="/upload" class="btn btn-primary">開始上傳</a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 題庫瀏覽 -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-1 mb-3">📚</div>
+                        <h3 class="card-title">題庫瀏覽</h3>
+                        <p class="card-text text-muted">瀏覽已處理的題目，支援 Markdown 渲染和程式碼高亮</p>
+                        <a href="/questions" class="btn btn-primary">瀏覽題庫</a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 知識庫 -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-1 mb-3">🧠</div>
+                        <h3 class="card-title">知識庫</h3>
+                        <p class="card-text text-muted">查看知識點分類與統計，了解學習進度</p>
+                        <a href="/knowledge" class="btn btn-primary">查看知識庫</a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 原始文件 -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-1 mb-3">📜</div>
+                        <h3 class="card-title">原始文件</h3>
+                        <p class="card-text text-muted">查看所有已上傳的原始文件內容，對照學習更有效</p>
+                        <a href="/documents" class="btn btn-success">檢視文件</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+要在這下面新增，這個區塊與按鈕，當然要對齊上面四個區塊 並且抱持一致風格
 
-## 四階段實施藍圖
-
-### 第一步：資料庫重構 - 建立知識的核心（完成）
-
-這是所有功能的基石。我們需要重新設計資料庫，加入兩個新的核心表格：
-
-1.  **`knowledge_points` (知識點表)**
-    *   `id`: 唯一ID
-    *   `name`: 知識點名稱 (例如：「TCP三向交握」、「正規化」、「RAID 5」)
-    *   `subject`: 所屬科目
-    *   `description`: (可選) AI生成的知識點簡介
-
-2.  **`question_knowledge_links` (關聯表)**
-    *   `question_id`: 題目ID
-    *   `knowledge_point_id`: 知識點ID
-    *   **作用**：將「一則題目」與「多個知識點」建立多對多關聯。
-
-### 第二步：AI 能力升級 - 自動識別與關聯（完成）
-
-升級內容處理流程，讓 AI 承擔更智慧的角色：
-
-1.  **提取知識點**：當處理一份文件或題目時，AI 需要從內容中自動識別出其涵蓋的核心知識點。
-2.  **自動關聯**：
-    *   系統將 AI 識別出的知識點與 `knowledge_points` 表進行比對。
-    *   **若已存在**：直接在 `question_knowledge_links` 表中建立關聯。
-    *   **若是新的**：先在 `knowledge_points` 表中建立新記錄，再建立關聯。
-
-### 第三步：介面革新 - 視覺化知識連結
-
-讓使用者介面能夠直觀地展示知識間的連結：
-
-1.  **題目預覽區強化**：在每道題目的預覽下方，以「標籤雲」或「按鈕」的形式，清晰地列出這道題目關聯的所有知識點。
-2.  **全新的「知識庫」視圖**：
-    *   將左側的篩選面板改造為真正的「知識庫瀏覽器」。
-    *   使用者可以直接在此瀏覽、搜尋所有已建立的「知識點」。
-
-### 第四步：實現核心複習流程 - 串聯所有題目
-
-這是實現最終目標的關鍵，也是整個系統價值的體現：
-
-1.  **點擊知識點，串聯題目**：
-    *   使用者在任何地方（題目下方的標籤，或知識庫瀏覽器中）點擊一個知識點（例如：「CAP理論」）。
-    *   右側的列表會**立即刷新**，顯示出資料庫中所有與「CAP理論」相關的題目。
-2.  **高效主題式複習**：
-    *   使用者可以圍繞一個核心概念，進行高強度的集中複習，徹底弄懂一個知識點在不同情境下的考法。
-
-### 第五步：改用Web_UI
-
-讓整體支援markdown、程式碼區塊、數學公式等支援最佳化，使AI模擬作答可以一覽無遺，不用特別把表格心智圖區分出來。 
-
----
-
-我們將嚴格按照以上步驟，從第一步開始，逐步完成這次重要的架構升級。
+2.並且刪除有關桌面版的程式碼，減少冗餘的代碼與檔案
+3.需要增加可以對接到SQL伺服器的功能，因為輕量型的DB或許會吃不消
+4.研究不限於上面這些功能以外，可以讓學習更加完善的功能
