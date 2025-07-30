@@ -26,6 +26,8 @@ class DatabaseManager:
                 type TEXT,
                 subject TEXT,
                 file_path TEXT,
+                tags TEXT,
+                source TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -95,6 +97,22 @@ class DatabaseManager:
         
         self.conn.commit()
         return self.cursor.lastrowid
+    
+    def add_document(self, title: str, content: str, subject: str = None, 
+                    tags: str = None, file_path: str = None, source: str = None) -> int:
+        """添加文件記錄（支援 tags 和 source）"""
+        self.cursor.execute('''
+            INSERT INTO documents (title, content, type, subject, file_path, tags, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (title, content, "info", subject, file_path, tags, source))
+        
+        self.conn.commit()
+        return self.cursor.lastrowid
+    
+    def add_question(self, document_id: int, question_text: str, answer_text: str = None,
+                    subject: str = None) -> int:
+        """添加題目記錄"""
+        return self.insert_question(document_id, question_text, answer_text, subject)
     
     def get_documents_by_subject(self, subject: str) -> List[Tuple]:
         """根據科目取得文件"""
@@ -260,7 +278,12 @@ class DatabaseManager:
         row = self.cursor.fetchone()
         if row:
             keys = ["id", "document_id", "question_text", "answer_text", "subject", "created_at", "mindmap_code", "doc_title"]
-            return dict(zip(keys, row))
+            question_data = dict(zip(keys, row))
+            
+            # 獲取關聯的知識點
+            question_data['knowledge_points'] = self.get_knowledge_points_for_question(question_id)
+            return question_data
+            
         return None
     
     def update_question_mindmap(self, question_id: int, mindmap_code: str):
@@ -271,3 +294,87 @@ class DatabaseManager:
             WHERE id = ?
         ''', (mindmap_code, question_id))
         self.conn.commit()
+
+    # --- 新增知識點相關方法 ---
+
+    def add_or_get_knowledge_point(self, name: str, subject: str, description: str = "") -> int:
+        """新增或取得知識點，返回其ID"""
+        self.cursor.execute('SELECT id FROM knowledge_points WHERE name = ?', (name,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        else:
+            self.cursor.execute(
+                'INSERT INTO knowledge_points (name, subject, description) VALUES (?, ?, ?)',
+                (name, subject, description)
+            )
+            self.conn.commit()
+            return self.cursor.lastrowid
+
+    def link_question_to_knowledge_point(self, question_id: int, knowledge_point_id: int):
+        """將問題與知識點關聯"""
+        self.cursor.execute(
+            'INSERT OR IGNORE INTO question_knowledge_links (question_id, knowledge_point_id) VALUES (?, ?)',
+            (question_id, knowledge_point_id)
+        )
+        self.conn.commit()
+
+    def get_knowledge_points_for_question(self, question_id: int) -> List[Dict[str, Any]]:
+        """獲取單一問題的所有關聯知識點"""
+        self.cursor.execute('''
+            SELECT kp.id, kp.name, kp.subject
+            FROM knowledge_points kp
+            JOIN question_knowledge_links qkl ON kp.id = qkl.knowledge_point_id
+            WHERE qkl.question_id = ?
+        ''', (question_id,))
+        
+        points = []
+        for row in self.cursor.fetchall():
+            points.append({"id": row[0], "name": row[1], "subject": row[2]})
+        return points
+
+    def get_questions_for_knowledge_point(self, knowledge_point_id: int) -> List[Tuple]:
+        """獲取與某個知識點關聯的所有問題"""
+        self.cursor.execute('''
+            SELECT q.id, q.subject, q.question_text, q.answer_text, d.title, q.created_at
+            FROM questions q
+            JOIN question_knowledge_links qkl ON q.id = qkl.question_id
+            JOIN documents d ON q.document_id = d.id
+            WHERE qkl.knowledge_point_id = ?
+            ORDER BY q.created_at DESC
+        ''', (knowledge_point_id,))
+        return self.cursor.fetchall()
+
+    def get_all_knowledge_points_by_subject(self) -> Dict[str, List[Dict[str, Any]]]:
+        """按科目獲取所有知識點"""
+        self.cursor.execute('SELECT id, name, subject FROM knowledge_points ORDER BY subject, name')
+        
+        subject_map = {}
+        for row in self.cursor.fetchall():
+            point_id, name, subject = row
+            if subject not in subject_map:
+                subject_map[subject] = []
+            subject_map[subject].append({"id": point_id, "name": name})
+        return subject_map
+
+    def get_all_knowledge_points_with_stats(self) -> Dict[str, List[Dict[str, Any]]]:
+        """按科目獲取所有知識點，並包含關聯問題數量"""
+        self.cursor.execute('''
+            SELECT 
+                kp.id, 
+                kp.name, 
+                kp.subject, 
+                COUNT(qkl.question_id) as question_count
+            FROM knowledge_points kp
+            LEFT JOIN question_knowledge_links qkl ON kp.id = qkl.knowledge_point_id
+            GROUP BY kp.id, kp.name, kp.subject
+            ORDER BY kp.subject, kp.name
+        ''')
+        
+        subject_map = {}
+        for row in self.cursor.fetchall():
+            point_id, name, subject, count = row
+            if subject not in subject_map:
+                subject_map[subject] = []
+            subject_map[subject].append({"id": point_id, "name": name, "question_count": count})
+        return subject_map

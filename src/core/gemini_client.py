@@ -60,6 +60,60 @@ class GeminiClient:
         except Exception as e:
             print(f"Gemini API 錯誤: {e}")
             return ""
+
+    async def extract_knowledge_points(self, text: str, subject: str) -> Optional[List[str]]:
+        """從文本中提取知識點"""
+        prompt = f"""
+        你是一位專業的{subject}科老師，你的任務是從給定的考試題目或文本中，精準地提取出核心的「知識點」。
+
+        **任務說明：**
+        1.  **分析文本**：仔細閱讀以下內容。
+        2.  **提取知識點**：識別出文本所測驗的2到5個最重要、最核心的觀念或術語。知識點應該是簡潔、具體的名詞或短語。
+        3.  **格式化輸出**：將提取的知識點以JSON格式輸出。
+
+        **文本內容：**
+        ```
+        {text}
+        ```
+
+        **輸出要求：**
+        -   必須是嚴格的JSON格式。
+        -   JSON物件應包含一個鍵 `knowledge_points`。
+        -   `knowledge_points` 的值應該是一個字串列表，每個字串就是一個知識點。
+
+        **範例：**
+        -   **輸入文本（公民與社會）**：「根據我國《公司法》規定，股東會是公司的最高權力機構。請問，若A公司決定進行合併，應由哪個機構決議？」
+        -   **輸出JSON**：
+            ```json
+            {{
+                "knowledge_points": [
+                    "公司法",
+                    "股東會職權",
+                    "公司合併"
+                ]
+            }}
+            ```
+        -   **輸入文本（物理）**：「一個質量為2公斤的物體，在光滑水平面上受到10牛頓的水平力作用，請問其加速度為何？」
+        -   **輸出JSON**：
+            ```json
+            {{
+                "knowledge_points": [
+                    "牛頓第二運動定律",
+                    "F=ma",
+                    "加速度計算"
+                ]
+            }}
+            ```
+
+        請現在分析給定的文本並返回JSON結果。
+        """
+        
+        parsed_json = await self._generate_with_json_parsing(prompt)
+        if parsed_json and 'knowledge_points' in parsed_json and isinstance(parsed_json['knowledge_points'], list):
+            return parsed_json['knowledge_points']
+        
+        print(f"無法從回應中解析出知識點: {parsed_json}")
+        return None
     
     async def detect_type(self, text: str) -> bool:
         """判斷文本是否為考試題目"""

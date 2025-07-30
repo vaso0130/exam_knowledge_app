@@ -16,6 +16,7 @@ from .markdown_renderer import MarkdownText
 
 # 導入心智圖渲染器
 from .mindmap_renderer import MindmapRenderer
+from .reviewer_window import Reviewer
 
 # 移除圖表功能相關匯入
 # try:
@@ -29,8 +30,8 @@ ctk.set_appearance_mode("light")  # "system", "light", "dark"
 ctk.set_default_color_theme("blue")  # "blue", "green", "dark-blue"
 
 class ModernGUI:
-    def __init__(self, content_processor, db_manager):
-        self.content_processor = content_processor
+    def __init__(self, flow_manager, db_manager):
+        self.flow_manager = flow_manager
         self.db_manager = db_manager
         self.db = db_manager  # 別名，方便使用
         
@@ -560,6 +561,11 @@ class ModernGUI:
                                   command=self.switch_view)
         q_btn.pack(side='left', padx=5)
         
+        kb_btn = ctk.CTkRadioButton(view_frame, text="知識庫", 
+                                   variable=self.view_var, value="knowledge",
+                                   command=self.switch_view)
+        kb_btn.pack(side='left', padx=5)
+        
         # 操作按鈕
         op_frame = ctk.CTkFrame(button_frame)
         op_frame.pack(side='right', padx=(0, 10), pady=10)
@@ -574,6 +580,11 @@ class ModernGUI:
                                         command=self.generate_ai_mindmap,
                                         fg_color="purple", hover_color="darkviolet")
         self.mindmap_btn.pack(side='right', padx=5)
+        
+        self.review_btn = ctk.CTkButton(op_frame, text="🎯 知識點複習",
+                                       command=self.start_knowledge_review,
+                                       fg_color="#FF7F50", hover_color="#E57348")
+        self.review_btn.pack(side='right', padx=5)
         
         self.delete_btn = ctk.CTkButton(op_frame, text="🗑️ 刪除選中", 
                                        command=self.delete_selected,
@@ -591,9 +602,43 @@ class ModernGUI:
         
         if view == "documents":
             self.refresh_document_list()
-        else:
+        elif view == "questions":
             self.refresh_question_list()
+        else: # knowledge view
+            self.refresh_knowledge_point_list()
     
+    def refresh_knowledge_point_list(self):
+        """刷新知識點列表"""
+        self.setup_tree_columns()
+        self.file_tree.delete(*self.file_tree.get_children())
+        
+        try:
+            # 獲取所有知識點及其統計
+            knowledge_points_by_subject = self.db.get_all_knowledge_points_with_stats()
+            
+            # 根據當前科目篩選
+            subjects_to_display = []
+            if self.current_subject == "全部":
+                subjects_to_display = knowledge_points_by_subject.keys()
+            elif self.current_subject in knowledge_points_by_subject:
+                subjects_to_display = [self.current_subject]
+
+            for subject in subjects_to_display:
+                # 插入科目作為父節點
+                subject_node = self.file_tree.insert("", "end", text=subject, open=True,
+                                                     values=(subject, "", "", ""))
+                
+                for kp in knowledge_points_by_subject[subject]:
+                    self.file_tree.insert(subject_node, "end",
+                                         values=(
+                                             f"KP{kp['id']}",
+                                             kp['name'],
+                                             kp['question_count'],
+                                             "" # Placeholder for date
+                                         ))
+        except Exception as e:
+            self.show_error(f"刷新知識點列表失敗: {str(e)}")
+
     def refresh_question_list(self):
         """刷新題庫列表"""
         self.file_tree.delete(*self.file_tree.get_children())
@@ -680,6 +725,67 @@ class ModernGUI:
                 
             except Exception as e:
                 self.show_error(f"刪除失敗: {str(e)}")
+
+    def start_knowledge_review(self):
+        """啟動知識點複習模式"""
+        # 獲取選中的項目
+        selection = self.file_tree.selection()
+        if not selection:
+            messagebox.showwarning("複習啟動失敗", "請先在左側的「知識庫」視圖中選擇一個或多個知識點，或選擇一個科目進行複習。")
+            return
+
+        # 收集所有選中的知識點ID
+        kp_ids = []
+        for item_id in selection:
+            values = self.file_tree.item(item_id, 'values')
+            # 檢查是否是知識點節點
+            if values and isinstance(values[0], str) and values[0].startswith('KP'):
+                kp_ids.append(int(values[0][2:]))
+            else:
+                # 如果是父節點（科目），則獲取該科目下所有知識點
+                child_items = self.file_tree.get_children(item_id)
+                for child_id in child_items:
+                    child_values = self.file_tree.item(child_id, 'values')
+                    if child_values and isinstance(child_values[0], str) and child_values[0].startswith('KP'):
+                        kp_ids.append(int(child_values[0][2:]))
+        
+        if not kp_ids:
+            messagebox.showwarning("複習啟動失敗", "您選擇的項目中不包含有效的知識點。")
+            return
+        
+        # 去重
+        kp_ids = list(set(kp_ids))
+        
+        # 獲取所有相關問題
+        all_questions = []
+        for kp_id in kp_ids:
+            questions = self.db.get_questions_for_knowledge_point(kp_id)
+            # 將問題元組轉換為字典以便處理
+            for q in questions:
+                q_dict = {
+                    "id": q[0], "subject": q[1], "question_text": q[2], 
+                    "answer_text": q[3], "doc_title": q[4], "created_at": q[5]
+                }
+                # 避免重複添加同一問題
+                if q_dict['id'] not in [aq['id'] for aq in all_questions]:
+                    all_questions.append(q_dict)
+
+        if not all_questions:
+            messagebox.showinfo("無題目", "所選知識點尚無關聯問題可供複習。")
+            return
+
+        # 啟動複習視窗
+        self.launch_review_window(all_questions)
+
+    def launch_review_window(self, questions: List[Dict[str, Any]]):
+        """啟動一個新的 Toplevel 視窗來進行複習"""
+        review_window = ctk.CTkToplevel(self.root)
+        review_window.title("知識點複習模式")
+        review_window.geometry("1000x700")
+        review_window.transient(self.root) # 保持在主視窗之上
+        
+        # 傳遞 self 給 Reviewer
+        Reviewer(review_window, questions, self)
     
     def refresh_view(self):
         """刷新當前視圖"""
@@ -717,6 +823,81 @@ class ModernGUI:
         self.file_tree.bind("<<TreeviewSelect>>", self.on_item_select)
         self.file_tree.bind("<Double-1>", self.on_item_double_click)
     
+    def on_item_select(self, event=None):
+        """處理項目選擇事件"""
+        selection = self.file_tree.selection()
+        if not selection:
+            return
+
+        item = selection[0]
+        values = self.file_tree.item(item, 'values')
+        
+        # 清除舊的表格分頁
+        self.clear_existing_table_tabs()
+
+        try:
+            if self.current_view == "documents":
+                doc_id = int(values[0])
+                self.preview_document(doc_id)
+            elif self.current_view == "questions":
+                question_id_str = values[0]
+                if question_id_str.startswith('Q'):
+                    question_id = int(question_id_str[1:])
+                    self.preview_question(question_id)
+            elif self.current_view == "knowledge":
+                kp_id_str = values[0]
+                if kp_id_str.startswith('KP'):
+                    kp_id = int(kp_id_str[2:])
+                    self.preview_knowledge_point(kp_id)
+
+        except (ValueError, IndexError) as e:
+            print(f"無法預覽項目: {e}, values: {values}")
+            # 可能點擊的是父節點（科目），可以選擇性地忽略或顯示科目資訊
+            self.markdown_text.set_content(f"# {values[0]}\n\n請選擇一個具體的知識點以查看關聯問題。")
+            self.detail_text.delete(1.0, tk.END)
+        self.mindmap_renderer.clear()
+        self.current_preview_data = None
+
+    def preview_knowledge_point(self, kp_id: int):
+        """預覽知識點關聯的問題"""
+        try:
+            questions = self.db.get_questions_for_knowledge_point(kp_id)
+            
+            if not questions:
+                self.markdown_text.set_content(f"# 知識點 ID: {kp_id}\n\n此知識點尚無關聯問題。")
+                return
+
+            # 獲取知識點名稱
+            kp_info = self.db.cursor.execute('SELECT name, subject FROM knowledge_points WHERE id = ?', (kp_id,)).fetchone()
+            kp_name, kp_subject = kp_info if kp_info else ("未知", "未知")
+
+            md_content = f"# {kp_subject} - {kp_name}\n\n"
+            md_content += f"此知識點關聯了 **{len(questions)}** 個問題：\n\n---\n\n"
+
+            for i, q in enumerate(questions, 1):
+                q_id, subject, q_text, a_text, doc_title, created_at = q
+                md_content += f"### {i}. {q_text} (ID: {q_id})\n\n"
+                md_content += f"**來源:** {doc_title}\n\n"
+                if self.show_answers.get():
+                    md_content += f"**答案:**\n{a_text}\n\n"
+                md_content += "---\n\n"
+            
+            self.markdown_text.set_content(md_content)
+            self.detail_text.delete(1.0, tk.END)
+            self.detail_text.insert(1.0, f"顯示知識點 '{kp_name}' (ID: {kp_id}) 的關聯問題。")
+            self.mindmap_renderer.clear() # 知識點列表暫不顯示心智圖
+            
+            self.current_preview_data = {'type': 'knowledge', 'id': kp_id}
+            self.preview_notebook.select(self.markdown_tab_frame)
+
+        except Exception as e:
+            self.show_error(f"預覽知識點失敗: {e}")
+
+    def on_item_double_click(self, event):
+        """處理項目雙擊事件"""
+        # 目前雙擊與單擊行為相同
+        self.on_item_select(event)
+
     def setup_tree_columns(self):
         """根據當前視圖設置TreeView列"""
         if self.current_view == "documents":
@@ -731,7 +912,7 @@ class ModernGUI:
             self.file_tree.column("title", width=300)
             self.file_tree.column("source", width=80)
             self.file_tree.column("date", width=150)
-        else:  # questions view
+        elif self.current_view == "questions":
             self.file_tree.heading("id", text="題號")
             self.file_tree.heading("subject", text="科目")
             self.file_tree.heading("title", text="題目")
@@ -743,6 +924,18 @@ class ModernGUI:
             self.file_tree.column("title", width=350)
             self.file_tree.column("source", width=200)
             self.file_tree.column("date", width=150)
+        else: # knowledge view
+            self.file_tree.heading("id", text="知識點ID")
+            self.file_tree.heading("subject", text="知識點名稱")
+            self.file_tree.heading("title", text="關聯問題數")
+            self.file_tree.heading("source", text="") # 隱藏
+            self.file_tree.heading("date", text="") # 隱藏
+
+            self.file_tree.column("id", width=100)
+            self.file_tree.column("subject", width=300)
+            self.file_tree.column("title", width=120)
+            self.file_tree.column("source", width=0, stretch=tk.NO)
+            self.file_tree.column("date", width=0, stretch=tk.NO)
     
     def create_preview_area(self, parent):
         """建立預覽區域"""
@@ -1111,7 +1304,7 @@ class ModernGUI:
             asyncio.set_event_loop(loop)
             
             search_results = loop.run_until_complete(
-                self.content_processor.gemini_client.web_search(query)
+                self.flow_manager.content_processor.gemini_client.web_search(query)
             )
             
             # 在主執行緒中更新 UI
@@ -1172,10 +1365,36 @@ class ModernGUI:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-            # 處理內容
-            result = loop.run_until_complete(
-                self.content_processor.process_content(input_text)
+            # 獲取當前選擇的科目，如果是 "全部" 則讓 AI 自動分類
+            subject = self.current_subject if self.current_subject != "全部" else None
+            
+            # 先判斷輸入是否為問題
+            is_question = loop.run_until_complete(
+                self.flow_manager.gemini_client.detect_type(input_text)
             )
+            
+            if is_question:
+                # 如果沒有指定科目，讓 AI 自動判斷
+                if not subject:
+                    subject = loop.run_until_complete(
+                        self.flow_manager.gemini_client.classify_subject(input_text)
+                    )
+                
+                # 處理單一問題
+                result = loop.run_until_complete(
+                    self.flow_manager.process_single_question(input_text, subject)
+                )
+            else:
+                # 如果沒有指定科目，讓 AI 自動判斷
+                if not subject:
+                    subject = loop.run_until_complete(
+                        self.flow_manager.gemini_client.classify_subject(input_text)
+                    )
+                
+                # 處理學習材料
+                result = loop.run_until_complete(
+                    self.flow_manager.process_learning_material(input_text, subject, "用戶輸入")
+                )
             
             # 在主執行緒中更新 UI
             self.root.after(0, self._on_process_complete, result)
@@ -1616,7 +1835,7 @@ class ModernGUI:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 mermaid_code = loop.run_until_complete(
-                    self.content_processor.gemini_client.generate_mindmap(text_to_summarize)
+                    self.flow_manager.content_processor.gemini_client.generate_mindmap(text_to_summarize)
                 )
                 loop.close()
                 
@@ -2059,7 +2278,7 @@ class ModernGUI:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     mermaid_code = loop.run_until_complete(
-                        self.content_processor.gemini_client.generate_mindmap(text_to_summarize)
+                        self.flow_manager.content_processor.gemini_client.generate_mindmap(text_to_summarize)
                     )
                     loop.close()
                     
@@ -2080,7 +2299,7 @@ class ModernGUI:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     mermaid_code = loop.run_until_complete(
-                        self.content_processor.gemini_client.generate_mindmap(text_to_summarize)
+                        self.flow_manager.content_processor.gemini_client.generate_mindmap(text_to_summarize)
                     )
                     loop.close()
                 

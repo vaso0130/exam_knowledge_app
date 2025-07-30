@@ -18,7 +18,7 @@ sys.path.insert(0, str(src_dir))
 try:
     from src.core.database import DatabaseManager
     from src.core.gemini_client import GeminiClient
-    from src.flows.info_flow import ContentProcessor
+    from src.flows.flow_manager import FlowManager
     from src.gui.main_window import ModernGUI
 except ImportError as e:
     print(f"匯入模組失敗: {e}")
@@ -31,7 +31,7 @@ class ExamKnowledgeApp:
     def __init__(self):
         self.db_manager = None
         self.gemini_client = None
-        self.content_processor = None
+        self.flow_manager = None
         self.gui = None
         
     def initialize_components(self):
@@ -43,15 +43,15 @@ class ExamKnowledgeApp:
             print("正在初始化 Gemini 客戶端...")
             self.gemini_client = GeminiClient()
             
-            print("正在初始化內容處理器...")
-            self.content_processor = ContentProcessor(
+            print("正在初始化流程管理器...")
+            self.flow_manager = FlowManager(
                 self.gemini_client, 
                 self.db_manager
             )
             
             print("正在初始化使用者介面...")
             self.gui = ModernGUI(
-                self.content_processor,
+                self.flow_manager,
                 self.db_manager
             )
             
@@ -60,6 +60,8 @@ class ExamKnowledgeApp:
             
         except Exception as e:
             print(f"初始化失敗: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def run(self):
