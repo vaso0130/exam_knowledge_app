@@ -75,23 +75,41 @@ class GeminiClient:
         return "是" in response.strip() if response else False
     
     async def generate_answer(self, question_text: str) -> Dict[str, Any]:
-        """生成標準答案"""
+        """生成標準答案，支援表格格式"""
         prompt = f"""
-請為以下考試題目提供標準答案，並包含1-3行來源資訊（書名或網址）。
+請為以下考試題目提供標準答案。如果答案適合用表格呈現（如比較、分類、統計等），請使用 Markdown 表格格式。
 
 題目：
 {question_text}
 
+請分析題目內容，如果適合用表格呈現，請在答案中包含適當的表格，並在表格後提供詳細論述說明。
+
+表格格式要求：
+- 使用標準 Markdown 表格語法
+- 表格要有清楚的標題行
+- 內容要對齊整齊
+- 表格後要有詳細的文字說明
+
 請以JSON格式回應，包含以下欄位：
 {{
-    "answer": "詳細的標準答案",
-    "sources": ["來源1", "來源2", "來源3"]
+    "answer": "詳細的標準答案（如果適合，請包含 Markdown 表格）",
+    "sources": ["來源1", "來源2", "來源3"],
+    "has_table": true/false,
+    "table_description": "表格的用途說明（如果有表格的話）"
 }}
+
+範例表格格式：
+| 項目 | 特點 | 適用場景 |
+|------|------|----------|
+| 選項A | 特點1 | 場景1 |
+| 選項B | 特點2 | 場景2 |
+
+請確保答案內容完整、準確，並適當運用表格來提升資訊的清晰度。
 """
         parsed_json = await self._generate_with_json_parsing(prompt)
         if parsed_json and 'answer' in parsed_json and 'sources' in parsed_json:
             return parsed_json
-        return {"answer": "無法解析答案", "sources": []}
+        return {"answer": "無法解析答案", "sources": [], "has_table": False, "table_description": ""}
     
     async def generate_highlights(self, text: str) -> List[str]:
         """生成重點摘要"""
@@ -175,24 +193,36 @@ class GeminiClient:
         return {"summary": "無法生成摘要", "bullets": []}
     
     async def generate_questions(self, bullets: List[str]) -> List[Dict[str, Any]]:
-        """依據重點生成模擬題"""
+        """依據重點生成模擬申論題"""
         prompt = f"""
-基於以下重點內容，請生成3-5題模擬考題，包含選擇題(MCQ)、是非題(TF)、簡答題(SA)等不同類型。
+基於以下重點內容，請生成3-5題模擬申論題。所有題目都應該是需要深入分析、論述的申論題型。
 
 重點內容：
 {chr(10).join(f'- {bullet}' for bullet in bullets)}
+
+申論題要求：
+1. 題目需要學生進行深入分析、比較、評述或論證
+2. 答案應該包含多個要點，需要條理清晰的論述
+3. 如果適合，可以要求學生用表格方式整理比較
+4. 題目應具有開放性，允許多角度思考
 
 請以JSON格式回應：
 {{
     "questions": [
         {{
-            "stem": "題目內容",
-            "answer": "標準答案",
-            "type": "MCQ/TF/SA"
+            "stem": "申論題目內容（要求深入分析或論述）",
+            "answer": "詳細的參考答案（如果適合用表格，請使用 Markdown 表格格式）",
+            "type": "Essay",
+            "points": "評分要點或考查重點"
         }},
         ...
     ]
 }}
+
+範例申論題類型：
+- 請分析並比較...的優缺點，並論述其適用場景
+- 請論述...的重要性，並舉例說明其在實際應用中的體現
+- 請評述...的發展趨勢，並分析其對...的影響
 """
         parsed_json = await self._generate_with_json_parsing(prompt)
         if parsed_json and 'questions' in parsed_json:

@@ -898,12 +898,13 @@ class ModernGUI:
         """載入標籤資料"""
         try:
             # 從資料庫獲取所有不重複的標籤
-            self.cursor.execute('''
+            cursor = self.db.cursor
+            cursor.execute('''
                 SELECT DISTINCT subject FROM documents 
                 WHERE subject IS NOT NULL AND subject != ""
                 ORDER BY subject
             ''')
-            subjects = [row[0] for row in self.cursor.fetchall()]
+            subjects = [row[0] for row in cursor.fetchall()]
             
             # 清除現有標籤
             for widget in self.tags_scrollable.winfo_children():
@@ -1210,6 +1211,10 @@ class ModernGUI:
     def show_error(self, message):
         """顯示錯誤訊息"""
         messagebox.showerror("錯誤", message)
+    
+    def show_success(self, message):
+        """顯示成功訊息"""
+        messagebox.showinfo("成功", message)
     
     def show_charts(self):
         """顯示AI生成的學習統計圖表"""
