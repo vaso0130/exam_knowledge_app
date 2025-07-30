@@ -268,7 +268,7 @@ class ContentProcessor:
     """內容處理器統一介面"""
     
     def __init__(self, gemini_client: GeminiClient, db_manager: DatabaseManager):
-        self.gemini = gemini_client
+        self.gemini_client = gemini_client
         self.db = db_manager
         self.type_detector = TypeDetector(gemini_client)
         self.answer_flow = None  # 延遲導入避免循環導入

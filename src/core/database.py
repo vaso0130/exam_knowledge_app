@@ -210,3 +210,31 @@ class DatabaseManager:
             ''', (f'%{query}%', f'%{query}%'))
         
         return self.cursor.fetchall()
+    
+    def get_document_by_id(self, document_id: int) -> Optional[Dict[str, Any]]:
+        """根據ID取得單一文件"""
+        self.cursor.execute('''
+            SELECT id, title, content, type, subject, file_path, created_at 
+            FROM documents WHERE id = ?
+        ''', (document_id,))
+        
+        row = self.cursor.fetchone()
+        if row:
+            keys = ["id", "title", "content", "type", "subject", "file_path", "created_at"]
+            return dict(zip(keys, row))
+        return None
+
+    def get_question_by_id(self, question_id: int) -> Optional[Dict[str, Any]]:
+        """根據ID取得單一問題"""
+        self.cursor.execute('''
+            SELECT q.id, q.document_id, q.question_text, q.answer_text, q.subject, q.created_at, d.title
+            FROM questions q
+            LEFT JOIN documents d ON q.document_id = d.id
+            WHERE q.id = ?
+        ''', (question_id,))
+        
+        row = self.cursor.fetchone()
+        if row:
+            keys = ["id", "document_id", "question_text", "answer_text", "subject", "created_at", "doc_title"]
+            return dict(zip(keys, row))
+        return None

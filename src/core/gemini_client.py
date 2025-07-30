@@ -229,6 +229,53 @@ class GeminiClient:
             return parsed_json.get("questions", [])
         return []
     
+    async def generate_mindmap(self, text: str) -> str:
+        """
+        根據輸入的文本，生成 Mermaid.js 格式的心智圖 Markdown。
+        """
+        prompt = f"""
+        請根據以下文本內容，生成一個 Mermaid.js 格式的心智圖。
+        心智圖應該圍繞核心主題展開，並包含3到5個主要分支，每個分支下有2到4個子節點。
+        請確保輸出的格式是純粹的 Mermaid Markdown，以 `mindmap` 開頭。
+
+        文本內容：
+        {text[:3000]}
+
+        Mermaid 心智圖範例格式：
+        mindmap
+          root((核心主題))
+            主要分支1
+              子節點1.1
+              子節點1.2
+            主要分支2
+              子節點2.1
+              子節點2.2
+        
+        請直接輸出 Mermaid 代碼，不要包含任何額外的解釋或 ```mermaid ... ``` 標記。
+        """
+        # 對於心智圖，我們期望純文字輸出，而不是 JSON
+        async with self.throttler:
+            try:
+                # 建立一個不要求 JSON 的生成設定
+                text_generation_config = genai.types.GenerationConfig(
+                    temperature=0.3,
+                    top_p=0.9,
+                    max_output_tokens=2048,
+                )
+                response = await asyncio.to_thread(
+                    self.model.generate_content,
+                    prompt,
+                    generation_config=text_generation_config
+                )
+                # 清理回應，確保是合法的 Mermaid 代碼
+                mermaid_code = response.text.strip()
+                if not mermaid_code.startswith("mindmap"):
+                    return "mindmap\n  root((生成失敗))\n    請檢查輸入內容或 API 連線"
+                return mermaid_code
+            except Exception as e:
+                print(f"生成心智圖時發生錯誤: {e}")
+                return "mindmap\n  root((錯誤))\n    無法生成心智圖"
+
     async def split_exam_paper(self, exam_text: str) -> List[Dict[str, Any]]:
         """自動分割考卷內容為個別題目"""
         prompt = f"""

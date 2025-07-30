@@ -57,6 +57,113 @@ class ModernGUI:
         
         # 設定拖放功能
         self.setup_drag_drop()
+
+    def export_knowledge(self):
+        """匯出整個知識庫到 JSON 檔案"""
+        try:
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                title="匯出知識庫"
+            )
+            if not file_path:
+                return
+
+            self.update_status("正在匯出知識庫...")
+            
+            # 獲取所有資料
+            documents = self.db.get_all_documents()
+            all_data = []
+
+            for doc_tuple in documents:
+                doc_id, title, content, doc_type, subject, file_path_db, created_at = doc_tuple
+                doc_data = {
+                    "id": doc_id,
+                    "title": title,
+                    "content": content,
+                    "type": doc_type,
+                    "subject": subject,
+                    "file_path": file_path_db,
+                    "created_at": created_at,
+                    "questions": []
+                }
+                
+                questions = self.db.get_questions_by_document(doc_id)
+                for q_tuple in questions:
+                    q_id, _, q_text, a_text, q_subject, q_created_at = q_tuple
+                    doc_data["questions"].append({
+                        "id": q_id,
+                        "question_text": q_text,
+                        "answer_text": a_text,
+                        "subject": q_subject,
+                        "created_at": q_created_at
+                    })
+                all_data.append(doc_data)
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(all_data, f, ensure_ascii=False, indent=4)
+
+            self.update_status("知識庫匯出成功！")
+            messagebox.showinfo("成功", f"知識庫已成功匯出到 {file_path}")
+
+        except Exception as e:
+            self.show_error(f"匯出知識庫失敗: {e}")
+            self.update_status("匯出失敗。")
+
+    def import_knowledge(self):
+        """從 JSON 檔案匯入知識庫"""
+        try:
+            file_path = filedialog.askopenfilename(
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                title="匯入知識庫"
+            )
+            if not file_path:
+                return
+
+            if not messagebox.askyesno("確認", "這將會將檔案中的資料添加到現有知識庫中。確定要繼續嗎？"):
+                return
+
+            self.update_status("正在匯入知識庫...")
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                imported_data = json.load(f)
+
+            # 為了避免主鍵衝突，我們將重新插入資料，讓資料庫分配新的 ID
+            for doc_data in imported_data:
+                # 插入文件
+                new_doc_id = self.db.insert_document(
+                    title=doc_data['title'],
+                    content=doc_data['content'],
+                    doc_type=doc_data['type'],
+                    subject=doc_data['subject'],
+                    file_path=doc_data.get('file_path')
+                )
+                
+                # 插入相關問題
+                for q_data in doc_data.get('questions', []):
+                    self.db.insert_question(
+                        document_id=new_doc_id,
+                        question_text=q_data['question_text'],
+                        answer_text=q_data['answer_text'],
+                        subject=q_data.get('subject', doc_data['subject']) # 使用問題的科目，如果沒有則用文件的
+                    )
+            
+            self.db.conn.commit()
+
+            self.update_status("知識庫匯入成功！")
+            messagebox.showinfo("成功", "知識庫已成功匯入。")
+            
+            # 刷新視圖
+            self.refresh_view()
+
+        except Exception as e:
+            self.show_error(f"匯入知識庫失敗: {e}")
+            self.update_status("匯入失敗。")
+
+    def export_data(self):
+        """匯出資料"""
+        # 目前，這只會呼叫更具體的知識匯出
+        self.export_knowledge()
     
     def create_widgets(self):
         """建立所有介面元件"""
@@ -311,23 +418,23 @@ class ModernGUI:
         kb_buttons_frame = ctk.CTkFrame(kb_frame)
         kb_buttons_frame.pack(fill="x", padx=10, pady=(0, 10))
         
-        self.export_btn = ctk.CTkButton(
+        self.kb_export_btn = ctk.CTkButton(
             kb_buttons_frame,
             text="📤 匯出",
             command=self.export_knowledge,
             height=30,
             font=ctk.CTkFont(size=10)
         )
-        self.export_btn.pack(side="left", padx=(0, 5), fill="x", expand=True)
+        self.kb_export_btn.pack(side="left", padx=(0, 5), fill="x", expand=True)
         
-        self.import_btn = ctk.CTkButton(
+        self.kb_import_btn = ctk.CTkButton(
             kb_buttons_frame,
             text="📥 匯入",
             command=self.import_knowledge,
             height=30,
             font=ctk.CTkFont(size=10)
         )
-        self.import_btn.pack(side="right", padx=(5, 0), fill="x", expand=True)
+        self.kb_import_btn.pack(side="right", padx=(5, 0), fill="x", expand=True)
         
         # 快速統計
         quick_stats_frame = ctk.CTkFrame(kb_frame)
@@ -447,8 +554,8 @@ class ModernGUI:
         #                              fg_color="green", hover_color="darkgreen")
         # self.chart_btn.pack(side='right', padx=5)
         
-        self.mindmap_btn = ctk.CTkButton(op_frame, text="🧠 心智圖", 
-                                        command=self.show_mindmap,
+        self.mindmap_btn = ctk.CTkButton(op_frame, text="🧠 AI心智圖", 
+                                        command=self.generate_ai_mindmap,
                                         fg_color="purple", hover_color="darkviolet")
         self.mindmap_btn.pack(side='right', padx=5)
         
@@ -1156,6 +1263,9 @@ class ModernGUI:
                 self.detail_text.delete("1.0", tk.END)
                 self.detail_text.insert("1.0", detail_content)
                 
+            else:
+                raise ValueError("未找到對應的問題資料")
+            
         except Exception as e:
             self.show_error(f"預覽問題失敗: {str(e)}")
             error_content = f"# 預覽失敗\n\n無法載入問題內容: {str(e)}"
@@ -1415,6 +1525,17 @@ class ModernGUI:
                 tags_str
             ))
     
+    def update_quick_stats(self):
+        """更新快速統計標籤"""
+        try:
+            stats = self.db.get_statistics()
+            doc_count = stats.get('total_documents', 0)
+            q_count = stats.get('total_questions', 0)
+            self.quick_stats_label.configure(text=f"📚 文件: {doc_count} | 📝 題目: {q_count}")
+        except Exception as e:
+            self.quick_stats_label.configure(text="統計載入失敗")
+            print(f"更新快速統計失敗: {e}")
+
     def update_statistics(self):
         """更新統計資訊"""
         try:
@@ -1530,6 +1651,9 @@ class ModernGUI:
                 self.detail_text.delete("1.0", tk.END)
                 self.detail_text.insert("1.0", detail_content)
                 
+            else:
+                raise ValueError("未找到對應的文件資料")
+            
         except Exception as e:
             self.show_error(f"預覽文件失敗: {str(e)}")
             # 顯示錯誤訊息
@@ -1540,11 +1664,113 @@ class ModernGUI:
         """顯示文件詳情"""
         # 實作詳情顯示邏輯
         pass
-    
+
+    def export_knowledge(self):
+        """匯出整個知識庫到 JSON 檔案"""
+        try:
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                title="匯出知識庫"
+            )
+            if not file_path:
+                return
+
+            self.update_status("正在匯出知識庫...")
+            
+            # 獲取所有資料
+            documents = self.db.get_all_documents()
+            all_data = []
+
+            for doc_tuple in documents:
+                doc_id, title, content, doc_type, subject, file_path_db, created_at = doc_tuple
+                doc_data = {
+                    "id": doc_id,
+                    "title": title,
+                    "content": content,
+                    "type": doc_type,
+                    "subject": subject,
+                    "file_path": file_path_db,
+                    "created_at": created_at,
+                    "questions": []
+                }
+                
+                questions = self.db.get_questions_by_document(doc_id)
+                for q_tuple in questions:
+                    q_id, _, q_text, a_text, q_subject, q_created_at = q_tuple
+                    doc_data["questions"].append({
+                        "id": q_id,
+                        "question_text": q_text,
+                        "answer_text": a_text,
+                        "subject": q_subject,
+                        "created_at": q_created_at
+                    })
+                all_data.append(doc_data)
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(all_data, f, ensure_ascii=False, indent=4)
+
+            self.update_status("知識庫匯出成功！")
+            messagebox.showinfo("成功", f"知識庫已成功匯出到 {file_path}")
+
+        except Exception as e:
+            self.show_error(f"匯出知識庫失敗: {e}")
+            self.update_status("匯出失敗。")
+
+    def import_knowledge(self):
+        """從 JSON 檔案匯入知識庫"""
+        try:
+            file_path = filedialog.askopenfilename(
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                title="匯入知識庫"
+            )
+            if not file_path:
+                return
+
+            if not messagebox.askyesno("確認", "這將會將檔案中的資料添加到現有知識庫中。確定要繼續嗎？"):
+                return
+
+            self.update_status("正在匯入知識庫...")
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                imported_data = json.load(f)
+
+            # 為了避免主鍵衝突，我們將重新插入資料，讓資料庫分配新的 ID
+            for doc_data in imported_data:
+                # 插入文件
+                new_doc_id = self.db.insert_document(
+                    title=doc_data['title'],
+                    content=doc_data['content'],
+                    doc_type=doc_data['type'],
+                    subject=doc_data['subject'],
+                    file_path=doc_data.get('file_path')
+                )
+                
+                # 插入相關問題
+                for q_data in doc_data.get('questions', []):
+                    self.db.insert_question(
+                        document_id=new_doc_id,
+                        question_text=q_data['question_text'],
+                        answer_text=q_data['answer_text'],
+                        subject=q_data.get('subject', doc_data['subject']) # 使用問題的科目，如果沒有則用文件的
+                    )
+            
+            self.db.conn.commit()
+
+            self.update_status("知識庫匯入成功！")
+            messagebox.showinfo("成功", "知識庫已成功匯入。")
+            
+            # 刷新視圖
+            self.refresh_view()
+
+        except Exception as e:
+            self.show_error(f"匯入知識庫失敗: {e}")
+            self.update_status("匯入失敗。")
+
     def export_data(self):
         """匯出資料"""
-        # 實作資料匯出邏輯
-        messagebox.showinfo("匯出", "匯出功能開發中...")
+        # 目前，這只會呼叫更具體的知識匯出
+        self.export_knowledge()
     
     def show_statistics(self):
         """顯示統計資料"""
@@ -1601,714 +1827,92 @@ class ModernGUI:
     def show_mindmap(self):
         """顯示當前選中文件的 Mermaid 心智圖"""
         try:
-            # 切換到心智圖標籤頁
-            self.preview_notebook.select(2)  # 心智圖是第3個標籤頁（索引2）
+            # 確保有選中項目
+            selection = self.file_tree.selection()
+            if not selection:
+                self.show_error("請先在列表中選擇一個文件或問題。")
+                return
             
-            # 如果有當前預覽的資料，生成心智圖
-            if self.current_preview_data:
-                if self.current_preview_data['type'] == 'document':
-                    self.generate_document_mindmap(self.current_preview_data['data'])
-                elif self.current_preview_data['type'] == 'question':
-                    self.show_success("請選擇文件來查看心智圖，單個題目無法生成心智圖")
-            else:
-                self.mindmap_text.delete("1.0", "end")
-                self.mindmap_text.insert("1.0", "請先選擇一個文件來生成心智圖")
+            # 切換到心智圖標籤頁
+            self.preview_notebook.select(2) # 假設心智圖是第3個標籤頁
+            
+            # 顯示正在生成
+            self.mindmap_text.delete("1.0", tk.END)
+            self.mindmap_text.insert("1.0", "🧠 正在生成 AI 心智圖，請稍候...")
+            self.root.update_idletasks()
+
+            # 在背景執行緒中生成心智圖
+            threading.Thread(target=self._generate_mindmap_background, args=(selection[0],)).start()
                 
         except Exception as e:
-            self.show_error(f"顯示心智圖失敗: {str(e)}")
+            self.show_error(f"顯示心智圖時發生錯誤: {str(e)}")
     
+    def _generate_mindmap_background(self, selected_item):
+        """在背景執行緒中生成並顯示心智圖"""
+        try:
+            item_values = self.file_tree.item(selected_item)['values']
+            
+            # 獲取用於生成心智圖的文本
+            if self.current_view == "documents":
+                doc_id = item_values[0]
+                document = self.db.get_document_by_id(doc_id)
+                text_to_summarize = document.get('content', '')
+            else: # questions
+                question_id_str = item_values[0]
+                question_id = int(question_id_str[1:])
+                question_data = self.db.get_question_by_id(question_id)
+                text_to_summarize = f"題目：{question_data.get('question_text', '')}\n答案：{question_data.get('answer_text', '')}"
+
+            if not text_to_summarize.strip():
+                mermaid_code = "mindmap\n  root((內容為空))\n    無法生成心智圖"
+            else:
+                # 呼叫 Gemini API 生成心智圖
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                mermaid_code = loop.run_until_complete(
+                    self.content_processor.gemini_client.generate_mindmap(text_to_summarize)
+                )
+                loop.close()
+
+            # 在主執行緒更新 UI
+            self.root.after(0, self.update_mindmap_display, mermaid_code)
+
+        except Exception as e:
+            error_message = f"mindmap\n  root((生成失敗))\n    錯誤: {str(e)}"
+            self.root.after(0, self.update_mindmap_display, error_message)
+
+    def update_mindmap_display(self, mermaid_code: str):
+        """在主執行緒中更新心智圖顯示"""
+        self.mindmap_text.delete("1.0", tk.END)
+        self.mindmap_text.insert("1.0", mermaid_code)
+
     def generate_document_mindmap(self, document_info):
         """為選中的文件生成心智圖"""
         try:
             doc_id = document_info[0]
+            document = self.db.get_document_by_id(doc_id)
+            questions = self.db.get_questions_by_document(doc_id)
             
-            # 從資料庫獲取文件和相關問題
-            cursor = self.db.cursor
-            cursor.execute("""
-                SELECT title, subject FROM documents WHERE id = ?
-            """, (doc_id,))
-            doc_result = cursor.fetchone()
+            # 使用舊的靜態生成邏輯作為備用
+            mermaid_code = self.generate_mermaid_mindmap(document, questions)
             
-            cursor.execute("""
-                SELECT question_text FROM questions WHERE document_id = ?
-            """, (doc_id,))
-            questions = cursor.fetchall()
+            self.mindmap_text.delete("1.0", "end")
+            self.mindmap_text.insert("1.0", mermaid_code)
             
-            if doc_result:
-                title, subject = doc_result
-                
-                # 生成 Mermaid 心智圖代碼
-                mermaid_code = self.generate_mermaid_mindmap({
-                    'title': title,
-                    'subject': subject or '未分類'
-                }, [{'question_text': q[0]} for q in questions])
-                
-                # 顯示在心智圖文字框中
-                self.mindmap_text.delete("1.0", "end")
-                self.mindmap_text.insert("1.0", mermaid_code)
+            # 切換到心智圖標籤頁
+            self.preview_notebook.select(2) # 假設心智圖是第3個標籤頁
                 
         except Exception as e:
-            self.show_error(f"生成心智圖失敗: {str(e)}")
+            self.show_error(f"生成文件心智圖失敗: {str(e)}")
     
     def generate_ai_mindmap(self):
         """AI生成知識心智圖"""
-        # 顯示進度對話框
-        progress_window = tk.Toplevel(self.root)
-        progress_window.title("🤖 AI 正在建構知識心智圖...")
-        progress_window.geometry("400x150")
-        progress_window.transient(self.root)
-        progress_window.grab_set()
-        
-        ctk.CTkLabel(progress_window, 
-                    text="🧠 AI 正在建構知識關聯圖",
-                    font=ctk.CTkFont(size=16, weight="bold")).pack(pady=20)
-        
-        progress_bar = ctk.CTkProgressBar(progress_window)
-        progress_bar.pack(pady=10, padx=20, fill="x")
-        progress_bar.set(0.1)
-        
-        status_label = ctk.CTkLabel(progress_window, text="正在分析知識結構...")
-        status_label.pack(pady=10)
-        
-        # 在後台執行AI分析
-        threading.Thread(target=self._generate_ai_mindmap_background, 
-                        args=(progress_window, progress_bar, status_label)).start()
+        # 這個方法現在由 show_mindmap 取代
+        self.show_mindmap()
     
     def show_chart_window(self, viz_manager, stats):
-        """顯示圖表視窗"""
-        chart_window = tk.Toplevel(self.root)
-        chart_window.title("📊 統計圖表")
-        chart_window.geometry("800x600")
-        
-        # 創建筆記本控件來顯示多個圖表
-        notebook = ttk.Notebook(chart_window)
-        notebook.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # 科目分布圓餅圖
-        pie_frame = ttk.Frame(notebook)
-        notebook.add(pie_frame, text="科目分布")
-        
-        pie_fig = viz_manager.create_subject_pie_chart(stats)
-        pie_canvas = FigureCanvasTkinter(pie_fig, pie_frame)
-        pie_canvas.get_tk_widget().pack(fill="both", expand=True)
-        
-        # 文件類型分布條狀圖
-        bar_frame = ttk.Frame(notebook)
-        notebook.add(bar_frame, text="文件類型")
-        
-        bar_fig = viz_manager.create_document_type_bar_chart(stats)
-        bar_canvas = FigureCanvasTkinter(bar_fig, bar_frame)
-        bar_canvas.get_tk_widget().pack(fill="both", expand=True)
-        
-        # 學習進度圖
-        progress_frame = ttk.Frame(notebook)
-        notebook.add(progress_frame, text="學習進度")
-        
-        progress_fig = viz_manager.create_learning_progress_chart(stats)
-        progress_canvas = FigureCanvasTkinter(progress_fig, progress_frame)
-        progress_canvas.get_tk_widget().pack(fill="both", expand=True)
-    
-    def show_mindmap_window(self, viz_manager, documents, questions):
-        """顯示心智圖視窗"""
-        mindmap_window = tk.Toplevel(self.root)
-        mindmap_window.title("🧠 知識心智圖")
-        mindmap_window.geometry("1000x700")
-        
-        # 創建筆記本控件來顯示不同類型的心智圖
-        notebook = ttk.Notebook(mindmap_window)
-        notebook.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # 科目關聯圖
-        subject_frame = ttk.Frame(notebook)
-        notebook.add(subject_frame, text="科目關聯")
-        
-        subject_fig = viz_manager.create_subject_relationship_graph(documents, questions)
-        subject_canvas = FigureCanvasTkinter(subject_fig, subject_frame)
-        subject_canvas.get_tk_widget().pack(fill="both", expand=True)
-        
-        # 知識點網絡圖
-        knowledge_frame = ttk.Frame(notebook)
-        notebook.add(knowledge_frame, text="知識網絡")
-        
-        knowledge_fig = viz_manager.create_knowledge_network_graph(questions)
-        knowledge_canvas = FigureCanvasTkinter(knowledge_fig, knowledge_frame)
-        knowledge_canvas.get_tk_widget().pack(fill="both", expand=True)
-    
-    def export_knowledge(self):
-        """匯出知識庫"""
-        try:
-            # 選擇匯出路徑
-            export_path = filedialog.asksaveasfilename(
-                title="匯出知識庫",
-                defaultextension=".json",
-                filetypes=[
-                    ("JSON檔案", "*.json"),
-                    ("所有檔案", "*.*")
-                ]
-            )
-            
-            if export_path:
-                # 獲取所有資料
-                documents = self.db.get_all_documents()
-                questions = self.db.get_all_questions_with_source()
-                
-                # 組織匯出資料
-                export_data = {
-                    "export_date": datetime.now().isoformat(),
-                    "documents": [
-                        {
-                            "id": doc[0],
-                            "title": doc[1],
-                            "content": doc[2],
-                            "type": doc[3],
-                            "subject": doc[4],
-                            "file_path": doc[5],
-                            "created_at": doc[6]
-                        } for doc in documents
-                    ],
-                    "questions": [
-                        {
-                            "id": q[0],
-                            "subject": q[1],
-                            "question_text": q[2],
-                            "answer_text": q[3],
-                            "source_title": q[4],
-                            "created_at": q[5]
-                        } for q in questions
-                    ]
-                }
-                
-                # 寫入檔案
-                with open(export_path, 'w', encoding='utf-8') as f:
-                    json.dump(export_data, f, ensure_ascii=False, indent=2)
-                
-                messagebox.showinfo("成功", f"知識庫已匯出至: {export_path}")
-                
-        except Exception as e:
-            self.show_error(f"匯出失敗: {str(e)}")
-    
-    def import_knowledge(self):
-        """匯入知識庫"""
-        try:
-            # 選擇匯入檔案
-            import_path = filedialog.askopenfilename(
-                title="匯入知識庫",
-                filetypes=[
-                    ("JSON檔案", "*.json"),
-                    ("所有檔案", "*.*")
-                ]
-            )
-            
-            if import_path:
-                # 確認匯入
-                if not messagebox.askyesno("確認", "匯入會添加新資料，是否繼續？"):
-                    return
-                
-                # 讀取檔案
-                with open(import_path, 'r', encoding='utf-8') as f:
-                    import_data = json.load(f)
-                
-                imported_docs = 0
-                imported_questions = 0
-                
-                # 匯入文件
-                for doc_data in import_data.get("documents", []):
-                    doc_id = self.db.insert_document(
-                        title=doc_data.get("title", ""),
-                        content=doc_data.get("content", ""),
-                        doc_type=doc_data.get("type", "info"),
-                        subject=doc_data.get("subject"),
-                        file_path=doc_data.get("file_path")
-                    )
-                    imported_docs += 1
-                
-                # 匯入題目（需要重新關聯到新的文件ID）
-                for q_data in import_data.get("questions", []):
-                    # 創建匿名文件來存放匯入的題目
-                    temp_doc_id = self.db.insert_document(
-                        title=f"匯入題目 - {q_data.get('source_title', '未知')}",
-                        content=q_data.get("question_text", ""),
-                        doc_type="exam",
-                        subject=q_data.get("subject")
-                    )
-                    
-                    self.db.insert_question(
-                        document_id=temp_doc_id,
-                        question_text=q_data.get("question_text", ""),
-                        answer_text=q_data.get("answer_text", ""),
-                        subject=q_data.get("subject")
-                    )
-                    imported_questions += 1
-                
-                # 刷新界面
-                self.refresh_view()
-                self.update_statistics()
-                
-                messagebox.showinfo("成功", 
-                    f"匯入完成！\n文件: {imported_docs} 筆\n題目: {imported_questions} 筆")
-                
-        except Exception as e:
-            self.show_error(f"匯入失敗: {str(e)}")
-    
-    def update_quick_stats(self):
-        """更新快速統計"""
-        try:
-            stats = self.db.get_statistics()
-            total_docs = stats.get('total_documents', 0)
-            total_questions = stats.get('total_questions', 0)
-            
-            self.quick_stats_label.configure(
-                text=f"📚 文件: {total_docs} | 📝 題目: {total_questions}"
-            )
-        except Exception as e:
-            self.quick_stats_label.configure(text="統計載入失敗")
-    
-    def _generate_ai_charts_background(self, progress_window, progress_bar, status_label):
-        """後台生成AI圖表"""
-        try:
-            # 建立新的事件迴圈
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            # 更新進度
-            self.root.after(0, lambda: progress_bar.set(0.2))
-            self.root.after(0, lambda: status_label.configure(text="正在分析學習內容..."))
-            
-            # 獲取資料
-            documents = self.db.get_all_documents()
-            questions = self.db.get_all_questions_with_source()
-            
-            if not documents and not questions:
-                self.root.after(0, lambda: messagebox.showinfo("提示", "目前沒有資料可以分析，請先添加一些考題或知識內容。"))
-                self.root.after(0, progress_window.destroy)
-                return
-            
-            # 更新進度
-            self.root.after(0, lambda: progress_bar.set(0.4))
-            self.root.after(0, lambda: status_label.configure(text="AI正在生成學習分析..."))
-            
-            # 生成AI分析
-            analysis_result = loop.run_until_complete(self._generate_learning_analysis(documents, questions))
-            
-            # 更新進度
-            self.root.after(0, lambda: progress_bar.set(0.8))
-            self.root.after(0, lambda: status_label.configure(text="正在生成圖表..."))
-            
-            # 在主執行緒中顯示結果
-            self.root.after(0, lambda: self._show_ai_chart_results(analysis_result, progress_window))
-            
-        except Exception as e:
-            self.root.after(0, lambda: self.show_error(f"AI圖表生成失敗: {str(e)}"))
-            self.root.after(0, progress_window.destroy)
-        finally:
-            loop.close()
-    
-    def _generate_ai_mindmap_background(self, progress_window, progress_bar, status_label):
-        """後台生成AI心智圖"""
-        try:
-            # 建立新的事件迴圈
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            # 更新進度
-            self.root.after(0, lambda: progress_bar.set(0.2))
-            self.root.after(0, lambda: status_label.configure(text="正在分析知識結構..."))
-            
-            # 獲取資料
-            documents = self.db.get_all_documents()
-            questions = self.db.get_all_questions_with_source()
-            
-            if not documents and not questions:
-                self.root.after(0, lambda: messagebox.showinfo("提示", "目前沒有資料可以分析，請先添加一些考題或知識內容。"))
-                self.root.after(0, progress_window.destroy)
-                return
-            
-            # 更新進度
-            self.root.after(0, lambda: progress_bar.set(0.4))
-            self.root.after(0, lambda: status_label.configure(text="AI正在建構知識關聯..."))
-            
-            # 生成AI心智圖分析
-            mindmap_result = loop.run_until_complete(self._generate_knowledge_structure(documents, questions))
-            
-            # 更新進度
-            self.root.after(0, lambda: progress_bar.set(0.8))
-            self.root.after(0, lambda: status_label.configure(text="正在繪製心智圖..."))
-            
-            # 在主執行緒中顯示結果
-            self.root.after(0, lambda: self._show_ai_mindmap_results(mindmap_result, progress_window))
-            
-        except Exception as e:
-            self.root.after(0, lambda: self.show_error(f"AI心智圖生成失敗: {str(e)}"))
-            self.root.after(0, progress_window.destroy)
-        finally:
-            loop.close()
-    
-    async def _generate_learning_analysis(self, documents, questions):
-        """生成學習分析"""
-        # 整合所有內容
-        all_content = []
-        for doc in documents:
-            if len(doc) > 2:
-                all_content.append(f"文件：{doc[1] or ''}\\n內容：{doc[2] or ''}")
-        
-        for q in questions:
-            if len(q) > 2:
-                all_content.append(f"題目：{q[2] or ''}\\n答案：{q[3] or ''}")
-        
-        content_summary = "\\n\\n".join(all_content[:5])  # 限制內容量
-        
-        prompt = f"""
-基於以下學習資料，請生成學習分析報告：
+        pass
 
-{content_summary}
-
-請分析並生成以下學習圖表資料（JSON格式）：
-{{
-    "knowledge_gaps": [
-        {{"topic": "知識點名稱", "gap_level": 1-5, "recommendation": "學習建議"}}
-    ],
-    "subject_mastery": [
-        {{"subject": "科目名稱", "mastery_level": 1-10, "weak_areas": ["弱點1", "弱點2"]}}
-    ],
-    "study_priorities": [
-        {{"priority": 1, "topic": "最需要加強的主題", "reason": "需要加強的原因"}}
-    ],
-    "learning_progress": [
-        {{"week": "第1週", "topics_covered": 3, "questions_solved": 15, "understanding_level": 7}}
-    ]
-}}
-"""
-        
-        return await self.content_processor.gemini._generate_with_json_parsing(prompt)
-    
-    async def _generate_knowledge_structure(self, documents, questions):
-        """生成知識結構分析"""
-        # 整合所有內容
-        all_content = []
-        for doc in documents:
-            if len(doc) > 2:
-                all_content.append(f"文件：{doc[1] or ''}\\n內容：{doc[2] or ''}")
-        
-        for q in questions:
-            if len(q) > 2:
-                all_content.append(f"題目：{q[2] or ''}\\n答案：{q[3] or ''}")
-        
-        content_summary = "\\n\\n".join(all_content[:5])  # 限制內容量
-        
-        prompt = f"""
-基於以下學習資料，請分析知識結構並生成心智圖資料：
-
-{content_summary}
-
-請生成知識心智圖的結構資料（JSON格式）：
-{{
-    "central_topic": "核心主題",
-    "main_branches": [
-        {{
-            "name": "主要分支1",
-            "sub_branches": [
-                {{"name": "子分支1.1", "details": ["細節1", "細節2"]}},
-                {{"name": "子分支1.2", "details": ["細節3", "細節4"]}}
-            ]
-        }},
-        {{
-            "name": "主要分支2", 
-            "sub_branches": [
-                {{"name": "子分支2.1", "details": ["細節5", "細節6"]}}
-            ]
-        }}
-    ],
-    "connections": [
-        {{"from": "概念A", "to": "概念B", "relationship": "關聯性描述"}}
-    ],
-    "key_concepts": ["重要概念1", "重要概念2", "重要概念3"]
-}}
-"""
-        
-        return await self.content_processor.gemini._generate_with_json_parsing(prompt)
-    
-    def _show_ai_chart_results(self, analysis_result, progress_window):
-        """顯示AI圖表分析結果"""
-        progress_window.destroy()
-        
-        if not analysis_result:
-            messagebox.showwarning("警告", "AI分析沒有返回有效結果，請稍後再試。")
-            return
-        
-        # 創建圖表視窗
-        chart_window = tk.Toplevel(self.root)
-        chart_window.title("🤖 AI 學習分析圖表")
-        chart_window.geometry("1000x700")
-        
-        # 創建筆記本控件
-        notebook = ttk.Notebook(chart_window)
-        notebook.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # 知識缺口分析
-        if 'knowledge_gaps' in analysis_result:
-            self._create_knowledge_gaps_chart(notebook, analysis_result['knowledge_gaps'])
-        
-        # 科目掌握度分析
-        if 'subject_mastery' in analysis_result:
-            self._create_subject_mastery_chart(notebook, analysis_result['subject_mastery'])
-        
-        # 學習優先順序
-        if 'study_priorities' in analysis_result:
-            self._create_study_priorities_chart(notebook, analysis_result['study_priorities'])
-        
-        # 學習進度追蹤
-        if 'learning_progress' in analysis_result:
-            self._create_learning_progress_chart(notebook, analysis_result['learning_progress'])
-    
-    def _show_ai_mindmap_results(self, mindmap_result, progress_window):
-        """顯示AI心智圖結果"""
-        progress_window.destroy()
-        
-        if not mindmap_result:
-            messagebox.showwarning("警告", "AI心智圖分析沒有返回有效結果，請稍後再試。")
-            return
-        
-        # 創建心智圖視窗
-        mindmap_window = tk.Toplevel(self.root)
-        mindmap_window.title("🧠 AI 知識心智圖")
-        mindmap_window.geometry("1200x800")
-        
-        # 創建筆記本控件
-        notebook = ttk.Notebook(mindmap_window)
-        notebook.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # 知識結構圖
-        if 'main_branches' in mindmap_result:
-            self._create_knowledge_structure_mindmap(notebook, mindmap_result)
-        
-        # 概念關聯圖
-        if 'connections' in mindmap_result:
-            self._create_concept_relationship_graph(notebook, mindmap_result)
-    
-    def _create_knowledge_gaps_chart(self, parent, gaps_data):
-        """創建知識缺口圖表"""
-        frame = ttk.Frame(parent)
-        parent.add(frame, text="📊 知識缺口分析")
-        
-        try:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(figsize=(10, 6))
-            
-            if gaps_data:
-                topics = [gap.get('topic', '未知') for gap in gaps_data]
-                levels = [gap.get('gap_level', 0) for gap in gaps_data]
-                
-                bars = ax.bar(topics, levels, color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#F7DC6F'])
-                ax.set_title('知識缺口分析 - AI智能評估', fontsize=16, fontweight='bold')
-                ax.set_ylabel('缺口程度 (1-5)', fontsize=12)
-                ax.set_xlabel('知識點', fontsize=12)
-                
-                # 添加數值標籤
-                for bar, gap in zip(bars, gaps_data):
-                    height = bar.get_height()
-                    ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
-                           f'{int(height)}', ha='center', va='bottom')
-                
-                plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-                plt.tight_layout()
-            else:
-                ax.text(0.5, 0.5, '暫無知識缺口資料', ha='center', va='center', fontsize=16)
-            
-            canvas = FigureCanvasTkinter(fig, frame)
-            canvas.get_tk_widget().pack(fill="both", expand=True)
-            
-        except Exception as e:
-            error_label = tk.Label(frame, text=f"圖表生成失敗: {str(e)}")
-            error_label.pack(expand=True)
-    
-    def _create_subject_mastery_chart(self, parent, mastery_data):
-        """創建科目掌握度圖表"""
-        frame = ttk.Frame(parent)
-        parent.add(frame, text="📈 科目掌握度")
-        
-        try:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(figsize=(10, 6))
-            
-            if mastery_data:
-                subjects = [item.get('subject', '未知') for item in mastery_data]
-                mastery_levels = [item.get('mastery_level', 0) for item in mastery_data]
-                
-                bars = ax.bar(subjects, mastery_levels, color=['#3498DB', '#2ECC71', '#F39C12', '#E74C3C'])
-                ax.set_title('科目掌握度評估 - AI智能分析', fontsize=16, fontweight='bold')
-                ax.set_ylabel('掌握程度 (1-10)', fontsize=12)
-                ax.set_xlabel('科目', fontsize=12)
-                ax.set_ylim(0, 10)
-                
-                # 添加數值標籤
-                for bar in bars:
-                    height = bar.get_height()
-                    ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
-                           f'{int(height)}/10', ha='center', va='bottom')
-                
-                plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-                plt.tight_layout()
-            else:
-                ax.text(0.5, 0.5, '暫無科目掌握度資料', ha='center', va='center', fontsize=16)
-            
-            canvas = FigureCanvasTkinter(fig, frame)
-            canvas.get_tk_widget().pack(fill="both", expand=True)
-            
-        except Exception as e:
-            error_label = tk.Label(frame, text=f"圖表生成失敗: {str(e)}")
-            error_label.pack(expand=True)
-    
-    def _create_study_priorities_chart(self, parent, priorities_data):
-        """創建學習優先順序圖表"""
-        frame = ttk.Frame(parent)
-        parent.add(frame, text="🎯 學習優先順序")
-        
-        # 創建文字顯示區域
-        text_widget = scrolledtext.ScrolledText(frame, wrap=tk.WORD, font=('Arial', 12))
-        text_widget.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        if priorities_data:
-            text_widget.insert(tk.END, "🎯 AI推薦的學習優先順序：\n\n")
-            for i, priority in enumerate(priorities_data, 1):
-                text_widget.insert(tk.END, f"優先級 {priority.get('priority', i)}：{priority.get('topic', '未知主題')}\n")
-                text_widget.insert(tk.END, f"原因：{priority.get('reason', '無說明')}\n\n")
-        else:
-            text_widget.insert(tk.END, "暫無學習優先順序資料")
-        
-        text_widget.configure(state="disabled")
-    
-    def _create_learning_progress_chart(self, parent, progress_data):
-        """創建學習進度圖表"""
-        frame = ttk.Frame(parent)
-        parent.add(frame, text="📚 學習進度追蹤")
-        
-        try:
-            import matplotlib.pyplot as plt
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
-            
-            if progress_data:
-                weeks = [item.get('week', f'第{i}週') for i, item in enumerate(progress_data, 1)]
-                topics = [item.get('topics_covered', 0) for item in progress_data]
-                questions = [item.get('questions_solved', 0) for item in progress_data]
-                
-                # 主題學習進度
-                ax1.plot(weeks, topics, marker='o', linewidth=2, color='#3498DB')
-                ax1.set_title('主題學習進度', fontsize=14, fontweight='bold')
-                ax1.set_ylabel('已學習主題數', fontsize=12)
-                ax1.grid(True, alpha=0.3)
-                
-                # 題目練習進度
-                ax2.bar(weeks, questions, color='#2ECC71', alpha=0.7)
-                ax2.set_title('題目練習進度', fontsize=14, fontweight='bold')
-                ax2.set_ylabel('已解題數', fontsize=12)
-                ax2.set_xlabel('時間', fontsize=12)
-                
-                plt.setp(ax2.get_xticklabels(), rotation=45, ha='right')
-                plt.tight_layout()
-            else:
-                ax1.text(0.5, 0.5, '暫無學習進度資料', ha='center', va='center', fontsize=16)
-                ax2.remove()
-            
-            canvas = FigureCanvasTkinter(fig, frame)
-            canvas.get_tk_widget().pack(fill="both", expand=True)
-            
-        except Exception as e:
-            error_label = tk.Label(frame, text=f"圖表生成失敗: {str(e)}")
-            error_label.pack(expand=True)
-    
-    def _create_knowledge_structure_mindmap(self, parent, mindmap_data):
-        """創建知識結構心智圖"""
-        frame = ttk.Frame(parent)
-        parent.add(frame, text="🧠 知識結構圖")
-        
-        try:
-            import matplotlib.pyplot as plt
-            import networkx as nx
-            
-            fig, ax = plt.subplots(figsize=(12, 8))
-            
-            # 創建網絡圖
-            G = nx.Graph()
-            
-            # 添加中心節點
-            central_topic = mindmap_data.get('central_topic', '核心知識')
-            G.add_node(central_topic, node_type='central')
-            
-            # 添加主要分支
-            for branch in mindmap_data.get('main_branches', []):
-                branch_name = branch.get('name', '分支')
-                G.add_node(branch_name, node_type='main')
-                G.add_edge(central_topic, branch_name)
-                
-                # 添加子分支
-                for sub_branch in branch.get('sub_branches', []):
-                    sub_name = sub_branch.get('name', '子分支')
-                    G.add_node(sub_name, node_type='sub')
-                    G.add_edge(branch_name, sub_name)
-            
-            # 設置布局
-            pos = nx.spring_layout(G, k=2, iterations=50)
-            
-            # 繪製節點
-            node_colors = {'central': '#E74C3C', 'main': '#3498DB', 'sub': '#2ECC71'}
-            node_sizes = {'central': 3000, 'main': 2000, 'sub': 1000}
-            
-            for node_type in ['central', 'main', 'sub']:
-                nodes = [n for n, attr in G.nodes(data=True) if attr.get('node_type') == node_type]
-                if nodes:
-                    nx.draw_networkx_nodes(G, pos, nodelist=nodes, 
-                                         node_color=node_colors[node_type],
-                                         node_size=node_sizes[node_type],
-                                         alpha=0.8, ax=ax)
-            
-            # 繪製邊
-            nx.draw_networkx_edges(G, pos, alpha=0.6, width=2, ax=ax)
-            
-            # 繪製標籤
-            nx.draw_networkx_labels(G, pos, font_size=10, font_weight='bold', ax=ax)
-            
-            ax.set_title('知識結構心智圖 - AI智能生成', fontsize=16, fontweight='bold')
-            ax.axis('off')
-            
-            canvas = FigureCanvasTkinter(fig, frame)
-            canvas.get_tk_widget().pack(fill="both", expand=True)
-            
-        except Exception as e:
-            error_label = tk.Label(frame, text=f"心智圖生成失敗: {str(e)}")
-            error_label.pack(expand=True)
-    
-    def _create_concept_relationship_graph(self, parent, mindmap_data):
-        """創建概念關聯圖"""
-        frame = ttk.Frame(parent)
-        parent.add(frame, text="🔗 概念關聯圖")
-        
-        # 創建文字顯示區域顯示關聯資訊
-        text_widget = scrolledtext.ScrolledText(frame, wrap=tk.WORD, font=('Arial', 12))
-        text_widget.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        text_widget.insert(tk.END, "🔗 AI分析的概念關聯：\n\n")
-        
-        # 顯示重要概念
-        key_concepts = mindmap_data.get('key_concepts', [])
-        if key_concepts:
-            text_widget.insert(tk.END, "🎯 重要概念：\n")
-            for concept in key_concepts:
-                text_widget.insert(tk.END, f"• {concept}\n")
-            text_widget.insert(tk.END, "\n")
-        
-        # 顯示概念連接
-        connections = mindmap_data.get('connections', [])
-        if connections:
-            text_widget.insert(tk.END, "🔗 概念關聯：\n")
-            for conn in connections:
-                from_concept = conn.get('from', '概念A')
-                to_concept = conn.get('to', '概念B')
-                relationship = conn.get('relationship', '相關')
-                text_widget.insert(tk.END, f"• {from_concept} ➜ {to_concept}\n")
-                text_widget.insert(tk.END, f"  關係：{relationship}\n\n")
-        
-        text_widget.configure(state="disabled")
-    
     def run(self):
-        """啟動GUI"""
+        """啟動 GUI 主迴圈"""
         self.root.mainloop()
