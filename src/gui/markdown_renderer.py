@@ -44,12 +44,14 @@ class MarkdownRenderer:
         # 表格
         self.text_widget.tag_configure("table_header", 
                                       font=(default_font.cget("family"), default_font.cget("size"), "bold"), 
-                                      background="#e5e7eb",
-                                      foreground="#1f2937")
+                                      background="#4a90e2",
+                                      foreground="white",
+                                      lmargin1=10, lmargin2=10)
         self.text_widget.tag_configure("table_cell", 
-                                      background="#f9fafb",
-                                      foreground="#374151",
-                                      lmargin1=5, lmargin2=5)
+                                      background="#f8f9fa",
+                                      foreground="#333333",
+                                      lmargin1=10, lmargin2=10,
+                                      font=(default_font.cget("family"), default_font.cget("size")))
         
         # 標籤
         self.text_widget.tag_configure("tag", font=code_font, background="#dbeafe", foreground="#1e40af")
@@ -118,8 +120,10 @@ class MarkdownRenderer:
                   re.match(r'^\*\s+', line.strip())):
                 self._render_list_item(line)
             
-            # 處理表格
-            elif '|' in line and line.strip().startswith('|') and line.strip().endswith('|'):
+            # 處理表格 - 改進檢測邏輯
+            elif ('|' in line and 
+                  line.count('|') >= 2 and
+                  (line.strip().startswith('|') or '|' in line.strip())):
                 self._render_table_row(line)
             
             # 處理普通段落
@@ -225,47 +229,71 @@ class MarkdownRenderer:
             self.text_widget.insert(tk.END, '\n')
     
     def _render_table_row(self, line: str):
-        """渲染表格行（改進版本）"""
+        """渲染表格行（處理各種表格格式）"""
         stripped_line = line.strip()
         
-        # 移除首尾的 | 符號並分割
+        # 處理各種表格格式
         if stripped_line.startswith('|') and stripped_line.endswith('|'):
+            # 標準格式: |cell1|cell2|cell3|
             cells = [cell.strip() for cell in stripped_line[1:-1].split('|')]
+        elif stripped_line.startswith('|'):
+            # 格式: |cell1|cell2|cell3
+            cells = [cell.strip() for cell in stripped_line[1:].split('|')]
+        elif stripped_line.endswith('|'):
+            # 格式: cell1|cell2|cell3|
+            cells = [cell.strip() for cell in stripped_line[:-1].split('|')]
+        elif '|' in stripped_line:
+            # 格式: cell1|cell2|cell3
+            cells = [cell.strip() for cell in stripped_line.split('|')]
         else:
-            return  # 不是正確的表格格式
+            return  # 不是表格格式
         
-        # 檢查是否為表格分隔線（如 |---|---|）
-        if all(cell.replace('-', '').replace(':', '').strip() == '' for cell in cells):
-            # 這是表格分隔線，繪製一條線
-            self.text_widget.insert(tk.END, '─' * 60 + '\n', "hr")
+        # 過濾空單元格
+        cells = [cell for cell in cells if cell.strip()]
+        
+        if not cells:
             return
         
-        # 檢查是否為表頭（第一行或前面沒有表格內容）
-        current_pos = self.text_widget.index("end-1c")
-        lines_before = self.text_widget.get("1.0", current_pos).split('\n')
-        is_header = len([l for l in lines_before if '│' in l]) == 0
+        # 檢查是否為表格分隔線（如 |---|---|）
+        if all(cell.replace('-', '').replace(':', '').replace(' ', '').strip() == '' for cell in cells):
+            # 這是表格分隔線，繪製一條分隔線
+            self.text_widget.insert(tk.END, '═' * 80 + '\n', "hr")
+            return
         
-        # 渲染表格行
-        row_text = ""
-        for i, cell in enumerate(cells):
-            if i > 0:
-                row_text += " │ "
-            
-            # 處理單元格內容
-            if cell.strip():
-                row_text += cell.strip()
+        # 確定單元格寬度（根據內容動態調整）
+        max_cell_len = max(len(cell) for cell in cells) if cells else 10
+        cell_width = max(12, min(25, max_cell_len + 4))  # 限制寬度範圍
+        
+        # 檢查是否為表頭
+        current_content = self.text_widget.get("1.0", "end-1c")
+        lines = current_content.split('\n')
+        
+        # 如果這是第一個表格行，或者前面沒有表格行，就當作表頭
+        is_header = not any('│' in line for line in lines[-3:])  # 檢查最近3行
+        
+        # 構建表格行
+        row_parts = []
+        for cell in cells:
+            # 填充單元格到固定寬度，確保對齊
+            if len(cell) > cell_width - 2:
+                # 如果內容太長，截斷並加省略號
+                padded_cell = cell[:cell_width - 5] + "..."
             else:
-                row_text += " "
+                padded_cell = cell.ljust(cell_width - 2)
+            row_parts.append(f" {padded_cell} ")
         
-        # 插入行內容
-        tag = "table_header" if is_header else "table_cell"
-        self.text_widget.insert(tk.END, row_text, tag)
-        self.text_widget.insert(tk.END, '\n')
+        # 組合完整行
+        row_text = "│" + "│".join(row_parts) + "│"
         
-        # 如果是表頭，添加分隔線
+        # 插入行內容並設定樣式
         if is_header:
-            separator = "─" * len(row_text)
-            self.text_widget.insert(tk.END, separator + '\n', "hr")
+            self.text_widget.insert(tk.END, row_text + '\n', "table_header")
+            # 為表頭添加下劃線
+            separator_parts = ['─' * cell_width for _ in cells]
+            separator_line = "┼".join(separator_parts)
+            self.text_widget.insert(tk.END, f"├{separator_line}┤\n", "hr")
+        else:
+            self.text_widget.insert(tk.END, row_text + '\n', "table_cell")
 
 
 class MarkdownText(tk.Frame):
