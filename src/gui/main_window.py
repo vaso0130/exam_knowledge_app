@@ -11,10 +11,12 @@ from datetime import datetime
 # 導入 markdown 渲染器
 from .markdown_renderer import MarkdownText
 
-try:
-    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg as FigureCanvasTkinter
-except ImportError:
-    FigureCanvasTkinter = None
+# 移除圖表功能相關匯入
+# try:
+#     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg as FigureCanvasTkinter
+# except ImportError:
+#     FigureCanvasTkinter = None
+FigureCanvasTkinter = None
 
 # 設定 CustomTkinter 主題
 ctk.set_appearance_mode("light")  # "system", "light", "dark"
@@ -78,25 +80,75 @@ class ModernGUI:
         input_frame = ctk.CTkFrame(toolbar)
         input_frame.pack(side="left", fill="x", expand=True, padx=(0, 10))
         
-        # URL/文字輸入框
+        # 輸入模式切換按鈕和小型輸入框
+        top_input_frame = ctk.CTkFrame(input_frame)
+        top_input_frame.pack(fill="x", padx=10, pady=(10, 5))
+        
+        # 切換按鈕
+        self.expand_btn = ctk.CTkButton(
+            top_input_frame,
+            text="📝 展開輸入",
+            command=self.toggle_input_mode,
+            font=ctk.CTkFont(size=12),
+            height=30,
+            width=100
+        )
+        self.expand_btn.pack(side="left", padx=(0, 10))
+        
+        # URL/文字輸入框（簡化版本）
         self.input_entry = ctk.CTkEntry(
-            input_frame,
+            top_input_frame,
             placeholder_text="拖放檔案、貼上網址或輸入文字內容...",
             font=ctk.CTkFont(size=14),
-            height=40
+            height=30
         )
-        self.input_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10)
+        self.input_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
         
         # 處理按鈕
         self.process_btn = ctk.CTkButton(
-            input_frame,
+            top_input_frame,
             text="處理",
             command=self.process_input,
             font=ctk.CTkFont(size=14, weight="bold"),
-            height=40,
-            width=100
+            height=30,
+            width=80
         )
-        self.process_btn.pack(side="right", padx=10, pady=10)
+        self.process_btn.pack(side="right")
+        
+        # 大型輸入區域（可展開/收起）
+        self.expanded_input_frame = ctk.CTkFrame(input_frame)
+        self.expanded_input_visible = False
+        
+        # 大型文字輸入區域
+        self.large_input_text = ctk.CTkTextbox(
+            self.expanded_input_frame,
+            height=200,
+            font=ctk.CTkFont(size=14),
+            wrap="word"
+        )
+        self.large_input_text.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # 大型輸入區域的按鈕
+        large_input_buttons = ctk.CTkFrame(self.expanded_input_frame)
+        large_input_buttons.pack(fill="x", padx=10, pady=(0, 10))
+        
+        ctk.CTkButton(
+            large_input_buttons,
+            text="處理文字內容",
+            command=self.process_large_input,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            height=35
+        ).pack(side="left", padx=(0, 10))
+        
+        ctk.CTkButton(
+            large_input_buttons,
+            text="清空",
+            command=lambda: self.large_input_text.delete("1.0", "end"),
+            font=ctk.CTkFont(size=14),
+            height=35,
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left")
         
         # 右側按鈕組
         button_frame = ctk.CTkFrame(toolbar)
@@ -365,11 +417,11 @@ class ModernGUI:
         op_frame = ctk.CTkFrame(button_frame)
         op_frame.pack(side='right', padx=(0, 10), pady=10)
         
-        # 可視化按鈕
-        self.chart_btn = ctk.CTkButton(op_frame, text="📊 圖表", 
-                                      command=self.show_charts,
-                                      fg_color="green", hover_color="darkgreen")
-        self.chart_btn.pack(side='right', padx=5)
+        # 移除圖表按鈕，保留心智圖按鈕
+        # self.chart_btn = ctk.CTkButton(op_frame, text="📊 圖表", 
+        #                              command=self.show_charts,
+        #                              fg_color="green", hover_color="darkgreen")
+        # self.chart_btn.pack(side='right', padx=5)
         
         self.mindmap_btn = ctk.CTkButton(op_frame, text="🧠 心智圖", 
                                         command=self.show_mindmap,
@@ -459,6 +511,9 @@ class ModernGUI:
     
     def refresh_view(self):
         """刷新當前視圖"""
+        self.refresh_document_list()
+        self.update_statistics()
+        self.load_tags()
     def create_document_list(self, parent):
         """創建文件列表"""
         """建立文件列表"""
@@ -679,6 +734,34 @@ class ModernGUI:
             self.input_entry.delete(0, tk.END)
             self.input_entry.insert(0, file_path)
             self.process_input()
+    
+    def toggle_input_mode(self):
+        """切換輸入模式"""
+        if self.expanded_input_visible:
+            # 收起大型輸入區域
+            self.expanded_input_frame.pack_forget()
+            self.expand_btn.configure(text="📝 展開輸入")
+            self.expanded_input_visible = False
+        else:
+            # 展開大型輸入區域
+            self.expanded_input_frame.pack(fill="both", expand=True, padx=10, pady=(5, 10))
+            self.expand_btn.configure(text="🔼 收起輸入")
+            self.expanded_input_visible = True
+    
+    def process_large_input(self):
+        """處理大型輸入區域的內容"""
+        input_text = self.large_input_text.get("1.0", "end-1c").strip()
+        if not input_text:
+            messagebox.showwarning("警告", "請輸入內容")
+            return
+        
+        # 禁用處理按鈕，顯示進度
+        self.process_btn.configure(state="disabled", text="處理中...")
+        self.progress_bar.set(0.1)
+        self.update_status("正在處理大型輸入內容...")
+        
+        # 在後台執行處理
+        threading.Thread(target=self._process_input_background, args=(input_text,)).start()
         
     def process_input(self):
         """處理輸入內容"""
@@ -1240,8 +1323,40 @@ class ModernGUI:
     
     def show_statistics(self):
         """顯示統計資料"""
-        # 實作統計資料顯示邏輯
-        messagebox.showinfo("統計", "統計視窗開發中...")
+        try:
+            stats = self.db.get_statistics()
+            
+            stats_text = f"""
+📊 知識庫統計資訊
+
+📚 文件統計：
+   總文件數：{stats.get('total_documents', 0)}
+   考試題目：{stats.get('exam_documents', 0)}
+   參考資料：{stats.get('info_documents', 0)}
+
+📝 題目統計：
+   總題目數：{stats.get('total_questions', 0)}
+
+📋 科目分布：
+"""
+            
+            # 添加科目統計
+            cursor = self.db.cursor
+            cursor.execute('''
+                SELECT subject, COUNT(*) as count
+                FROM documents 
+                WHERE subject IS NOT NULL AND subject != ""
+                GROUP BY subject
+                ORDER BY count DESC
+            ''')
+            
+            for subject, count in cursor.fetchall():
+                stats_text += f"   {subject}：{count} 項\n"
+            
+            messagebox.showinfo("📊 統計資料", stats_text)
+            
+        except Exception as e:
+            messagebox.showerror("錯誤", f"載入統計資料失敗: {str(e)}")
     
     def show_error(self, message):
         """顯示錯誤訊息"""
@@ -1252,17 +1367,11 @@ class ModernGUI:
         messagebox.showinfo("成功", message)
     
     def show_charts(self):
-        """顯示AI生成的學習統計圖表"""
-        if FigureCanvasTkinter is None:
-            self.show_error("matplotlib 套件未安裝，無法顯示圖表")
-            return
-            
+        """顯示統計資訊（移除圖表功能）"""
         try:
-            # 啟動AI圖表生成
-            self.generate_ai_charts()
-            
+            self.show_statistics()
         except Exception as e:
-            self.show_error(f"顯示圖表失敗: {str(e)}")
+            self.show_error(f"顯示統計失敗: {str(e)}")
     
     def show_mindmap(self):
         """顯示當前選中文件的 Mermaid 心智圖"""
@@ -1315,34 +1424,6 @@ class ModernGUI:
                 
         except Exception as e:
             self.show_error(f"生成心智圖失敗: {str(e)}")
-    
-    def show_charts(self):
-        """顯示統計資訊"""
-        try:
-            self.show_statistics()
-        except Exception as e:
-            self.show_error(f"顯示統計失敗: {str(e)}")
-        # 顯示進度對話框
-        progress_window = tk.Toplevel(self.root)
-        progress_window.title("🤖 AI 正在分析您的學習資料...")
-        progress_window.geometry("400x150")
-        progress_window.transient(self.root)
-        progress_window.grab_set()
-        
-        ctk.CTkLabel(progress_window, 
-                    text="🧠 AI 正在分析您的學習資料",
-                    font=ctk.CTkFont(size=16, weight="bold")).pack(pady=20)
-        
-        progress_bar = ctk.CTkProgressBar(progress_window)
-        progress_bar.pack(pady=10, padx=20, fill="x")
-        progress_bar.set(0.1)
-        
-        status_label = ctk.CTkLabel(progress_window, text="正在收集資料...")
-        status_label.pack(pady=10)
-        
-        # 在後台執行AI分析
-        threading.Thread(target=self._generate_ai_charts_background, 
-                        args=(progress_window, progress_bar, status_label)).start()
     
     def generate_ai_mindmap(self):
         """AI生成知識心智圖"""

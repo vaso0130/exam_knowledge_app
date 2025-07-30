@@ -42,8 +42,14 @@ class MarkdownRenderer:
         self.text_widget.tag_configure("hr", background="#e5e7eb", relief="sunken", borderwidth=1)
         
         # 表格
-        self.text_widget.tag_configure("table_header", font=(default_font.cget("family"), default_font.cget("size"), "bold"), background="#e5e7eb")
-        self.text_widget.tag_configure("table_cell", background="#f9fafb")
+        self.text_widget.tag_configure("table_header", 
+                                      font=(default_font.cget("family"), default_font.cget("size"), "bold"), 
+                                      background="#e5e7eb",
+                                      foreground="#1f2937")
+        self.text_widget.tag_configure("table_cell", 
+                                      background="#f9fafb",
+                                      foreground="#374151",
+                                      lmargin1=5, lmargin2=5)
         
         # 標籤
         self.text_widget.tag_configure("tag", font=code_font, background="#dbeafe", foreground="#1e40af")
@@ -219,14 +225,33 @@ class MarkdownRenderer:
             self.text_widget.insert(tk.END, '\n')
     
     def _render_table_row(self, line: str):
-        """渲染表格行（簡化版本）"""
+        """渲染表格行（改進版本）"""
         # 移除首尾的 | 符號並分割
-        cells = [cell.strip() for cell in line.strip().split('|')[1:-1]]
+        cells = [cell.strip() for cell in line.strip().split('|')]
         
+        # 過濾掉空的開頭和結尾元素
+        if cells and cells[0] == '':
+            cells = cells[1:]
+        if cells and cells[-1] == '':
+            cells = cells[:-1]
+        
+        # 檢查是否為表格分隔線（如 |---|---|）
+        if all(cell.strip().replace('-', '').replace(':', '').strip() == '' for cell in cells if cell.strip()):
+            # 這是表格分隔線，繪製一條線
+            self.text_widget.insert(tk.END, '─' * 60 + '\n', "hr")
+            return
+        
+        # 渲染表格行
         for i, cell in enumerate(cells):
             if i > 0:
-                self.text_widget.insert(tk.END, " | ", "table_cell")
-            self.text_widget.insert(tk.END, cell, "table_cell")
+                # 使用更明顯的分隔符
+                self.text_widget.insert(tk.END, " │ ", "table_cell")
+            
+            # 處理單元格內容的格式
+            if cell.strip():
+                self._render_inline_formatting(cell.strip())
+            else:
+                self.text_widget.insert(tk.END, " ", "table_cell")
         
         self.text_widget.insert(tk.END, '\n')
 
