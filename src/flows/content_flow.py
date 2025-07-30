@@ -1,12 +1,319 @@
 from typing import Dict, Any, List
-from ..core.gemini_client import GeminiClient
-from ..core.database import DatabaseManager
+import asyncio
+import concurrent.futures
+from src.core.gemini_client import GeminiClient
+from src.core.database import DatabaseManager
 
-class ContentProcessor:
-    """處理單一文本內容，提取資訊並儲存"""
+class ContentFlow:
+    """內容處理流程管理器 - 統一管理所有內容分析、問題生成和知識點關聯"""
+    
     def __init__(self, gemini_client: GeminiClient, db_manager: DatabaseManager):
         self.gemini = gemini_client
         self.db = db_manager
+        # 初始化檔案處理器
+        from ..utils.file_processor import FileProcessor
+        self.file_processor = FileProcessor()
+    
+    def process_file(self, file_path: str, filename: str, suggested_subject: str = None) -> Dict[str, Any]:
+        """
+        處理檔案的統一入口點 - 支援 PDF、圖片、文字檔案
+        """
+        try:
+            # 使用檔案處理器讀取檔案內容
+            content, file_type = self.file_processor.process_input(file_path)
+            
+            # 呼叫完整 AI 處理流程
+            return self.complete_ai_processing(content, filename, suggested_subject)
+            
+        except Exception as e:
+            print(f"處理檔案時發生錯誤: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': f'檔案處理失敗: {str(e)}'
+            }
+    
+    def complete_ai_processing(self, content: str, filename: str, suggested_subject: str = None, source_url: str = None) -> Dict[str, Any]:
+        """
+        完整 AI 處理流程：一勞永逸的自動化處理
+        - 自動分類內容類型（考題 vs 學習資料）
+        - 根據類型執行不同的處理流程
+        - 考題：題目分離 → 生成答案 → 知識點標註 → 心智圖
+        - 學習資料：資訊提取 → 知識點分析 → 模擬題生成 → 心智圖
+        """
+        try:
+            # 使用 ThreadPoolExecutor 來處理異步代碼
+            def run_async_processing():
+                return asyncio.run(self._run_async_processing(content, filename, suggested_subject, source_url))
+            
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_async_processing)
+                return future.result()
+                
+        except Exception as e:
+            print(f"完整 AI 處理時發生錯誤: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': '處理失敗，請稍後再試'
+            }
+    
+    async def _run_async_processing(self, content: str, filename: str, suggested_subject: str = None, source_url: str = None) -> Dict[str, Any]:
+        """執行異步處理流程"""
+        try:
+            # 步驟1: 使用 AI 自動分類內容
+            print("🤖 AI 正在分析內容類型...")
+            classification_result = await self.gemini.auto_classify_and_process(content)
+            
+            content_type = classification_result.get('content_type', 'study_material')
+            detected_subject = classification_result.get('subject', suggested_subject or '其他')
+            confidence = classification_result.get('confidence', 0.5)
+            
+            print(f"📋 內容分類結果：{content_type} ({detected_subject}, 信心度: {confidence:.2f})")
+            
+            # 儲存文檔到資料庫，包含原始內容和來源 URL
+            doc_id = self.db.add_document(
+                title=filename, 
+                content=content, 
+                subject=detected_subject, 
+                original_content=content,
+                source=source_url  # 保存原始 URL
+            )
+            
+            # 步驟2: 根據內容類型選擇處理流程
+            if content_type in ['exam_paper', 'exam']:
+                print("📝 檢測到考題內容，執行考題處理流程...")
+                result = await self._process_exam_content(content, detected_subject, doc_id, classification_result)
+            else:
+                print("📚 檢測到學習資料，執行學習資料處理流程...")
+                result = await self._process_study_material(content, detected_subject, doc_id, classification_result)
+            
+            # 步驟3: 生成並儲存心智圖
+            if result.get('success'):
+                print("🗺️ 正在生成心智圖...")
+                all_kps = result.get('knowledge_points', [])
+                if all_kps:
+                    mindmap_data = await self.gemini.generate_mindmap(detected_subject, all_kps)
+                    if mindmap_data:
+                        self.db.update_document_mindmap(doc_id, mindmap_data)
+                        print(f"✅ 心智圖已成功生成並儲存至文檔 {doc_id}")
+                        result['mindmap'] = mindmap_data
+            
+            return result
+                
+        except Exception as e:
+            print(f"異步處理時發生錯誤: {e}")
+            raise e
+    
+    async def _process_exam_content(self, content: str, subject: str, doc_id: int, classification_result: Dict) -> Dict[str, Any]:
+        """
+        考題處理流程：考題 → 生成答案 → 知識點標註 → 心智圖
+        """
+        try:
+            questions = classification_result.get('questions', [])
+            saved_questions = []
+            all_knowledge_points = set()
+            
+            print(f"📝 開始處理 {len(questions)} 道考題...")
+            
+            for i, question in enumerate(questions, 1):
+                try:
+                    print(f"  處理第 {i}/{len(questions)} 題...")
+                    
+                    question_text = question.get('stem', '')
+                    answer_text = question.get('answer', '')
+                    answer_sources = None
+                    
+                    # 格式化題目內容，識別程式碼區塊和表格
+                    if question_text:
+                        print(f"    格式化題目內容...")
+                        try:
+                            formatted_question = await self.gemini.format_question_content(question_text)
+                            question_text = formatted_question
+                        except Exception as e:
+                            print(f"    格式化失敗，使用原始內容: {e}")
+                    
+                    # 如果沒有答案，使用 AI 生成
+                    if not answer_text and question_text:
+                        print(f"    生成答案...")
+                        answer_data = await self.gemini.generate_answer(question_text)
+                        if answer_data:
+                            answer_text = answer_data.get('answer', '')
+                            sources = answer_data.get('sources', [])
+                            if sources:
+                                import json
+                                answer_sources = json.dumps(sources, ensure_ascii=False)
+                    
+                    # 儲存問題到資料庫
+                    question_id = self.db.insert_question(
+                        document_id=doc_id,
+                        title=question.get('title', '無標題'),
+                        question_text=question_text,
+                        answer_text=answer_text,
+                        subject=subject,
+                        answer_sources=answer_sources
+                    )
+                    
+                    # 處理知識點
+                    knowledge_points = question.get('knowledge_points', [])
+                    question_kps = []
+                    for kp_name in knowledge_points:
+                        if kp_name.strip():
+                            kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
+                            self.db.link_question_to_knowledge_point(question_id, kp_id)
+                            all_knowledge_points.add(kp_name.strip())
+                            question_kps.append(kp_name.strip())
+                    
+                    # 為每個題目生成專屬心智圖
+                    try:
+                        print(f"    為題目 {i} 生成心智圖...")
+                        if question_kps:
+                            question_mindmap = await self.gemini.generate_mindmap(
+                                f"{question.get('title', f'題目{i}')} - {subject}", 
+                                question_kps
+                            )
+                            if question_mindmap:
+                                self.db.update_question_mindmap(question_id, question_mindmap)
+                                print(f"    ✅ 題目 {i} 心智圖生成完成")
+                        else:
+                            print(f"    ⚠️  題目 {i} 沒有知識點，跳過心智圖生成")
+                    except Exception as e:
+                        print(f"    ❌ 題目 {i} 心智圖生成失敗: {e}")
+                    
+                    saved_questions.append({
+                        'id': question_id,
+                        'stem': question.get('stem', ''),
+                        'answer': answer_text,
+                        'knowledge_points': knowledge_points,
+                        'mindmap': question_mindmap if 'question_mindmap' in locals() else None
+                    })
+                    
+                except Exception as e:
+                    print(f"    處理第 {i} 題時發生錯誤: {e}")
+                    continue
+            
+            return {
+                'success': True,
+                'content_type': 'exam_paper',
+                'subject': subject,
+                'document_id': doc_id,
+                'questions': saved_questions,
+                'knowledge_points': list(all_knowledge_points),
+                'message': f'成功處理考題，解析了 {len(saved_questions)} 道題目，提取了 {len(all_knowledge_points)} 個知識點'
+            }
+            
+        except Exception as e:
+            print(f"考題處理流程發生錯誤: {e}")
+            raise e
+    
+    async def _process_study_material(self, content: str, subject: str, doc_id: int, classification_result: Dict) -> Dict[str, Any]:
+        """
+        學習資料處理流程：資訊提取 → 知識點分析 → 模擬題生成 → 心智圖
+        """
+        try:
+            print("📚 執行學習資料處理流程...")
+            
+            # 步驟1: 提取知識點
+            print("  提取知識點...")
+            knowledge_points_raw = await self.gemini.extract_knowledge_points(content, subject)
+            knowledge_points = []
+            
+            # 儲存知識點到資料庫
+            for kp_name in knowledge_points_raw:
+                if kp_name.strip():
+                    kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
+                    knowledge_points.append({
+                        'id': kp_id,
+                        'name': kp_name.strip(),
+                        'subject': subject
+                    })
+            
+            # 步驟2: 生成模擬題
+            print("  生成模擬題...")
+            generated_questions = await self.gemini.generate_questions_from_text(content, subject)
+            saved_questions = []
+            
+            for question in generated_questions:
+                try:
+                    # 格式化題目內容
+                    question_text = question.get('question', '')
+                    if question_text:
+                        print(f"    格式化模擬題內容...")
+                        try:
+                            formatted_question = await self.gemini.format_question_content(question_text)
+                            question_text = formatted_question
+                        except Exception as e:
+                            print(f"    格式化失敗，使用原始內容: {e}")
+                    
+                    question_id = self.db.insert_question(
+                        document_id=doc_id,
+                        title=question.get('title', '無標題'),
+                        subject=subject,
+                        question_text=question_text,
+                        answer_text=question.get('answer', '')
+                    )
+                    
+                    # 關聯問題與知識點
+                    question_kps = question.get('knowledge_points', [])
+                    actual_kps = []
+                    for kp_name in question_kps:
+                        if kp_name.strip():
+                            # 找到對應的知識點 ID
+                            kp_id = None
+                            for kp in knowledge_points:
+                                if kp['name'] == kp_name.strip():
+                                    kp_id = kp['id']
+                                    break
+                            
+                            if not kp_id:
+                                # 如果知識點不存在，創建新的
+                                kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
+                            
+                            self.db.link_question_to_knowledge_point(question_id, kp_id)
+                            actual_kps.append(kp_name.strip())
+                    
+                    # 為每個模擬題生成專屬心智圖
+                    question_mindmap = None
+                    try:
+                        print(f"    為模擬題 {question_id} 生成心智圖...")
+                        if actual_kps:
+                            question_mindmap = await self.gemini.generate_mindmap(
+                                f"{question.get('title', f'模擬題{question_id}')} - {subject}", 
+                                actual_kps
+                            )
+                            if question_mindmap:
+                                self.db.update_question_mindmap(question_id, question_mindmap)
+                                print(f"    ✅ 模擬題 {question_id} 心智圖生成完成")
+                        else:
+                            print(f"    ⚠️  模擬題 {question_id} 沒有知識點，跳過心智圖生成")
+                    except Exception as e:
+                        print(f"    ❌ 模擬題 {question_id} 心智圖生成失敗: {e}")
+                    
+                    saved_questions.append({
+                        'id': question_id,
+                        'stem': question.get('stem', ''),
+                        'answer': question.get('answer', ''),
+                        'knowledge_points': question_kps,
+                        'mindmap': question_mindmap
+                    })
+                    
+                except Exception as e:
+                    print(f"    儲存模擬題時發生錯誤: {e}")
+                    continue
+            
+            return {
+                'success': True,
+                'content_type': 'study_material',
+                'subject': subject,
+                'document_id': doc_id,
+                'questions': saved_questions,
+                'knowledge_points': knowledge_points,
+                'message': f'成功處理學習資料，提取了 {len(knowledge_points)} 個知識點，生成了 {len(saved_questions)} 道模擬題'
+            }
+            
+        except Exception as e:
+            print(f"學習資料處理流程發生錯誤: {e}")
+            raise e
 
     async def process_content(self, text: str, subject: str, doc_title: str, doc_id: int) -> Dict[str, Any]:
         """
@@ -64,10 +371,11 @@ class ContentProcessor:
         # 處理每個問題
         for q in questions:
             # 儲存問題
-            question_id = self.db.add_question(
+            question_id = self.db.insert_question(
                 document_id=document_id,
-                question_text=q['stem'],
-                answer_text=q['answer'],
+                title=q.get('title', '無標題'),
+                question_text=q.get('question', ''),
+                answer_text=q.get('answer', ''),
                 subject=subject
             )
             question_ids.append(question_id)
@@ -84,7 +392,7 @@ class ContentProcessor:
             for kp_name in combined_points:
                 if kp_name.strip():  # 確保不是空字串
                     # 新增或取得知識點 ID
-                    kp_id = self.db.add_or_get_knowledge_point(name=kp_name.strip(), subject=subject)
+                    kp_id = self.db.add_knowledge_point(name=kp_name.strip(), subject=subject)
                     # 建立問題與知識點的關聯
                     self.db.link_question_to_knowledge_point(question_id, kp_id)
             
@@ -93,7 +401,7 @@ class ContentProcessor:
         # 也為文檔級別的知識點建立關聯（如果有的話）
         for doc_kp in document_knowledge_points:
             if doc_kp.strip():
-                kp_id = self.db.add_or_get_knowledge_point(name=doc_kp.strip(), subject=subject)
+                kp_id = self.db.add_knowledge_point(name=doc_kp.strip(), subject=subject)
                 # 將文檔知識點與所有問題關聯
                 for q_id in question_ids:
                     self.db.link_question_to_knowledge_point(q_id, kp_id)

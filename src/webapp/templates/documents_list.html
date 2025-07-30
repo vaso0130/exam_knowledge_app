@@ -1,0 +1,97 @@
+{% extends 'layout.html' %}
+{% block title %}原始文件 - 考題知識整理系統{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2>📜 原始文件庫</h2>
+                <p class="text-muted">瀏覽所有已上傳的原始文件內容</p>
+            </div>
+            <div>
+                <a href="/upload" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> 上傳新文件
+                </a>
+            </div>
+        </div>
+
+        {% if documents %}
+        <div class="row g-4">
+            {% for doc in documents %}
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="card-title mb-1">
+                                <a href="{{ url_for('original_document', doc_id=doc.id) }}" class="text-decoration-none">
+                                    📄 {{ doc.title }}
+                                </a>
+                            </h5>
+                            <small class="text-muted">
+                                科目: {{ doc.subject or '未分類' }} | 
+                                類型: {{ doc.type or '資訊' }} |
+                                {{ doc.created_at }}
+                            </small>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text text-muted">{{ doc.content }}</p>
+                        
+                        <div class="d-flex gap-2 mt-3">
+                            <a href="{{ url_for('original_document', doc_id=doc.id) }}" 
+                               class="btn btn-outline-primary btn-sm">
+                                📜 檢視原始內容
+                            </a>
+                            <a href="{{ url_for('document_detail', doc_id=doc.id) }}" 
+                               class="btn btn-outline-info btn-sm">
+                                📋 文件詳情
+                            </a>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-transparent">
+                        <small class="text-muted">
+                            {% if doc.source and (doc.source.startswith('http://') or doc.source.startswith('https://')) %}
+                                來源網址: <a href="{{ doc.source }}" target="_blank" class="text-break">{{ doc.source }}</a>
+                            {% elif doc.file_path %}
+                                來源檔案: {{ doc.file_path.split('/')[-1] or doc.file_path.split('\\')[-1] }}
+                            {% else %}
+                                來源: 直接輸入
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- 分頁控制可以在這裡添加 -->
+        <div class="mt-4 text-center">
+            <p class="text-muted">共 {{ documents|length }} 個文件</p>
+        </div>
+
+        {% else %}
+        <div class="text-center py-5">
+            <div class="display-1 text-muted mb-3">📂</div>
+            <h3 class="text-muted">尚無原始文件</h3>
+            <p class="text-muted mb-4">開始上傳您的第一個文件吧！</p>
+            <a href="/upload" class="btn btn-primary">立即上傳文件</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.card-title a:hover {
+    color: #007bff !important;
+}
+</style>
+{% endblock %}

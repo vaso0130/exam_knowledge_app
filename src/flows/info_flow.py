@@ -7,17 +7,42 @@ import os
 from ..core.gemini_client import GeminiClient
 from ..core.database import DatabaseManager
 from ..utils.file_processor import FileProcessor, ContentValidator
-from .content_flow import ContentProcessor
+from .content_flow import ContentFlow
 
 class InfoFlow:
     """學習資料處理流程"""
     
-    def __init__(self, gemini_client: GeminiClient, db_manager: DatabaseManager, content_processor: ContentProcessor):
+    def __init__(self, gemini_client: GeminiClient, db_manager: DatabaseManager, content_processor: ContentFlow):
         self.gemini = gemini_client
         self.db = db_manager
         self.data_dir = "./data"
         os.makedirs(self.data_dir, exist_ok=True)
         self.content_processor = content_processor
+        self.file_processor = FileProcessor()
+    
+    def process_file(self, file_path: str, filename: str, subject: str) -> Dict[str, Any]:
+        """處理檔案的同步包裝方法"""
+        try:
+            # 使用檔案處理器讀取檔案內容
+            content, file_type = self.file_processor.process_input(file_path)
+            
+            # 呼叫非同步處理方法
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(
+                    self.process_learning_material(content, subject, filename)
+                )
+                return result
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'questions': []
+            }
     
     async def process_learning_material(self, raw_text: str, subject: str, source: str) -> Dict[str, Any]:
         """處理學習資料的完整流程"""

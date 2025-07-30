@@ -26,3 +26,11 @@ asyncio-throttle>=1.0.0
 # 拖放功能（可選）
 # tkinter-dnd2>=0.3.0
 Flask>=3.1.0
+
+# OCR 和圖片處理相關
+google-cloud-vision>=3.7.0
+pdf2image>=1.17.0
+Pillow>=10.4.0
+werkzeug
+requests
+urllib3

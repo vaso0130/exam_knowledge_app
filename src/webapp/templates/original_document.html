@@ -1,0 +1,134 @@
+{% extends 'layout.html' %}
+{% block title %}原始文件 - {{ document.title }}{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-11 mx-auto">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-0">📜 原始文件內容</h2>
+                    <small class="text-muted">{{ document.title }} | 科目: {{ document.subject }}</small>
+                </div>
+                <div>
+                    <a href="{{ url_for('question_detail', q_id=request.args.get('from_question')) if request.args.get('from_question') else 'javascript:history.back()' }}" 
+                       class="btn btn-outline-secondary btn-sm">← 返回</a>
+                    <a href="{{ url_for('document_detail', doc_id=document.id) }}" class="btn btn-outline-primary btn-sm">文件詳情</a>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- 文件資訊 -->
+                <div class="alert alert-info">
+                    <h5 class="alert-heading">📋 文件資訊</h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <strong>標題:</strong> {{ document.title }}<br>
+                            <strong>科目:</strong> {{ document.subject or '未分類' }}
+                        </div>
+                        <div class="col-md-4">
+                            <strong>類型:</strong> {{ document.type or '資訊' }}<br>
+                            <strong>建立時間:</strong> {{ document.created_at or '未知' }}
+                        </div>
+                        <div class="col-md-4">
+                            {% if document.source and (document.source.startswith('http://') or document.source.startswith('https://')) %}
+                            <strong>來源網址:</strong> <a href="{{ document.source }}" target="_blank" class="text-break">{{ document.source }}</a>
+                            {% elif document.file_path %}
+                            <strong>來源檔案:</strong> {{ document.file_path.split('/')[-1] or document.file_path.split('\\')[-1] }}
+                            {% else %}
+                            <strong>來源:</strong> 直接輸入
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 原始內容 -->
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">📄 原始內容</h3>
+                    <div class="original-content border rounded p-3" style="background-color: #f8f9fa;">
+                        {% if original_html %}
+                            {{ original_html|safe }}
+                        {% elif document.original_content %}
+                            <pre class="mb-0 text-wrap">{{ document.original_content }}</pre>
+                        {% elif document.content %}
+                            <pre class="mb-0 text-wrap">{{ document.content }}</pre>
+                        {% else %}
+                            <p class="text-muted">無原始內容可顯示</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- 處理說明 -->
+                <div class="mt-4 p-3 bg-light rounded">
+                    <h5 class="mb-2">ℹ️ 處理說明</h5>
+                    <p class="mb-1">• <strong>原始內容</strong>：上方顯示的是文件最初上傳時的原始狀態</p>
+                    <p class="mb-1">• <strong>AI 處理</strong>：系統已基於此內容生成題目、答案和知識點</p>
+                    <p class="mb-0">• <strong>用途</strong>：您可以對照原始內容來驗證 AI 生成的題目是否準確</p>
+                </div>
+
+                <!-- 相關題目快速連結 -->
+                <div class="mt-4">
+                    <h5 class="mb-3">🔗 基於此文件生成的題目</h5>
+                    <div id="related-questions">
+                        <p class="text-muted">載入中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 載入相關題目
+fetch(`/api/questions?document_id={{ document.id }}`)
+    .then(response => response.json())
+    .then(data => {
+        const questionsDiv = document.getElementById('related-questions');
+        if (data.questions && data.questions.length > 0) {
+            questionsDiv.innerHTML = data.questions.map((q, index) => `
+                <div class="d-inline-block me-2 mb-2">
+                    <a href="/question/${q.id}" class="btn btn-outline-primary btn-sm">
+                        Q${index + 1}: ${q.title || 'Q' + q.id}
+                    </a>
+                </div>
+            `).join('');
+        } else {
+            questionsDiv.innerHTML = '<p class="text-muted">此文件尚無相關題目</p>';
+        }
+    })
+    .catch(err => {
+        document.getElementById('related-questions').innerHTML = '<p class="text-danger">載入題目失敗</p>';
+    });
+</script>
+
+<style>
+.original-content {
+    max-height: 70vh;
+    overflow-y: auto;
+    line-height: 1.6;
+}
+
+.original-content pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 14px;
+}
+
+.original-content h1, .original-content h2, .original-content h3 {
+    color: #007bff;
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.original-content p {
+    margin-bottom: 1rem;
+}
+
+.original-content code {
+    background-color: #e9ecef;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+}
+</style>
+{% endblock %}

@@ -52,48 +52,148 @@
         <!-- 題目列表 -->
         {% if questions %}
         <div class="card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">題目列表</h5>
+                <div>
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="selectAll()">全選</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="selectNone()">取消全選</button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="batchExport()">批次匯出</button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="batchDelete()">批次刪除</button>
+                </div>
             </div>
             <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th class="col-id">ID</th>
-                            <th class="col-subject">科目</th>
-                            <th class="col-question">題目預覽</th>
-                            <th class="col-source">來源文件</th>
-                            <th class="col-action">操作</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for q in questions %}
-                        <tr>
-                            <td>
-                                <span class="badge bg-secondary">Q{{ q.id }}</span>
-                            </td>
-                            <td>
-                                <span class="badge bg-info">{{ q.subject }}</span>
-                            </td>
-                            <td>
-                                <div class="text-truncate question-preview" title="{{ q.text }}">
-                                    {{ q.text[:100] }}{% if q.text|length > 100 %}...{% endif %}
-                                </div>
-                            </td>
-                            <td>
-                                <small class="text-muted">{{ q.doc_title or '未知' }}</small>
-                            </td>
-                            <td>
-                                <a href="/question/{{ q.id }}" class="btn btn-outline-primary btn-sm">
-                                    查看
-                                </a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <form id="batchForm">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 5%;"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()"></th>
+                                <th class="col-id">標題</th>
+                                <th class="col-subject">科目</th>
+                                <th class="col-question">題目預覽</th>
+                                <th class.col-source">來源文件</th>
+                                <th class="col-action">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for q in questions %}
+                            <tr>
+                                <td>
+                                    <input type="checkbox" name="question_ids" value="{{ q.id }}" class="question-checkbox">
+                                </td>
+                                <td>
+                                    <a href="/question/{{ q.id }}" class="fw-bold">
+                                        {{ q.title or ('Q' + q.id|string) }}
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ q.subject }}</span>
+                                </td>
+                                <td>
+                                    <div class="text-truncate question-preview" title="{{ q.text }}">
+                                        <a href="/question/{{ q.id }}" class="text-decoration-none text-dark">
+                                            {{ q.text[:100] }}{% if q.text|length > 100 %}...{% endif %}
+                                        </a>
+                                    </div>
+                                </td>
+                                <td>
+                                    <small class="text-muted">{{ q.doc_title or '未知' }}</small>
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <a href="/question/{{ q.id }}" class="btn btn-outline-primary btn-sm">查看</a>
+                                        <a href="/edit_question/{{ q.id }}" class="btn btn-outline-secondary btn-sm">編輯</a>
+                                        <a href="/export_question/{{ q.id }}" class="btn btn-outline-success btn-sm">匯出</a>
+                                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteQuestion({{ q.id }})">刪除</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </form>
             </div>
         </div>
+
+        <script>
+        function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            const checkboxes = document.querySelectorAll('input[name="question_ids"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCheckbox.checked;
+            });
+        }
+
+        function selectAll() {
+            document.getElementById('selectAllCheckbox').checked = true;
+            toggleSelectAll();
+        }
+
+        function selectNone() {
+            document.getElementById('selectAllCheckbox').checked = false;
+            toggleSelectAll();
+        }
+
+        function batchExport() {
+            const checkboxes = document.querySelectorAll('input[name="question_ids"]:checked');
+            if (checkboxes.length === 0) {
+                alert('請選擇要匯出的題目');
+                return;
+            }
+            
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/batch_export';
+            
+            checkboxes.forEach(checkbox => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'question_ids';
+                input.value = checkbox.value;
+                form.appendChild(input);
+            });
+            
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+        }
+
+        function batchDelete() {
+            const checkboxes = document.querySelectorAll('input[name="question_ids"]:checked');
+            if (checkboxes.length === 0) {
+                alert('請選擇要刪除的題目');
+                return;
+            }
+            
+            if (confirm(`確定要刪除選中的 ${checkboxes.length} 個題目嗎？此操作無法復原。`)) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/batch_delete';
+                
+                checkboxes.forEach(checkbox => {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'question_ids';
+                    input.value = checkbox.value;
+                    form.appendChild(input);
+                });
+                
+                document.body.appendChild(form);
+                form.submit();
+                document.body.removeChild(form);
+            }
+        }
+
+        function deleteQuestion(questionId) {
+            if (confirm('確定要刪除這個題目嗎？此操作無法復原。')) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/delete_question/${questionId}`;
+                document.body.appendChild(form);
+                form.submit();
+                document.body.removeChild(form);
+            }
+        }
+        </script>
         {% else %}
         <div class="card">
             <div class="card-body text-center py-5">

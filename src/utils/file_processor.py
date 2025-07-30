@@ -3,6 +3,21 @@ import requests
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 import tempfile
+from pathlib import Path
+
+# Google Cloud Vision OCR
+try:
+    from google.cloud import vision
+    from google.oauth2 import service_account
+except ImportError:
+    vision = None
+    service_account = None
+
+# PDF 轉圖片
+try:
+    from pdf2image import convert_from_path
+except ImportError:
+    convert_from_path = None
 
 # 文件處理相關
 try:
@@ -20,8 +35,94 @@ try:
 except ImportError:
     BeautifulSoup = None
 
+
+class GoogleVisionOCR:
+    """Google Cloud Vision OCR 處理器"""
+    
+    def __init__(self, credentials_path: str = "google_credentials.json"):
+        """初始化 Google Vision OCR 客戶端"""
+        self.client = None
+        self.credentials_path = credentials_path
+        
+        if vision is None:
+            print("警告：google-cloud-vision 未安裝，OCR 功能將不可用")
+            return
+        
+        try:
+            # 設定 Google Cloud 憑證
+            if os.path.exists(credentials_path):
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+                credentials = service_account.Credentials.from_service_account_file(credentials_path)
+                self.client = vision.ImageAnnotatorClient(credentials=credentials)
+            else:
+                print(f"警告：找不到憑證檔案 {credentials_path}，OCR 功能將不可用")
+        except Exception as e:
+            print(f"警告：初始化 Google Vision OCR 失敗: {e}")
+    
+    def extract_text_from_image(self, image_path: str) -> str:
+        """從圖片中提取文字"""
+        if self.client is None:
+            raise ValueError("Google Vision OCR 客戶端未初始化")
+        
+        try:
+            with open(image_path, 'rb') as image_file:
+                content = image_file.read()
+            
+            image = vision.Image(content=content)
+            response = self.client.text_detection(image=image)
+            
+            if response.error.message:
+                raise Exception(f'Google Vision API 錯誤: {response.error.message}')
+            
+            texts = response.text_annotations
+            if texts:
+                return texts[0].description  # 第一個元素包含完整的文字
+            return ""
+            
+        except Exception as e:
+            raise ValueError(f"OCR 處理失敗: {e}")
+    
+    def extract_text_from_pdf_pages(self, pdf_path: str) -> str:
+        """從 PDF 頁面中提取文字（通過轉換為圖片）"""
+        if convert_from_path is None:
+            raise ImportError("請安裝 pdf2image 套件：pip install pdf2image")
+        
+        if self.client is None:
+            raise ValueError("Google Vision OCR 客戶端未初始化")
+        
+        try:
+            # 將 PDF 轉換為圖片
+            pages = convert_from_path(pdf_path, dpi=300)  # 高 DPI 提高 OCR 準確性
+            extracted_text = []
+            
+            for i, page in enumerate(pages):
+                # 將圖片保存為臨時檔案
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
+                    page.save(temp_file.name, 'PNG')
+                    temp_image_path = temp_file.name
+                
+                try:
+                    # OCR 處理
+                    page_text = self.extract_text_from_image(temp_image_path)
+                    if page_text.strip():
+                        extracted_text.append(f"--- 第 {i+1} 頁 ---\n{page_text}")
+                finally:
+                    # 清理臨時檔案
+                    if os.path.exists(temp_image_path):
+                        os.unlink(temp_image_path)
+            
+            return "\n\n".join(extracted_text)
+            
+        except Exception as e:
+            raise ValueError(f"PDF OCR 處理失敗: {e}")
+
+
 class FileProcessor:
     """檔案處理器，支援多種格式"""
+    
+    def __init__(self):
+        """初始化檔案處理器"""
+        self.ocr = GoogleVisionOCR()
     
     @staticmethod
     def read_text_file(file_path: str) -> str:
@@ -40,22 +141,50 @@ class FileProcessor:
                     continue
             raise ValueError(f"無法讀取檔案 {file_path}，編碼格式不支援")
     
-    @staticmethod
-    def read_pdf_file(file_path: str) -> str:
-        """讀取PDF檔案"""
+    def read_pdf_file(self, file_path: str) -> str:
+        """讀取PDF檔案，支援智慧型 OCR"""
         if PyPDF2 is None:
             raise ImportError("請安裝 PyPDF2 套件：pip install PyPDF2")
         
         text = ""
         try:
+            # 首先嘗試直接提取文字
             with open(file_path, 'rb') as f:
                 pdf_reader = PyPDF2.PdfReader(f)
                 for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+            
+            # 檢查提取的文字是否足夠（判斷是否為掃描檔）
+            text = text.strip()
+            if len(text) < 50:  # 如果文字太少，可能是掃描檔
+                print("檢測到可能的掃描檔 PDF，啟動 OCR 處理...")
+                try:
+                    ocr_text = self.ocr.extract_text_from_pdf_pages(file_path)
+                    if ocr_text.strip():
+                        text = ocr_text
+                    else:
+                        print("OCR 未能提取到文字內容")
+                except Exception as e:
+                    print(f"OCR 處理失敗，將使用原始提取的文字: {e}")
+            
         except Exception as e:
-            raise ValueError(f"無法讀取PDF檔案 {file_path}: {e}")
+            # 如果直接提取失敗，嘗試 OCR
+            print(f"PDF 直接提取失敗 ({e})，嘗試 OCR 處理...")
+            try:
+                text = self.ocr.extract_text_from_pdf_pages(file_path)
+            except Exception as ocr_error:
+                raise ValueError(f"無法讀取PDF檔案 {file_path}: 直接提取失敗({e})，OCR也失敗({ocr_error})")
         
         return text.strip()
+    
+    def read_image_file(self, file_path: str) -> str:
+        """讀取圖片檔案並進行 OCR"""
+        try:
+            return self.ocr.extract_text_from_image(file_path)
+        except Exception as e:
+            raise ValueError(f"無法讀取圖片檔案 {file_path}: {e}")
     
     @staticmethod 
     def read_docx_file(file_path: str) -> str:
@@ -121,6 +250,9 @@ class FileProcessor:
         """
         input_data = input_data.strip()
         
+        # 建立處理器實例
+        processor = cls()
+        
         # 檢查是否為URL
         if input_data.startswith(('http://', 'https://')):
             try:
@@ -137,7 +269,7 @@ class FileProcessor:
                 content = cls.read_text_file(input_data)
                 return content, 'txt'
             elif file_ext == '.pdf':
-                content = cls.read_pdf_file(input_data)
+                content = processor.read_pdf_file(input_data)
                 return content, 'pdf'
             elif file_ext in ['.docx', '.doc']:
                 content = cls.read_docx_file(input_data)
@@ -146,8 +278,9 @@ class FileProcessor:
                 content = cls.read_html_file(input_data)
                 return content, 'html'
             elif file_ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']:
-                # 圖片檔案，返回檔案路徑供 AI 分析
-                return input_data, 'image'
+                # 圖片檔案，使用 OCR 提取文字
+                content = processor.read_image_file(input_data)
+                return content, 'image'
             else:
                 # 嘗試當作純文字檔案讀取
                 try:

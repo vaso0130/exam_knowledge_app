@@ -10,12 +10,83 @@
     
     <!-- 引入 Prism.js for code highlighting -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <!-- 使用更好的程式碼主題 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-okaidia.min.css" rel="stylesheet">
     
     <style>
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             background-color: #f8f9fa; 
+        }
+        
+        /* 程式碼區塊樣式改善 */
+        pre[class*="language-"] {
+            background: #2d3748 !important;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-size: 14px;
+            line-height: 1.5;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        code[class*="language-"] {
+            color: #e2e8f0 !important;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+        
+        /* 一般程式碼區塊（包含虛擬碼） */
+        pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-size: 14px;
+            line-height: 1.6;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        /* 虛擬碼特殊樣式 */
+        pre.language-pseudocode {
+            background: #1a365d;
+            color: #bee3f8;
+            border-left: 4px solid #3182ce;
+        }
+        
+        /* 虛擬碼關鍵字高亮 */
+        pre.language-pseudocode .token.keyword {
+            color: #63b3ed;
+            font-weight: bold;
+        }
+        
+        pre.language-pseudocode .token.operator {
+            color: #f7fafc;
+        }
+        
+        pre.language-pseudocode .token.variable {
+            color: #90cdf4;
+        }
+        
+        /* 行內程式碼樣式 */
+        code {
+            background: #e2e8f0;
+            color: #2d3748;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+        
+        /* 確保在程式碼區塊內的 code 使用不同樣式 */
+        pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+            border-radius: 0;
         }
         
         .navbar {
@@ -168,6 +239,21 @@
             }
         }
     </style>
+    
+    <!-- 引入 Mermaid.js for 心智圖 -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            themeVariables: {
+                primaryColor: '#007bff',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#007bff',
+                lineColor: '#007bff'
+            }
+        });
+    </script>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark">
@@ -189,6 +275,9 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/knowledge">🧠 知識庫</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/documents">📜 原始文件</a>
                     </li>
                 </ul>
             </div>

@@ -318,71 +318,186 @@ class GeminiClient:
             return parsed_json.get("questions", [])
         return []
     
+    async def parse_exam_paper(self, text: str) -> Dict[str, Any]:
+        """
+        解析考卷內容，自動分割題目並識別考科
+        """
+        prompt = f"""
+請分析以下文本內容，這可能是一份考卷或包含多個題目的學習資料。
+
+任務：
+1. 自動識別考科類別（從：資料結構、資訊管理、資通網路與資訊安全、資料庫應用、或其他）
+2. 判斷內容類型（考卷題目 or 學習資料）
+3. 如果是考卷，請將每個題目分割開來（注意：一個題目可能包含多個小問題，這些應該視為同一題）
+4. 如果是學習資料，請提取核心知識點
+
+**重要：題目分割原則**
+- 一個題目可能包含多個部分（如：問題描述 + 程式碼 + 多個小問題）
+- 只有明確的題號分隔（如「第一題」、「1.」、「題目二」）才分割
+- 同一題目內的不同部分（如「(10分)」、「請分析」、「請說明」）應合併為一題
+- 程式碼和相關問題應該保持在同一題中
+
+文本內容：
+{text}
+
+請以JSON格式回應：
+{{
+    "content_type": "exam" 或 "study_material",
+    "subject": "推測的考科名稱",
+    "confidence": 0.8,
+    "items": [
+        {{
+            "type": "question" 或 "knowledge_section",
+            "number": "題號或章節號",
+            "title": "題目的簡短標題（5-10個字）",
+            "stem": "完整題目內容（包含所有部分：問題描述、程式碼、所有小問題）",
+            "answer": "答案（如果有的話）",
+            "points": "分數或重點",
+            "knowledge_points": ["相關知識點1", "相關知識點2"]
+        }}
+    ]
+}}
+
+分析指引：
+- 如果看到明確的題號（「第一題」、「1.」、「(1)」、「題目一」），才進行題目分割
+- 同一題目內的程式碼、圖表、多個小問題都應該包含在同一個 "stem" 中
+- 考科判斷依據：關鍵字、專業術語、內容領域
+- 每個題目都要完整提取，不要遺漏任何部分
+
+範例：
+如果文本包含：「請分析以下演算法...（程式碼）...請說明演算法名稱（10分）...請列出處理過程（10分）」
+這應該視為**一個完整題目**，包含程式碼和兩個小問題。
+"""
+        parsed_json = await self._generate_with_json_parsing(prompt)
+        return parsed_json or {}
+
+    async def auto_classify_and_process(self, text: str) -> Dict[str, Any]:
+        """
+        自動分類內容並選擇適當的處理方式
+        """
+        # 先解析內容
+        parsed_content = await self.parse_exam_paper(text)
+        
+        if not parsed_content:
+            return {"error": "無法解析內容"}
+        
+        content_type = parsed_content.get('content_type', 'study_material')
+        subject = parsed_content.get('subject', '其他')
+        items = parsed_content.get('items', [])
+        
+        result = {
+            'content_type': content_type,
+            'subject': subject,
+            'confidence': parsed_content.get('confidence', 0.5),
+            'items': items,
+            'questions': []
+        }
+        
+        # 根據內容類型進行後續處理
+        if content_type == 'exam' and items:
+            # 考卷題目：直接轉換為問題格式
+            questions = []
+            for item in items:
+                if item.get('type') == 'question':
+                    question = {
+                        'title': item.get('title', '無標題'),
+                        'stem': item.get('stem', ''),
+                        'answer': item.get('answer', ''),
+                        'type': 'Essay',  # 預設為申論題
+                        'points': item.get('points', ''),
+                        'knowledge_points': item.get('knowledge_points', []),
+                        'tags': [subject, content_type]
+                    }
+                    questions.append(question)
+            result['questions'] = questions
+            
+        elif content_type == 'study_material':
+            # 學習資料：生成相關問題
+            generated_questions = await self.generate_questions_from_text(text, subject)
+            result['questions'] = generated_questions
+        
+        return result
+
     async def generate_questions_from_text(self, text: str, subject: str) -> List[Dict[str, Any]]:
         """
         根據完整文本內容生成模擬題，並為每個問題自動標註知識點標籤
         這個方法專門用於處理整篇文章，並為每個生成的問題提供詳細的知識點標籤
         """
         prompt = f"""
-基於以下「{subject}」領域的完整文本內容，請生成3-5題深入的申論題。
-每題都應該附帶精確的知識點標籤，用於後續的知識點關聯。
+        你是一位專業的出題老師，你的任務是從提供的文本中，生成結構化的申論題或問答題。
 
-文本內容：
-{text}
+        **任務說明：**
+        1.  **分析文本**：仔細閱讀以下內容，理解其核心概念。
+        2.  **設計題目**：根據文本，設計 1 到 5 道申論題或問答題。
+        3.  **產生簡短標題**：為每一道題目，產生一個簡潔有力的標題（5-10個字），總結題目的核心。
+        4.  **提供詳解**：為每道題目提供詳細的參考答案。
+        5.  **標註知識點**：為每道題目標註相關的知識點（2-4個）。
+        6.  **格式化輸出**：將所有內容以單一的JSON格式輸出。
 
-申論題要求：
-1. 題目需要學生進行深入分析、比較、評述或論證
-2. 答案應該包含多個要點，需要條理清晰的論述
-3. 每題必須標註其對應的具體知識點（2-4個關鍵知識點）
-4. 知識點應該是具體的技術概念、理論或方法，不要太泛化
+        **文本內容：**
+        ```
+        {text}
+        ```
 
-請以JSON格式回應：
-{{
-    "questions": [
+        **輸出要求：**
+        -   必須是嚴格的JSON格式。
+        -   JSON物件應包含一個鍵 `questions`。
+        -   `questions` 的值應該是一個物件列表，每個物件代表一題。
+        -   每個題目物件應包含四個鍵：`title` (字串), `question` (字串), `answer` (字串), `knowledge_points` (字串陣列)。
+
+        **範例：**
+        ```json
         {{
-            "stem": "申論題目內容（要求深入分析或論述）",
-            "answer": "詳細的參考答案（如果適合用表格，請使用 Markdown 表格格式）",
-            "type": "Essay",
-            "points": "評分要點或考查重點",
-            "knowledge_points": ["知識點1", "知識點2", "知識點3"],
-            "tags": ["標籤1", "標籤2", "標籤3"]
-        }},
-        ...
-    ]
-}}
+            "questions": [
+                {{
+                    "title": "TCP/IP 四層模型",
+                    "question": "請說明 TCP/IP 模型的四層結構，並簡述每一層的主要功能。",
+                    "answer": "TCP/IP 模型分為四層：1. 應用層 (Application Layer)：處理特定應用程式的協定，如 HTTP、FTP。2. 傳輸層 (Transport Layer)：提供端對端的數據傳輸服務，如 TCP、UDP。3. 網路層 (Internet Layer)：負責數據包的路由與轉發，主要協定是 IP。4. 網路介面層 (Network Interface Layer)：處理與物理網路的介面，如乙太網路。",
+                    "knowledge_points": ["TCP/IP 模型", "網路協定", "網路層次架構"]
+                }},
+                {{
+                    "title": "OSI 七層模型比較",
+                    "question": "OSI 七層模型與 TCP/IP 四層模型有何對應關係？請簡要比較其異同。",
+                    "answer": "OSI 的應用層、表現層、會議層對應到 TCP/IP 的應用層。OSI 的傳輸層對應到 TCP/IP 的傳輸層。OSI 的網路層對應到 TCP/IP 的網路層。OSI 的資料連結層與實體層對應到 TCP/IP 的網路介面層。主要差異在於 OSI 是一個理論模型，而 TCP/IP 是實際應用的標準。",
+                    "knowledge_points": ["OSI 模型", "TCP/IP 模型", "網路協定標準", "模型比較"]
+                }}
+            ]
+        }}
+        ```
 
-範例知識點格式：
-- 具體概念：「TCP三向交握」、「RSA加密演算法」、「正規化第三正規式」
-- 理論方法：「CAP理論」、「ACID特性」、「雜湊函數特性」
-- 技術架構：「微服務架構」、「負載平衡技術」、「防火牆規則設定」
-"""
+        請現在分析給定的文本並返回JSON結果。
+        """
         parsed_json = await self._generate_with_json_parsing(prompt)
         if parsed_json and 'questions' in parsed_json:
             return parsed_json.get("questions", [])
         return []
     
-    async def generate_mindmap(self, text: str) -> str:
+    async def generate_mindmap(self, subject: str, knowledge_points: List[str]) -> str:
         """
         根據輸入的文本，生成 Mermaid.js 格式的心智圖 Markdown。
         """
-        prompt = f"""
-        請根據以下文本內容，生成一個 Mermaid.js 格式的心智圖。
-        心智圖應該圍繞核心主題展開，並包含3到5個主要分支，每個分支下有2到4個子節點。
-        請確保輸出的格式是純粹的 Mermaid Markdown，以 `mindmap` 開頭。
-        重要：如果節點的文字包含特殊字元（如括號、斜線等），請務必用雙引號將文字包起來，例如 `"節點(文字)"`。
+        # 將知識點列表轉換為 Mermaid 節點
+        nodes_text = ""
+        for kp in knowledge_points:
+            # 確保知識點不含破壞格式的字元，並加上引號
+            safe_kp = kp.replace('"', "'")
+            nodes_text += f'      "{safe_kp}"\n'
 
-        文本內容：
-        {text[:3000]}
+        prompt = f"""
+        請根據以下核心主題和關鍵知識點，生成一個 Mermaid.js 格式的心智圖。
+        心智圖應該以核心主題為根節點，並將每個知識點作為其主要分支。
+        請確保輸出的格式是純粹的 Mermaid Markdown，以 `mindmap` 開頭。
+        重要：節點的文字已用雙引號包起來，請直接使用。
+
+        核心主題：{subject}
+        
+        知識點：
+{', '.join(knowledge_points)}
 
         Mermaid 心智圖範例格式：
         mindmap
-          root(("核心主題"))
-            "主要分支 1"
-              "子節點 1.1"
-              "子節點 1.2"
-            "主要分支 2 (含特殊字元)"
-              "子節點 2.1"
-              "子節點 2.2"
+          root(("{subject}"))
+{nodes_text}
         
         請直接輸出 Mermaid 代碼，不要包含任何額外的解釋或 ```mermaid ... ``` 標記。
         """
@@ -572,3 +687,101 @@ class GeminiClient:
         except Exception as e:
             print(f"圖片分析錯誤: {e}")
             return f"圖片分析失敗: {str(e)}"
+
+    async def format_question_content(self, raw_question) -> str:
+        """格式化題目內容，識別並標記程式碼區塊、表格等特殊格式"""
+        # 確保輸入是字串類型
+        if not isinstance(raw_question, str):
+            if hasattr(raw_question, 'get'):
+                # 如果是字典，嘗試取得 question 或其他文字欄位
+                raw_question = raw_question.get('question', '') or raw_question.get('stem', '') or str(raw_question)
+            else:
+                raw_question = str(raw_question)
+        
+        # 如果輸入為空，直接返回
+        if not raw_question.strip():
+            return raw_question
+            
+        prompt = f"""
+你是一位專業的內容格式化專家。請分析以下題目內容，並將其格式化為更易讀的 Markdown 格式。
+
+**格式化規則：**
+1. **程式碼/虛擬碼識別**：如果內容包含程式碼、演算法、虛擬碼，請用程式碼區塊包圍：
+   ```pseudocode
+   code here
+   ```
+   或者
+   ```
+   code here
+   ```
+
+2. **虛擬碼特徵識別**：
+   - 包含 "begin"、"end"、"for"、"if" 等關鍵字
+   - 包含縮排結構
+   - 包含變數賦值（如 n←, theIndex←）
+   - 包含陣列操作（如 A[i], A[j]）
+
+3. **表格識別**：如果內容包含表格數據，請轉換為 Markdown 表格格式：
+   | 欄位1 | 欄位2 | 欄位3 |
+   |-------|-------|-------|
+   | 數據1 | 數據2 | 數據3 |
+
+4. **數學公式**：將數學公式用反引號包圍，如 `f(x) = x²`
+
+5. **結構化內容**：
+   - 使用適當的標題 (##, ###)
+   - 使用項目符號或編號列表
+   - 保持段落分明
+   - 題目的不同部分用適當的分隔
+
+6. **保持原意**：不要改變題目的原始意思，只是改善格式
+
+**原始題目內容：**
+```
+{raw_question}
+```
+
+**請輸出格式化後的 Markdown 內容（直接輸出格式化結果，不要用程式碼區塊包裝）：**
+"""
+        
+        try:
+            # 使用特殊的生成配置，不要求 JSON 格式
+            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            config = genai.types.GenerationConfig(
+                temperature=0.1,
+                top_p=0.9,
+                max_output_tokens=4096
+                # 不設定 response_mime_type，讓它返回純文字
+            )
+            
+            async with self.throttler:
+                response = await asyncio.to_thread(
+                    model.generate_content,
+                    prompt,
+                    generation_config=config
+                )
+                formatted_content = response.text if response.text else raw_question
+            
+            # 清理可能的格式化問題
+            if formatted_content.startswith('```markdown'):
+                lines = formatted_content.split('\n')
+                if lines[0].strip() == '```markdown':
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == '```':
+                    lines = lines[:-1]
+                formatted_content = '\n'.join(lines)
+            
+            # 如果內容被不當地包裝在程式碼區塊中，移除包裝
+            if formatted_content.count('```') >= 2 and formatted_content.startswith('```'):
+                lines = formatted_content.split('\n')
+                if lines[0].startswith('```') and not 'pseudocode' in lines[0] and not any(keyword in lines[0] for keyword in ['python', 'javascript', 'java', 'c++']):
+                    lines = lines[1:]
+                    if lines and lines[-1].strip() == '```':
+                        lines = lines[:-1]
+                    formatted_content = '\n'.join(lines)
+            
+            return formatted_content.strip() if formatted_content.strip() else raw_question
+            
+        except Exception as e:
+            print(f"內容格式化錯誤: {e}")
+            return raw_question  # 如果格式化失敗，返回原始內容

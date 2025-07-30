@@ -1,0 +1,99 @@
+{% extends 'layout.html' %}
+{% block title %}文件詳情 - {{ document.title }}{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-0">📄 {{ document.title }}</h2>
+                    <small class="text-muted">科目: {{ document.subject }} | 類型: {{ document.type }}</small>
+                </div>
+                <div>
+                    <a href="/questions" class="btn btn-outline-secondary btn-sm">← 返回題庫</a>
+                    <a href="{{ url_for('original_document', doc_id=document.id) }}" class="btn btn-outline-info btn-sm">
+                        📜 檢視原始內容
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- 文件資訊 -->
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">ℹ️ 文件資訊</h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>標題:</strong> {{ document.title }}<br>
+                            <strong>科目:</strong> {{ document.subject or '未分類' }}<br>
+                            <strong>類型:</strong> {{ document.type or '資訊' }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>建立時間:</strong> {{ document.created_at or '未知' }}<br>
+                            <strong>檔案路徑:</strong> {{ document.file_path or '無' }}<br>
+                            <strong>文件 ID:</strong> {{ document.id }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 處理後內容 -->
+                {% if document.content %}
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">📋 處理後內容</h3>
+                    <div class="content-display p-3 border rounded bg-light">
+                        <pre class="mb-0">{{ document.content }}</pre>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- 文件心智圖 -->
+                {% if document.mindmap %}
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">🗺️ 整體知識關聯圖</h3>
+                    <div class="mindmap-container">
+                        <div class="mermaid">
+                            {{ document.mindmap|safe }}
+                        </div>
+                    </div>
+                    <small class="text-muted">💡 這是整個文件的知識架構圖</small>
+                </div>
+                {% endif %}
+
+                <!-- 相關題目 -->
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">📝 相關題目</h3>
+                    <div id="questions-list">
+                        <p class="text-muted">載入中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 載入相關題目
+fetch(`/api/questions?document_id={{ document.id }}`)
+    .then(response => response.json())
+    .then(data => {
+        const questionsList = document.getElementById('questions-list');
+        if (data.questions && data.questions.length > 0) {
+            questionsList.innerHTML = data.questions.map(q => `
+                <div class="card mb-2">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <a href="/question/${q.id}" class="text-decoration-none">
+                                ${q.title || 'Q' + q.id}
+                            </a>
+                        </h6>
+                        <p class="card-text text-muted small">${q.question_text.substring(0, 100)}...</p>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            questionsList.innerHTML = '<p class="text-muted">此文件尚無相關題目</p>';
+        }
+    })
+    .catch(err => {
+        document.getElementById('questions-list').innerHTML = '<p class="text-danger">載入題目失敗</p>';
+    });
+</script>
+{% endblock %}

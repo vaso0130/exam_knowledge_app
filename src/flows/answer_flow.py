@@ -3,10 +3,12 @@
 """
 import os
 import hashlib
+import asyncio
 from datetime import datetime
 from typing import Dict, Any, List
 from ..core.gemini_client import GeminiClient
 from ..core.database import DatabaseManager
+from ..utils.file_processor import FileProcessor
 
 class AnswerFlow:
     """
@@ -15,6 +17,31 @@ class AnswerFlow:
     def __init__(self, gemini_client: GeminiClient, db_manager: DatabaseManager):
         self.gemini = gemini_client
         self.db = db_manager
+        self.file_processor = FileProcessor()
+
+    def process_file(self, file_path: str, filename: str, subject: str) -> Dict[str, Any]:
+        """處理檔案的同步包裝方法"""
+        try:
+            # 使用檔案處理器讀取檔案內容
+            content, file_type = self.file_processor.process_input(file_path)
+            
+            # 將檔案內容當作問題處理
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(
+                    self.process_question(content, subject, {'source': filename})
+                )
+                return result
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'questions': []
+            }
 
     async def process_question(self, question_text: str, subject: str, additional_info: Dict = None) -> Dict[str, Any]:
         """

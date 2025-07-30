@@ -1,16 +1,58 @@
 {% extends 'layout.html' %}
-{% block title %}知識點詳情{% endblock %}
+{% block title %}知識點詳情 - {{ name }}{% endblock %}
+
 {% block content %}
-<h1>{{name}} ({{subject}})</h1>
-<h2>關聯題目</h2>
-<table>
-<tr><th>ID</th><th>題目</th><th>來源</th></tr>
-{% for q in questions %}
-<tr>
-    <td><a href="/question/{{q.id}}">Q{{q.id}}</a></td>
-    <td>{{q.text[:60]}}{% if q.text|length > 60 %}...{% endif %}</td>
-    <td>{{q.doc_title}}</td>
-</tr>
-{% endfor %}
-</table>
+<div class="container mt-4">
+    <h1 class="mb-4">{{ name }} <span class="text-muted fs-5">({{ subject }})</span></h1>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2 class="h5 mb-0">關聯題目</h2>
+        </div>
+        <div class="card-body">
+            {% if questions %}
+                <ul class="list-group list-group-flush">
+                    {% for q in questions %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <a href="{{ url_for('question_detail', q_id=q.id) }}">Q{{ q.id }}: {{ q.text[:80] }}{% if q.text|length > 80 %}...{% endif %}</a>
+                                <br>
+                                <small class="text-muted">來源: <a href="{{ url_for('document_detail', doc_id=q.doc_id) }}">{{ q.doc_title }}</a></small>
+                            </div>
+                            <a href="{{ url_for('question_detail', q_id=q.id) }}" class="btn btn-sm btn-outline-primary">查看詳情</a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-muted">目前沒有與此知識點關聯的題目。</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2 class="h5 mb-0">心智圖</h2>
+        </div>
+        <div class="card-body">
+            {% if mindmap %}
+                <div class="mermaid" style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 5px;">
+                    {{ mindmap|safe }}
+                </div>
+            {% else %}
+                <p class="text-muted">此知識點所屬文件尚未生成心智圖。</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <a href="{{ url_for('knowledge_list') }}" class="btn btn-secondary">返回知識點列表</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true });
+</script>
 {% endblock %}

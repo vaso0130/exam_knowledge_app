@@ -8,7 +8,7 @@ from ..core.database import DatabaseManager
 from .info_flow import InfoFlow
 from .answer_flow import AnswerFlow
 from .mindmap_flow import MindmapFlow
-from .content_flow import ContentProcessor
+from .content_flow import ContentFlow
 
 class FlowManager:
     """
@@ -23,12 +23,15 @@ class FlowManager:
         self.db_manager = db_manager
         
         # 1. 先初始化沒有外部流程依賴的類別
-        self.content_processor = ContentProcessor(gemini_client, db_manager)
+        self.content_processor = ContentFlow(gemini_client, db_manager)
         self.answer_flow = AnswerFlow(gemini_client, db_manager)
         self.mindmap_flow = MindmapFlow(gemini_client, db_manager)
         
-        # 2. 初始化依賴其他流程的類別 (InfoFlow 依賴 ContentProcessor)
+        # 2. 初始化依賴其他流程的類別 (InfoFlow 依賴 ContentFlow)
         self.info_flow = InfoFlow(gemini_client, db_manager, self.content_processor)
+        
+        # 3. 為了向後相容，建立別名
+        self.content_flow = self.content_processor
 
     async def process_learning_material(self, raw_text: str, subject: str, source: str) -> Dict[str, Any]:
         """
