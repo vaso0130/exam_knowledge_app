@@ -235,18 +235,33 @@ class MarkdownText(tk.Frame):
     """包含 Markdown 渲染功能的文字框組件"""
     
     def __init__(self, parent, **kwargs):
+        # 從 kwargs 中提取字體設定，避免傳遞給 Frame
+        font_config = kwargs.pop('font', None)
+        height = kwargs.pop('height', None)  # 也提取 height 參數
+        
+        # 初始化 Frame
         super().__init__(parent, **kwargs)
         
+        # 設定預設字體
+        if font_config is None:
+            # 使用系統預設字體
+            default_font = tkFont.nametofont("TkDefaultFont")
+            font_config = (default_font.cget("family"), 11)
+        
         # 創建滾動文字框
-        self.text_widget = tk.Text(
-            self,
-            wrap=tk.WORD,
-            font=("Microsoft YaHei", 11),
-            bg="white",
-            fg="black",
-            padx=10,
-            pady=10
-        )
+        text_kwargs = {
+            'wrap': tk.WORD,
+            'font': font_config,
+            'bg': "white",
+            'fg': "black",
+            'padx': 10,
+            'pady': 10
+        }
+        
+        if height is not None:
+            text_kwargs['height'] = height
+            
+        self.text_widget = tk.Text(self, **text_kwargs)
         
         scrollbar = tk.Scrollbar(self, orient=tk.VERTICAL, command=self.text_widget.yview)
         self.text_widget.configure(yscrollcommand=scrollbar.set)

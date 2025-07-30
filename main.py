@@ -118,8 +118,7 @@ def check_dependencies():
         'bs4',
         'requests',
         'dotenv',
-        'matplotlib',
-        'networkx'
+        'asyncio_throttle'
     ]
     
     missing_packages = []

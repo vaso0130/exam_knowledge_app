@@ -558,9 +558,26 @@ class ModernGUI:
         self.preview_notebook.add(self.markdown_frame, text="Markdown 預覽")
         
         # 使用自定義的 MarkdownText 組件
+        # 使用系統預設字體，避免跨平台字體問題
+        try:
+            # 嘗試使用常見的中文字體
+            import tkinter.font as tkFont
+            default_font = tkFont.nametofont("TkDefaultFont")
+            font_family = default_font.cget("family")
+            
+            # 在 macOS 上嘗試使用 PingFang SC
+            import platform
+            if platform.system() == "Darwin":  # macOS
+                font_family = "PingFang SC"
+            elif platform.system() == "Windows":
+                font_family = "Microsoft JhengHei"
+                
+        except:
+            font_family = "TkDefaultFont"
+        
         self.markdown_text = MarkdownText(
             self.markdown_frame,
-            font=("Microsoft JhengHei", 11),
+            font=(font_family, 11),
             height=15
         )
         self.markdown_text.pack(fill="both", expand=True, padx=5, pady=5)
@@ -572,25 +589,29 @@ class ModernGUI:
         self.detail_text = scrolledtext.ScrolledText(
             self.detail_frame,
             wrap=tk.WORD,
-            font=("Microsoft JhengHei", 11),
+            font=(font_family, 11),
             height=15
         )
         self.detail_text.pack(fill="both", expand=True, padx=5, pady=5)
         
         # 心智圖標籤頁（改為 Mermaid 圖表）
-        self.mindmap_frame = ctk.CTkScrollableFrame(self.preview_notebook)
+        self.mindmap_frame = ttk.Frame(self.preview_notebook)
         self.preview_notebook.add(self.mindmap_frame, text="心智圖")
+        
+        # 創建 CustomTkinter 的滾動框架在 ttk.Frame 內
+        self.mindmap_scrollable = ctk.CTkScrollableFrame(self.mindmap_frame)
+        self.mindmap_scrollable.pack(fill="both", expand=True, padx=5, pady=5)
         
         # 心智圖文字框
         self.mindmap_text = ctk.CTkTextbox(
-            self.mindmap_frame,
+            self.mindmap_scrollable,
             font=ctk.CTkFont(family="Courier", size=12),
             height=400
         )
         self.mindmap_text.pack(fill="both", expand=True, padx=10, pady=10)
         
         # 心智圖工具列
-        mindmap_toolbar = ctk.CTkFrame(self.mindmap_frame)
+        mindmap_toolbar = ctk.CTkFrame(self.mindmap_scrollable)
         mindmap_toolbar.pack(fill="x", padx=10, pady=5)
         
         ctk.CTkButton(
