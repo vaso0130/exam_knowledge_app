@@ -75,41 +75,41 @@ class GeminiClient:
         return "是" in response.strip() if response else False
     
     async def generate_answer(self, question_text: str) -> Dict[str, Any]:
-        """生成標準答案，支援表格格式"""
+        """生成標準答案，並附上網路搜尋來源"""
         prompt = f"""
-請為以下考試題目提供標準答案。如果答案適合用表格呈現（如比較、分類、統計等），請使用 Markdown 表格格式。
+        請針對以下考試題目，執行網路搜尋以尋找相關資料，然後提供一個詳盡的標準答案。
 
-題目：
-{question_text}
+        題目：
+        {question_text}
 
-請分析題目內容，如果適合用表格呈現，請在答案中包含適當的表格，並在表格後提供詳細論述說明，附註：要真的適合才加上表格，不用一定要出現。
+        請遵循以下步驟：
+        1.  **網路搜尋**：根據題目內容，搜尋權威的學術文章、官方文件或專業網站。
+        2.  **綜合答案**：基於搜尋結果，撰寫一份完整、準確的標準答案。如果答案適合用表格呈現（如比較、分類），請使用 Markdown 表格。
+        3.  **提供來源**：列出2-4個最主要且最相關的參考來源。
 
-表格格式要求：
-- 使用標準 Markdown 表格語法
-- 表格要有清楚的標題行
-- 內容要對齊整齊
-- 表格後要有詳細的文字說明
+        請以JSON格式回應，包含以下欄位：
+        {{
+            "answer": "詳細的標準答案（如果適合，請包含 Markdown 表格）。",
+            "sources": [
+                {{
+                    "title": "來源1的標題",
+                    "url": "https://example.com/source1",
+                    "snippet": "來源1與題目最相關的簡短摘要或片段。"
+                }},
+                {{
+                    "title": "來源2的標題",
+                    "url": "https://example.com/source2",
+                    "snippet": "來源2與題目最相關的簡短摘要或片段。"
+                }}
+            ]
+        }}
 
-請以JSON格式回應，包含以下欄位：
-{{
-    "answer": "詳細的標準答案（如果適合，請包含 Markdown 表格）",
-    "sources": ["來源1", "來源2", "來源3"],
-    "has_table": true/false,
-    "table_description": "表格的用途說明（如果有表格的話）"
-}}
-
-範例表格格式：
-| 項目 | 特點 | 適用場景 |
-|------|------|----------|
-| 選項A | 特點1 | 場景1 |
-| 選項B | 特點2 | 場景2 |
-
-請確保答案內容完整、準確，並適當運用表格來提升資訊的清晰度。
-"""
+        請確保答案的專業性和準確性，並且來源是真實可查的。
+        """
         parsed_json = await self._generate_with_json_parsing(prompt)
         if parsed_json and 'answer' in parsed_json and 'sources' in parsed_json:
             return parsed_json
-        return {"answer": "無法解析答案", "sources": [], "has_table": False, "table_description": ""}
+        return {"answer": "無法解析答案", "sources": []}
     
     async def generate_highlights(self, text: str) -> List[str]:
         """生成重點摘要"""
@@ -155,19 +155,54 @@ class GeminiClient:
         
         return "資訊管理"  # 預設分類
     
+    async def web_search(self, query: str) -> Dict[str, Any]:
+        """執行網路搜尋並整理結果"""
+        prompt = f"""
+        請針對以下查詢進行網路搜尋，並整理出一個簡潔的摘要和3-5個主要來源連結。
+
+        查詢: "{query}"
+
+        請以JSON格式回應，包含以下欄位：
+        {{
+            "summary": "針對查詢的綜合摘要，約100-150字。",
+            "sources": [
+                {{
+                    "title": "來源1的標題",
+                    "url": "https://example.com/source1",
+                    "snippet": "來源1的簡短摘要或相關片段。"
+                }},
+                {{
+                    "title": "來源2的標題",
+                    "url": "https://example.com/source2",
+                    "snippet": "來源2的簡短摘要或相關片段。"
+                }}
+            ]
+        }}
+        """
+        # 注意：Gemini 模型本身具有即時的網路存取能力
+        # 我們只需要建構正確的提示詞來觸發這個功能
+        parsed_json = await self._generate_with_json_parsing(prompt)
+        if parsed_json and 'summary' in parsed_json and 'sources' in parsed_json:
+            return parsed_json
+        return {
+            "summary": "無法執行網路搜尋或解析結果。",
+            "sources": []
+        }
+
     async def generate_tags(self, text: str, subject: str) -> List[str]:
         """生成標籤"""
         prompt = f"""
-基於以下{subject}領域的內容，請生成3-6個相關的標籤關鍵字。
+        基於以下「{subject}」領域的內容，請生成3-6個精確且有代表性的標籤關鍵字。
+        標籤應該是常見的技術術語、概念或標準。
 
-內容：
-{text[:2000]}
+        內容：
+        {text[:2000]}
 
-請以JSON格式回應：
-{{
-    "tags": ["標籤1", "標籤2", "標籤3", ...]
-}}
-"""
+        請以JSON格式回應：
+        {{
+            "tags": ["標籤1", "標籤2", "標籤3", ...]
+        }}
+        """
         parsed_json = await self._generate_with_json_parsing(prompt)
         if parsed_json and 'tags' in parsed_json:
             return parsed_json.get("tags", [])
@@ -237,19 +272,20 @@ class GeminiClient:
         請根據以下文本內容，生成一個 Mermaid.js 格式的心智圖。
         心智圖應該圍繞核心主題展開，並包含3到5個主要分支，每個分支下有2到4個子節點。
         請確保輸出的格式是純粹的 Mermaid Markdown，以 `mindmap` 開頭。
+        重要：如果節點的文字包含特殊字元（如括號、斜線等），請務必用雙引號將文字包起來，例如 `"節點(文字)"`。
 
         文本內容：
         {text[:3000]}
 
         Mermaid 心智圖範例格式：
         mindmap
-          root((核心主題))
-            主要分支1
-              子節點1.1
-              子節點1.2
-            主要分支2
-              子節點2.1
-              子節點2.2
+          root(("核心主題"))
+            "主要分支 1"
+              "子節點 1.1"
+              "子節點 1.2"
+            "主要分支 2 (含特殊字元)"
+              "子節點 2.1"
+              "子節點 2.2"
         
         請直接輸出 Mermaid 代碼，不要包含任何額外的解釋或 ```mermaid ... ``` 標記。
         """

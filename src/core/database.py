@@ -29,7 +29,7 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
+
         # 建立 questions 表格  
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS questions (
@@ -39,10 +39,32 @@ class DatabaseManager:
                 answer_text TEXT,
                 subject TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                mindmap_code TEXT,
                 FOREIGN KEY (document_id) REFERENCES documents (id)
             )
         ''')
         
+        # 建立 knowledge_points 表格
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS knowledge_points (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                subject TEXT,
+                description TEXT
+            )
+        ''')
+
+        # 建立 question_knowledge_links 表格
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS question_knowledge_links (
+                question_id INTEGER,
+                knowledge_point_id INTEGER,
+                PRIMARY KEY (question_id, knowledge_point_id),
+                FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE CASCADE,
+                FOREIGN KEY (knowledge_point_id) REFERENCES knowledge_points (id) ON DELETE CASCADE
+            )
+        ''')
+
         self.conn.commit()
     
     def close(self):
@@ -224,10 +246,12 @@ class DatabaseManager:
             return dict(zip(keys, row))
         return None
 
+
+
     def get_question_by_id(self, question_id: int) -> Optional[Dict[str, Any]]:
         """根據ID取得單一問題"""
         self.cursor.execute('''
-            SELECT q.id, q.document_id, q.question_text, q.answer_text, q.subject, q.created_at, d.title
+            SELECT q.id, q.document_id, q.question_text, q.answer_text, q.subject, q.created_at, q.mindmap_code, d.title
             FROM questions q
             LEFT JOIN documents d ON q.document_id = d.id
             WHERE q.id = ?
@@ -235,6 +259,15 @@ class DatabaseManager:
         
         row = self.cursor.fetchone()
         if row:
-            keys = ["id", "document_id", "question_text", "answer_text", "subject", "created_at", "doc_title"]
+            keys = ["id", "document_id", "question_text", "answer_text", "subject", "created_at", "mindmap_code", "doc_title"]
             return dict(zip(keys, row))
         return None
+    
+    def update_question_mindmap(self, question_id: int, mindmap_code: str):
+        """更新問題的心智圖程式碼"""
+        self.cursor.execute('''
+            UPDATE questions
+            SET mindmap_code = ?
+            WHERE id = ?
+        ''', (mindmap_code, question_id))
+        self.conn.commit()

@@ -14,6 +14,9 @@ from datetime import datetime
 # 導入 markdown 渲染器
 from .markdown_renderer import MarkdownText
 
+# 導入心智圖渲染器
+from .mindmap_renderer import MindmapRenderer
+
 # 移除圖表功能相關匯入
 # try:
 #     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg as FigureCanvasTkinter
@@ -205,10 +208,10 @@ class ModernGUI:
         )
         self.expand_btn.pack(side="left", padx=(0, 10))
         
-        # URL/文字輸入框（簡化版本）
+        # URL/文字/搜尋輸入框
         self.input_entry = ctk.CTkEntry(
             top_input_frame,
-            placeholder_text="拖放檔案、貼上網址或輸入文字內容...",
+            placeholder_text="拖放檔案、貼上網址、輸入文字或網路搜尋...",
             font=ctk.CTkFont(size=14),
             height=30
         )
@@ -223,7 +226,20 @@ class ModernGUI:
             height=30,
             width=80
         )
-        self.process_btn.pack(side="right")
+        self.process_btn.pack(side="left", padx=(0, 5))
+
+        # 網路搜尋按鈕
+        self.web_search_btn = ctk.CTkButton(
+            top_input_frame,
+            text="🔍 搜尋",
+            command=self.perform_web_search,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            height=30,
+            width=80,
+            fg_color="green",
+            hover_color="darkgreen"
+        )
+        self.web_search_btn.pack(side="right")
         
         # 大型輸入區域（可展開/收起）
         self.expanded_input_frame = ctk.CTkFrame(input_frame)
@@ -749,16 +765,16 @@ class ModernGUI:
         )
         self.answer_toggle.pack(side="left", padx=10, pady=5)
         
-        # 表格顯示切換
-        self.show_table_var = tk.BooleanVar(value=False)
-        self.table_toggle_btn = ctk.CTkButton(
-            control_frame,
-            text="顯示表格",
-            command=self.toggle_table_visibility,
-            font=ctk.CTkFont(size=12),
-            state="disabled" # 初始為禁用
-        )
-        self.table_toggle_btn.pack(side="left", padx=10, pady=5)
+        # 表格顯示切換 (移除)
+        # self.show_table_var = tk.BooleanVar(value=False)
+        # self.table_toggle_btn = ctk.CTkButton(
+        #     control_frame,
+        #     text="顯示表格",
+        #     command=self.toggle_table_visibility,
+        #     font=ctk.CTkFont(size=12),
+        #     state="disabled" # 初始為禁用
+        # )
+        # self.table_toggle_btn.pack(side="left", padx=10, pady=5)
         
         # 重新載入按鈕
         self.reload_btn = ctk.CTkButton(
@@ -777,41 +793,8 @@ class ModernGUI:
         
         # --- Markdown 預覽標籤頁 ---
         self.markdown_tab_frame = ttk.Frame(self.preview_notebook)
-        self.preview_notebook.add(self.markdown_tab_frame, text="Markdown 預覽")
+        self.preview_notebook.add(self.markdown_tab_frame, text="📄 預覽")
         
-        # 使用 PanedWindow 分隔文字和表格
-        self.preview_pane = tk.PanedWindow(self.markdown_tab_frame, orient=tk.VERTICAL, sashrelief=tk.RAISED, background="#f0f0f0")
-        self.preview_pane.pack(fill="both", expand=True)
-
-        # Markdown 文字預覽區
-        self.markdown_frame = ctk.CTkFrame(self.preview_pane, corner_radius=0, fg_color="transparent")
-        self.preview_pane.add(self.markdown_frame, stretch="always")
-
-        # 表格預覽區 (使用 Treeview)
-        self.table_container = ctk.CTkFrame(self.preview_pane, corner_radius=0)
-        
-        # 設定 Treeview 樣式
-        style = ttk.Style()
-        style.theme_use("default")
-        style.configure("Treeview", 
-                        background="#ffffff",
-                        foreground="#333333",
-                        rowheight=25,
-                        fieldbackground="#ffffff")
-        style.map('Treeview', background=[('selected', '#0078d4')])
-
-        self.table_treeview = ttk.Treeview(self.table_container, show="headings", style="Treeview")
-        
-        table_yscroll = ttk.Scrollbar(self.table_container, orient="vertical", command=self.table_treeview.yview)
-        table_xscroll = ttk.Scrollbar(self.table_container, orient="horizontal", command=self.table_treeview.xview)
-        self.table_treeview.configure(yscrollcommand=table_yscroll.set, xscrollcommand=table_xscroll.set)
-
-        table_yscroll.pack(side="right", fill="y")
-        table_xscroll.pack(side="bottom", fill="x")
-        self.table_treeview.pack(side="left", fill="both", expand=True)
-        
-        self.preview_pane.add(self.table_container, stretch="never", height=0, hide=True)
-
         # 使用自定義的 MarkdownText 組件
         try:
             font_family = "Courier New" if platform.system() == "Windows" else "Menlo"
@@ -819,16 +802,16 @@ class ModernGUI:
             font_family = "monospace"
         
         self.markdown_text = MarkdownText(
-            self.markdown_frame,
+            self.markdown_tab_frame,
             font=(font_family, 11),
             height=15,
-            table_callback=self.display_table_in_treeview
+            table_callback=self.display_table_in_new_tab # 改為在新分頁顯示
         )
         self.markdown_text.pack(fill="both", expand=True)
         
         # --- 詳細資訊標籤頁 ---
         self.detail_frame = ttk.Frame(self.preview_notebook)
-        self.preview_notebook.add(self.detail_frame, text="詳細資訊")
+        self.preview_notebook.add(self.detail_frame, text="ℹ️ 詳細資訊")
         
         self.detail_text = scrolledtext.ScrolledText(
             self.detail_frame,
@@ -840,39 +823,130 @@ class ModernGUI:
         
         # --- 心智圖標籤頁 ---
         self.mindmap_frame = ttk.Frame(self.preview_notebook)
-        self.preview_notebook.add(self.mindmap_frame, text="心智圖")
+        self.preview_notebook.add(self.mindmap_frame, text="🧠 心智圖")
         
-        # 創建 CustomTkinter 的滾動框架在 ttk.Frame 內
-        self.mindmap_scrollable = ctk.CTkScrollableFrame(self.mindmap_frame)
-        self.mindmap_scrollable.pack(fill="both", expand=True, padx=5, pady=5)
-        
-        # 心智圖文字框
-        self.mindmap_text = ctk.CTkTextbox(
-            self.mindmap_scrollable,
-            font=ctk.CTkFont(family="Courier", size=12),
-            height=400
-        )
-        self.mindmap_text.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # 心智圖工具列
-        mindmap_toolbar = ctk.CTkFrame(self.mindmap_scrollable)
-        mindmap_toolbar.pack(fill="x", padx=10, pady=5)
-        
-        ctk.CTkButton(
-            mindmap_toolbar,
-            text="複製 Mermaid 代碼",
-            command=self.copy_mermaid_code,
-            height=30
-        ).pack(side="left", padx=5)
-        
-        ctk.CTkButton(
-            mindmap_toolbar,
-            text="在線預覽",
-            command=self.open_mermaid_preview,
-            height=30
-        ).pack(side="left", padx=5)
+        # 使用新的心智圖渲染器
+        self.mindmap_renderer = MindmapRenderer(self.mindmap_frame)
+        self.mindmap_renderer.pack(fill="both", expand=True)
         
         self.current_preview_data = None
+        self.table_tabs = [] # 用於追蹤表格分頁
+
+    def display_table_in_new_tab(self, headers: list, rows: list):
+        """在新的分頁中顯示表格"""
+        if not headers and not rows:
+            return
+
+        # 創建一個新的分頁來顯示表格
+        tab_title = f"📊 表格 ({headers[0]})"
+        table_tab = ttk.Frame(self.preview_notebook)
+        self.preview_notebook.add(table_tab, text=tab_title)
+        self.table_tabs.append(table_tab)
+
+        # 設定 Treeview 樣式
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("Treeview", 
+                        background="#ffffff",
+                        foreground="#333333",
+                        rowheight=25,
+                        fieldbackground="#ffffff")
+        style.map('Treeview', background=[('selected', '#0078d4')])
+
+        treeview = ttk.Treeview(table_tab, columns=headers, show="headings", style="Treeview")
+        
+        # 設定欄位
+        for header in headers:
+            treeview.heading(header, text=header, anchor='w')
+            treeview.column(header, anchor="w", width=120, stretch=True)
+
+        # 插入資料
+        for row in rows:
+            display_row = row[:len(headers)]
+            while len(display_row) < len(headers):
+                display_row.append("")
+            treeview.insert("", "end", values=display_row)
+
+        # 滾動條
+        yscroll = ttk.Scrollbar(table_tab, orient="vertical", command=treeview.yview)
+        xscroll = ttk.Scrollbar(table_tab, orient="horizontal", command=treeview.xview)
+        treeview.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+
+        yscroll.pack(side="right", fill="y")
+        xscroll.pack(side="bottom", fill="x")
+        treeview.pack(side="left", fill="both", expand=True)
+        
+        # 自動切換到新建立的分頁
+        self.preview_notebook.select(table_tab)
+
+    def clear_existing_table_tabs(self):
+        """清除所有已存在的表格分頁"""
+        for tab in self.table_tabs:
+            if tab.winfo_exists():
+                self.preview_notebook.forget(tab)
+        self.table_tabs.clear()
+        
+    def create_web_search_tab(self, parent):
+        """建立網路搜尋結果的顯示介面"""
+        # 主框架
+        search_frame = ctk.CTkFrame(parent)
+        search_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # 搜尋摘要區
+        summary_frame = ctk.CTkFrame(search_frame)
+        summary_frame.pack(fill="x", pady=(0, 10))
+        
+        ctk.CTkLabel(summary_frame, text="搜尋摘要", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        self.web_search_summary = ctk.CTkTextbox(
+            summary_frame,
+            height=100,
+            wrap="word",
+            font=ctk.CTkFont(size=12)
+        )
+        self.web_search_summary.pack(fill="x", expand=True, padx=10, pady=(0, 10))
+        self.web_search_summary.insert("1.0", "請在上方輸入框輸入搜尋查詢...")
+
+        # 搜尋來源區
+        sources_frame = ctk.CTkFrame(search_frame)
+        sources_frame.pack(fill="both", expand=True)
+        
+        ctk.CTkLabel(sources_frame, text="參考來源", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+
+        # 使用 Treeview 顯示來源
+        source_columns = ("title", "url")
+        self.web_search_tree = ttk.Treeview(
+            sources_frame,
+            columns=source_columns,
+            show="headings",
+            height=5
+        )
+        self.web_search_tree.heading("title", text="標題")
+        self.web_search_tree.heading("url", text="網址")
+        self.web_search_tree.column("title", width=300)
+        self.web_search_tree.column("url", width=400)
+        
+        # 滾動條
+        tree_scroll = ttk.Scrollbar(sources_frame, orient="vertical", command=self.web_search_tree.yview)
+        self.web_search_tree.configure(yscrollcommand=tree_scroll.set)
+        
+        self.web_search_tree.pack(side="left", fill="both", expand=True, padx=10, pady=(0, 10))
+        tree_scroll.pack(side="right", fill="y", pady=(0, 10))
+        
+        # 綁定雙擊事件以開啟網頁
+        self.web_search_tree.bind("<Double-1>", self.on_source_double_click)
+
+    def on_source_double_click(self, event):
+        """處理來源雙擊事件，在瀏覽器中開啟連結"""
+        selection = self.web_search_tree.selection()
+        if selection:
+            item = self.web_search_tree.item(selection[0])
+            url = item['values'][1]
+            if url and url.startswith("http"):
+                try:
+                    webbrowser.open(url, new=2)
+                except Exception as e:
+                    self.show_error(f"無法開啟連結: {e}")
 
     def toggle_table_visibility(self):
         """切換表格 Treeview 的可見性"""
@@ -1008,6 +1082,73 @@ class ModernGUI:
         
         # 在後台執行處理
         threading.Thread(target=self._process_input_background, args=(input_text,)).start()
+
+    def perform_web_search(self):
+        """執行網路搜尋"""
+        query = self.input_entry.get().strip()
+        if not query:
+            messagebox.showwarning("警告", "請輸入要搜尋的關鍵字")
+            return
+
+        # 切換到網路搜尋分頁
+        self.preview_notebook.select(3) # 假設網路搜尋是第4個分頁
+
+        # 更新狀態並禁用按鈕
+        self.update_status(f"正在進行網路搜尋: {query}...")
+        self.web_search_btn.configure(state="disabled", text="搜尋中...")
+        self.web_search_summary.delete("1.0", tk.END)
+        self.web_search_summary.insert("1.0", f"正在搜尋「{query}」，請稍候...")
+        for item in self.web_search_tree.get_children():
+            self.web_search_tree.delete(item)
+
+        # 在背景執行緒中執行搜尋
+        threading.Thread(target=self._perform_web_search_background, args=(query,)).start()
+
+    def _perform_web_search_background(self, query: str):
+        """在背景執行緒中執行網路搜尋"""
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            search_results = loop.run_until_complete(
+                self.content_processor.gemini_client.web_search(query)
+            )
+            
+            # 在主執行緒中更新 UI
+            self.root.after(0, self._on_web_search_complete, search_results)
+            
+        except Exception as e:
+            error_msg = f"網路搜尋失敗: {str(e)}"
+            self.root.after(0, self._on_web_search_error, error_msg)
+        finally:
+            loop.close()
+
+    def _on_web_search_complete(self, results: Dict[str, Any]):
+        """網路搜尋完成後的回調"""
+        self.web_search_btn.configure(state="normal", text="🔍 搜尋")
+        self.update_status("網路搜尋完成")
+
+        # 更新摘要
+        self.web_search_summary.delete("1.0", tk.END)
+        self.web_search_summary.insert("1.0", results.get("summary", "沒有找到摘要。"))
+
+        # 更新來源列表
+        for item in self.web_search_tree.get_children():
+            self.web_search_tree.delete(item)
+        
+        for source in results.get("sources", []):
+            self.web_search_tree.insert("", "end", values=(
+                source.get("title", "無標題"),
+                source.get("url", "")
+            ))
+
+    def _on_web_search_error(self, error_msg: str):
+        """網路搜尋失敗的回調"""
+        self.web_search_btn.configure(state="normal", text="🔍 搜尋")
+        self.update_status(error_msg)
+        self.web_search_summary.delete("1.0", tk.END)
+        self.web_search_summary.insert("1.0", error_msg)
+        self.show_error(error_msg)
         
     def process_input(self):
         """處理輸入內容"""
@@ -1162,6 +1303,10 @@ class ModernGUI:
     
     def on_item_select(self, event):
         """項目選擇事件"""
+        # 清除舊的表格分頁和心智圖
+        self.clear_existing_table_tabs()
+        self.mindmap_renderer.clear()
+        
         selection = self.file_tree.selection()
         if selection:
             item = self.file_tree.item(selection[0])
@@ -1422,29 +1567,71 @@ class ModernGUI:
         except Exception as e:
             self.show_error(f"刷新文件列表失敗: {str(e)}")
     
-    def copy_mermaid_code(self):
-        """複製 Mermaid 代碼到剪貼簿"""
-        try:
-            import tkinter as tk
-            content = self.mindmap_text.get("1.0", "end-1c")
-            self.root.clipboard_clear()
-            self.root.clipboard_append(content)
-            self.show_success("Mermaid 代碼已複製到剪貼簿")
-        except Exception as e:
-            self.show_error(f"複製失敗: {str(e)}")
+    # 舊的心智圖相關方法已被新的渲染器取代
+    # copy_mermaid_code 和 open_mermaid_preview 已內建於 MindmapRenderer
     
-    def open_mermaid_preview(self):
-        """在瀏覽器中開啟 Mermaid 在線預覽"""
+    def regenerate_mindmap(self):
+        """重新生成心智圖（忽略已儲存的版本）"""
         try:
-            import webbrowser
-            import urllib.parse
+            # 確保有選中項目
+            selection = self.file_tree.selection()
+            if not selection:
+                self.show_error("請先在列表中選擇一個文件或問題。")
+                return
             
-            content = self.mindmap_text.get("1.0", "end-1c")
-            encoded_content = urllib.parse.quote(content)
-            url = f"https://mermaid.live/edit#{encoded_content}"
-            webbrowser.open(url)
+            # 切換到心智圖標籤頁
+            self.preview_notebook.select(2)
+            
+            # 顯示正在生成的提示
+            self.mindmap_renderer.status_label.configure(text="🧠 正在重新生成 AI 心智圖，請稍候...")
+            self.root.update_idletasks()
+
+            # 在背景執行緒中強制重新生成心智圖
+            threading.Thread(target=self._force_regenerate_mindmap_background, args=(selection[0],)).start()
+                
         except Exception as e:
-            self.show_error(f"開啟預覽失敗: {str(e)}")
+            self.show_error(f"重新生成心智圖時發生錯誤: {str(e)}")
+
+    def _force_regenerate_mindmap_background(self, selected_item):
+        """強制重新生成心智圖（不檢查已儲存的版本）"""
+        try:
+            item_values = self.file_tree.item(selected_item)['values']
+            
+            # 獲取用於生成心智圖的文本
+            if self.current_view == "documents":
+                doc_id = item_values[0]
+                document = self.db.get_document_by_id(doc_id)
+                text_to_summarize = document.get('content', '')
+            else: # questions
+                question_id_str = item_values[0]
+                question_id = int(question_id_str[1:])
+                question_data = self.db.get_question_by_id(question_id)
+                text_to_summarize = f"題目：{question_data.get('question_text', '')}\n答案：{question_data.get('answer_text', '')}"
+                doc_id = None
+
+            if not text_to_summarize.strip():
+                mermaid_code = "mindmap\n  root((內容為空))\n    無法生成心智圖"
+            else:
+                # 呼叫 Gemini API 生成心智圖
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                mermaid_code = loop.run_until_complete(
+                    self.content_processor.gemini_client.generate_mindmap(text_to_summarize)
+                )
+                loop.close()
+                
+                # 如果是文件，更新資料庫中的心智圖
+                if self.current_view == "documents" and doc_id:
+                    self.db.update_document_mindmap(doc_id, mermaid_code)
+
+            # 在主執行緒更新 UI
+            self.root.after(0, self.update_mindmap_display, mermaid_code)
+
+        except Exception as e:
+            error_message = f"mindmap\n  root((重新生成失敗))\n    錯誤: {str(e)}"
+            self.root.after(0, self.update_mindmap_display, error_message)
+
+    # open_mermaid_preview 方法已內建於 MindmapRenderer
     
     def generate_mermaid_mindmap(self, document, questions):
         """生成 Mermaid 心智圖代碼"""
@@ -1836,9 +2023,8 @@ class ModernGUI:
             # 切換到心智圖標籤頁
             self.preview_notebook.select(2) # 假設心智圖是第3個標籤頁
             
-            # 顯示正在生成
-            self.mindmap_text.delete("1.0", tk.END)
-            self.mindmap_text.insert("1.0", "🧠 正在生成 AI 心智圖，請稍候...")
+            # 顯示正在生成的提示
+            self.mindmap_renderer.status_label.configure(text="🧠 正在生成 AI 心智圖，請稍候...")
             self.root.update_idletasks()
 
             # 在背景執行緒中生成心智圖
@@ -1852,30 +2038,54 @@ class ModernGUI:
         try:
             item_values = self.file_tree.item(selected_item)['values']
             
-            # 獲取用於生成心智圖的文本
-            if self.current_view == "documents":
-                doc_id = item_values[0]
-                document = self.db.get_document_by_id(doc_id)
-                text_to_summarize = document.get('content', '')
-            else: # questions
+            if self.current_view == "questions":
+                # 處理題庫心智圖（有快取）
                 question_id_str = item_values[0]
                 question_id = int(question_id_str[1:])
                 question_data = self.db.get_question_by_id(question_id)
+                
+                # 檢查是否已有儲存的心智圖
+                existing_mindmap = question_data.get('mindmap_code')
+                if existing_mindmap and existing_mindmap.strip():
+                    self.root.after(0, self.update_mindmap_display, existing_mindmap)
+                    return
+                
+                # 沒有快取，生成新的心智圖
                 text_to_summarize = f"題目：{question_data.get('question_text', '')}\n答案：{question_data.get('answer_text', '')}"
+                
+                if not text_to_summarize.strip():
+                    mermaid_code = "mindmap\n  root((內容為空))\n    無法生成心智圖"
+                else:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    mermaid_code = loop.run_until_complete(
+                        self.content_processor.gemini_client.generate_mindmap(text_to_summarize)
+                    )
+                    loop.close()
+                    
+                    # 將生成的心智圖儲存到資料庫
+                    self.db.update_question_mindmap(question_id, mermaid_code)
+                
+                self.root.after(0, self.update_mindmap_display, mermaid_code)
 
-            if not text_to_summarize.strip():
-                mermaid_code = "mindmap\n  root((內容為空))\n    無法生成心智圖"
-            else:
-                # 呼叫 Gemini API 生成心智圖
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                mermaid_code = loop.run_until_complete(
-                    self.content_processor.gemini_client.generate_mindmap(text_to_summarize)
-                )
-                loop.close()
+            else: # documents view
+                # 處理文件心智圖（無快取，總是重新生成）
+                doc_id = item_values[0]
+                document = self.db.get_document_by_id(doc_id)
+                text_to_summarize = document.get('content', '')
 
-            # 在主執行緒更新 UI
-            self.root.after(0, self.update_mindmap_display, mermaid_code)
+                if not text_to_summarize.strip():
+                    mermaid_code = "mindmap\n  root((內容為空))\n    無法生成心智圖"
+                else:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    mermaid_code = loop.run_until_complete(
+                        self.content_processor.gemini_client.generate_mindmap(text_to_summarize)
+                    )
+                    loop.close()
+                
+                # 不儲存文件的心智圖，直接顯示
+                self.root.after(0, self.update_mindmap_display, mermaid_code)
 
         except Exception as e:
             error_message = f"mindmap\n  root((生成失敗))\n    錯誤: {str(e)}"
@@ -1883,8 +2093,8 @@ class ModernGUI:
 
     def update_mindmap_display(self, mermaid_code: str):
         """在主執行緒中更新心智圖顯示"""
-        self.mindmap_text.delete("1.0", tk.END)
-        self.mindmap_text.insert("1.0", mermaid_code)
+        # 使用新的心智圖渲染器
+        self.mindmap_renderer.set_mermaid_code(mermaid_code)
 
     def generate_document_mindmap(self, document_info):
         """為選中的文件生成心智圖"""
@@ -1896,8 +2106,8 @@ class ModernGUI:
             # 使用舊的靜態生成邏輯作為備用
             mermaid_code = self.generate_mermaid_mindmap(document, questions)
             
-            self.mindmap_text.delete("1.0", "end")
-            self.mindmap_text.insert("1.0", mermaid_code)
+            # 使用新的心智圖渲染器
+            self.mindmap_renderer.set_mermaid_code(mermaid_code)
             
             # 切換到心智圖標籤頁
             self.preview_notebook.select(2) # 假設心智圖是第3個標籤頁
