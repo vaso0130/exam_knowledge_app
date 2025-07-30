@@ -1,0 +1,18 @@
+{% extends 'layout.html' %}
+{% block title %}知識庫{% endblock %}
+{% block content %}
+<h1>知識庫</h1>
+{% for subj, points in kp_map.items() %}
+<h2>{{subj}}</h2>
+<table>
+<tr><th>ID</th><th>名稱</th><th>題目數</th></tr>
+{% for kp in points %}
+<tr>
+    <td><a href="/knowledge/{{kp.id}}">KP{{kp.id}}</a></td>
+    <td>{{kp.name}}</td>
+    <td>{{kp.question_count}}</td>
+</tr>
+{% endfor %}
+</table>
+{% endfor %}
+{% endblock %}

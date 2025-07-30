@@ -26,3 +26,4 @@ asyncio-throttle>=1.0.0
 
 # 拖放功能（可選）
 # tkinter-dnd2>=0.3.0
+Flask>=3.1.0

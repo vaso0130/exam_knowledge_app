@@ -1,0 +1,15 @@
+{% extends 'layout.html' %}
+{% block title %}題目詳情{% endblock %}
+{% block content %}
+<h1>題目 Q{{question.id}}</h1>
+<p>科目: {{question.subject}} | 來源: {{question.doc_title}}</p>
+<div>{{html|safe}}</div>
+{% if question.knowledge_points %}
+<h3>相關知識點</h3>
+<ul>
+{% for kp in question.knowledge_points %}
+<li><a href="/knowledge/{{kp.id}}">{{kp.name}}</a></li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

@@ -23,16 +23,23 @@ pip install -r requirements.txt
 python main.py
 ```
 
+4. 執行 Web UI：
+```bash
+python web_app.py
+```
+
 ## 目錄結構
 ```
 exam_knowledge_app/
 ├── main.py                 # 主程式入口
+├── web_app.py             # Web UI 啟動
 ├── db.sqlite3             # SQLite 資料庫
 ├── data/                  # 儲存 Markdown 檔案
 ├── src/
 │   ├── core/              # 核心模組
 │   ├── flows/             # 處理流程
 │   ├── gui/               # 使用者介面
+│   ├── webapp/            # Flask Web UI 模組
 │   └── utils/             # 工具函式
 └── requirements.txt       # 依賴套件
 ```

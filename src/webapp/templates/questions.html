@@ -1,0 +1,17 @@
+{% extends 'layout.html' %}
+{% block title %}題庫{% endblock %}
+{% block content %}
+<h1>題庫</h1>
+{% if subject %}<p>科目: {{subject}}</p>{% endif %}
+<table>
+    <tr><th>ID</th><th>科目</th><th>題目</th><th>來源</th></tr>
+    {% for q in questions %}
+    <tr>
+        <td><a href="/question/{{q.id}}">Q{{q.id}}</a></td>
+        <td>{{q.subject}}</td>
+        <td>{{q.text[:50]}}{% if q.text|length > 50 %}...{% endif %}</td>
+        <td>{{q.doc_title}}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

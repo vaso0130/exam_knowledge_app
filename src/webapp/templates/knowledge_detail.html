@@ -1,0 +1,16 @@
+{% extends 'layout.html' %}
+{% block title %}知識點詳情{% endblock %}
+{% block content %}
+<h1>{{name}} ({{subject}})</h1>
+<h2>關聯題目</h2>
+<table>
+<tr><th>ID</th><th>題目</th><th>來源</th></tr>
+{% for q in questions %}
+<tr>
+    <td><a href="/question/{{q.id}}">Q{{q.id}}</a></td>
+    <td>{{q.text[:60]}}{% if q.text|length > 60 %}...{% endif %}</td>
+    <td>{{q.doc_title}}</td>
+</tr>
+{% endfor %}
+</table>
+{% endblock %}
