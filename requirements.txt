@@ -1,0 +1,26 @@
+# 核心套件
+google-generativeai>=0.8.0
+python-dotenv>=1.0.0
+
+# GUI 相關
+customtkinter>=5.2.0
+Pillow>=10.0.0
+tkinter-html-widgets>=0.4.0
+
+# 檔案處理
+python-docx>=1.1.0
+PyPDF2>=3.0.0
+beautifulsoup4>=4.12.0
+requests>=2.32.0
+
+# 資料視覺化（可選）
+matplotlib>=3.8.0
+networkx>=3.0.0
+numpy>=1.24.0
+
+# 其他工具
+markdown>=3.7.0
+asyncio-throttle>=1.0.0
+
+# 拖放功能（可選）
+# tkinter-dnd2>=0.3.0
