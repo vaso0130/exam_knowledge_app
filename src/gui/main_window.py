@@ -703,7 +703,21 @@ class ModernGUI:
         
         if result.get('success'):
             self.update_status(f"處理完成 - {result.get('type', '')} 類型")
-            messagebox.showinfo("成功", f"內容處理完成！\n類型: {result.get('type', '')}\n科目: {result.get('subject', '')}")
+            
+            # 構建詳細的成功訊息
+            success_msg = f"內容處理完成！\n類型: {result.get('type', '')}\n科目: {result.get('subject', '')}"
+            
+            # 如果是學習資料類型，顯示生成的模擬題數量
+            if result.get('type') == 'info' and result.get('question_ids'):
+                question_count = len(result.get('question_ids', []))
+                success_msg += f"\n📝 已自動生成 {question_count} 道申論題並加入題庫"
+            
+            # 如果是考題類型，顯示題目數量
+            elif result.get('type') == 'exam' and result.get('question_ids'):
+                question_count = len(result.get('question_ids', []))
+                success_msg += f"\n📋 已解析 {question_count} 道考題"
+            
+            messagebox.showinfo("成功", success_msg)
             
             # 清空輸入框
             self.input_entry.delete(0, tk.END)
@@ -1230,20 +1244,63 @@ class ModernGUI:
             self.show_error(f"顯示圖表失敗: {str(e)}")
     
     def show_mindmap(self):
-        """顯示AI生成的知識心智圖"""
-        if FigureCanvasTkinter is None:
-            self.show_error("matplotlib 套件未安裝，無法顯示心智圖")
-            return
-            
+        """顯示當前選中文件的 Mermaid 心智圖"""
         try:
-            # 啟動AI心智圖生成
-            self.generate_ai_mindmap()
+            # 切換到心智圖標籤頁
+            self.preview_notebook.select(2)  # 心智圖是第3個標籤頁（索引2）
             
+            # 如果有當前預覽的資料，生成心智圖
+            if self.current_preview_data:
+                if self.current_preview_data['type'] == 'document':
+                    self.generate_document_mindmap(self.current_preview_data['data'])
+                elif self.current_preview_data['type'] == 'question':
+                    self.show_success("請選擇文件來查看心智圖，單個題目無法生成心智圖")
+            else:
+                self.mindmap_text.delete("1.0", "end")
+                self.mindmap_text.insert("1.0", "請先選擇一個文件來生成心智圖")
+                
         except Exception as e:
             self.show_error(f"顯示心智圖失敗: {str(e)}")
     
-    def generate_ai_charts(self):
-        """AI生成學習圖表"""
+    def generate_document_mindmap(self, document_info):
+        """為選中的文件生成心智圖"""
+        try:
+            doc_id = document_info[0]
+            
+            # 從資料庫獲取文件和相關問題
+            cursor = self.db.cursor
+            cursor.execute("""
+                SELECT title, subject FROM documents WHERE id = ?
+            """, (doc_id,))
+            doc_result = cursor.fetchone()
+            
+            cursor.execute("""
+                SELECT question_text FROM questions WHERE document_id = ?
+            """, (doc_id,))
+            questions = cursor.fetchall()
+            
+            if doc_result:
+                title, subject = doc_result
+                
+                # 生成 Mermaid 心智圖代碼
+                mermaid_code = self.generate_mermaid_mindmap({
+                    'title': title,
+                    'subject': subject or '未分類'
+                }, [{'question_text': q[0]} for q in questions])
+                
+                # 顯示在心智圖文字框中
+                self.mindmap_text.delete("1.0", "end")
+                self.mindmap_text.insert("1.0", mermaid_code)
+                
+        except Exception as e:
+            self.show_error(f"生成心智圖失敗: {str(e)}")
+    
+    def show_charts(self):
+        """顯示統計資訊"""
+        try:
+            self.show_statistics()
+        except Exception as e:
+            self.show_error(f"顯示統計失敗: {str(e)}")
         # 顯示進度對話框
         progress_window = tk.Toplevel(self.root)
         progress_window.title("🤖 AI 正在分析您的學習資料...")
