@@ -1,9 +1,12 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import customtkinter as ctk
+import platform
 from typing import Dict, Any, List, Optional
 import threading
 import asyncio
+import webbrowser
+import urllib.parse
 import os
 import json
 from datetime import datetime
@@ -473,7 +476,32 @@ class ModernGUI:
         self.file_tree.delete(*self.file_tree.get_children())
         
         try:
+            # 獲取所有題目
             questions = self.db.get_all_questions_with_source()
+            
+            # 首先根據科目篩選
+            if hasattr(self, 'current_subject') and self.current_subject and self.current_subject != "全部":
+                filtered_by_subject = []
+                for question in questions:
+                    question_id, subject, question_text, answer_text, doc_title, created_at = question
+                    if subject == self.current_subject:
+                        filtered_by_subject.append(question)
+                questions = filtered_by_subject
+            
+            # 然後根據選中的標籤篩選題目
+            if self.selected_tags:
+                filtered_questions = []
+                for question in questions:
+                    question_id, subject, question_text, answer_text, doc_title, created_at = question
+                    
+                    # 檢查題目內容是否包含選中的標籤
+                    question_content = (question_text or "") + " " + (answer_text or "")
+                    
+                    # 如果任何一個標籤在題目內容中出現，就包含這個題目
+                    if any(tag in question_content for tag in self.selected_tags):
+                        filtered_questions.append(question)
+                        
+                questions = filtered_questions
             
             for question in questions:
                 question_id, subject, question_text, answer_text, doc_title, created_at = question
@@ -614,6 +642,17 @@ class ModernGUI:
         )
         self.answer_toggle.pack(side="left", padx=10, pady=5)
         
+        # 表格顯示切換
+        self.show_table_var = tk.BooleanVar(value=False)
+        self.table_toggle_btn = ctk.CTkButton(
+            control_frame,
+            text="顯示表格",
+            command=self.toggle_table_visibility,
+            font=ctk.CTkFont(size=12),
+            state="disabled" # 初始為禁用
+        )
+        self.table_toggle_btn.pack(side="left", padx=10, pady=5)
+        
         # 重新載入按鈕
         self.reload_btn = ctk.CTkButton(
             control_frame,
@@ -629,37 +668,59 @@ class ModernGUI:
         self.preview_notebook = ttk.Notebook(preview_container)
         self.preview_notebook.pack(fill="both", expand=True, padx=5, pady=5)
         
-        # Markdown 預覽標籤頁
-        self.markdown_frame = ttk.Frame(self.preview_notebook)
-        self.preview_notebook.add(self.markdown_frame, text="Markdown 預覽")
+        # --- Markdown 預覽標籤頁 ---
+        self.markdown_tab_frame = ttk.Frame(self.preview_notebook)
+        self.preview_notebook.add(self.markdown_tab_frame, text="Markdown 預覽")
         
+        # 使用 PanedWindow 分隔文字和表格
+        self.preview_pane = tk.PanedWindow(self.markdown_tab_frame, orient=tk.VERTICAL, sashrelief=tk.RAISED, background="#f0f0f0")
+        self.preview_pane.pack(fill="both", expand=True)
+
+        # Markdown 文字預覽區
+        self.markdown_frame = ctk.CTkFrame(self.preview_pane, corner_radius=0, fg_color="transparent")
+        self.preview_pane.add(self.markdown_frame, stretch="always")
+
+        # 表格預覽區 (使用 Treeview)
+        self.table_container = ctk.CTkFrame(self.preview_pane, corner_radius=0)
+        
+        # 設定 Treeview 樣式
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("Treeview", 
+                        background="#ffffff",
+                        foreground="#333333",
+                        rowheight=25,
+                        fieldbackground="#ffffff")
+        style.map('Treeview', background=[('selected', '#0078d4')])
+
+        self.table_treeview = ttk.Treeview(self.table_container, show="headings", style="Treeview")
+        
+        table_yscroll = ttk.Scrollbar(self.table_container, orient="vertical", command=self.table_treeview.yview)
+        table_xscroll = ttk.Scrollbar(self.table_container, orient="horizontal", command=self.table_treeview.xview)
+        self.table_treeview.configure(yscrollcommand=table_yscroll.set, xscrollcommand=table_xscroll.set)
+
+        table_yscroll.pack(side="right", fill="y")
+        table_xscroll.pack(side="bottom", fill="x")
+        self.table_treeview.pack(side="left", fill="both", expand=True)
+        
+        self.preview_pane.add(self.table_container, stretch="never", height=0, hide=True)
+
         # 使用自定義的 MarkdownText 組件
-        # 使用系統預設字體，避免跨平台字體問題
         try:
-            # 嘗試使用常見的中文字體
-            import tkinter.font as tkFont
-            default_font = tkFont.nametofont("TkDefaultFont")
-            font_family = default_font.cget("family")
-            
-            # 在 macOS 上嘗試使用 PingFang SC
-            import platform
-            if platform.system() == "Darwin":  # macOS
-                font_family = "PingFang SC"
-            elif platform.system() == "Windows":
-                font_family = "Microsoft JhengHei"
-                
+            font_family = "Courier New" if platform.system() == "Windows" else "Menlo"
         except:
-            font_family = "TkDefaultFont"
+            font_family = "monospace"
         
         self.markdown_text = MarkdownText(
             self.markdown_frame,
             font=(font_family, 11),
-            height=15
+            height=15,
+            table_callback=self.display_table_in_treeview
         )
-        self.markdown_text.pack(fill="both", expand=True, padx=5, pady=5)
+        self.markdown_text.pack(fill="both", expand=True)
         
-        # 題目詳情標籤頁
-        self.detail_frame = ttk.Frame(self.preview_notebook)  
+        # --- 詳細資訊標籤頁 ---
+        self.detail_frame = ttk.Frame(self.preview_notebook)
         self.preview_notebook.add(self.detail_frame, text="詳細資訊")
         
         self.detail_text = scrolledtext.ScrolledText(
@@ -670,7 +731,7 @@ class ModernGUI:
         )
         self.detail_text.pack(fill="both", expand=True, padx=5, pady=5)
         
-        # 心智圖標籤頁（改為 Mermaid 圖表）
+        # --- 心智圖標籤頁 ---
         self.mindmap_frame = ttk.Frame(self.preview_notebook)
         self.preview_notebook.add(self.mindmap_frame, text="心智圖")
         
@@ -704,8 +765,48 @@ class ModernGUI:
             height=30
         ).pack(side="left", padx=5)
         
-        # 儲存當前預覽的內容（用於重新載入）
         self.current_preview_data = None
+
+    def toggle_table_visibility(self):
+        """切換表格 Treeview 的可見性"""
+        if self.preview_pane.paneconfig(self.table_container, "hide") == '0':
+            # 目前是可見的，將其隱藏
+            self.preview_pane.paneconfig(self.table_container, height=0, hide=True)
+            self.table_toggle_btn.configure(text="顯示表格")
+        else:
+            # 目前是隱藏的，將其顯示
+            self.preview_pane.paneconfig(self.table_container, height=200, hide=False)
+            self.table_toggle_btn.configure(text="隱藏表格")
+
+    def display_table_in_treeview(self, headers: list, rows: list):
+        """在 Treeview 中顯示表格"""
+        # 清空舊表格
+        for item in self.table_treeview.get_children():
+            self.table_treeview.delete(item)
+        self.table_treeview["columns"] = []
+
+        if not headers and not rows:
+            # 如果沒有資料，隱藏表格視圖並禁用按鈕
+            self.preview_pane.paneconfig(self.table_container, height=0, hide=True)
+            self.table_toggle_btn.configure(state="disabled", text="顯示表格")
+            return
+
+        # 有資料，啟用按鈕但預設不顯示
+        self.table_toggle_btn.configure(state="normal")
+        self.preview_pane.paneconfig(self.table_container, height=0, hide=True)
+        self.table_toggle_btn.configure(text="顯示表格")
+
+        # 設定欄位
+        self.table_treeview["columns"] = headers
+        for header in headers:
+            self.table_treeview.heading(header, text=header, anchor='w')
+            self.table_treeview.column(header, anchor="w", width=120, stretch=True)
+
+        for row in rows:
+            display_row = row[:len(headers)]
+            while len(display_row) < len(headers):
+                display_row.append("")
+            self.table_treeview.insert("", "end", values=display_row)
     
     def create_status_bar(self):
         """建立狀態列"""
@@ -890,7 +991,10 @@ class ModernGUI:
     def on_subject_change(self, value):
         """科目變更事件"""
         self.current_subject = value
-        self.refresh_document_list()  # 改用正確的方法名稱
+        if self.current_view == "documents":
+            self.refresh_document_list()
+        else:
+            self.refresh_question_list()
     
     def on_search_change(self, event):
         """搜尋變更事件"""
@@ -979,17 +1083,32 @@ class ModernGUI:
             }
             
             # 處理不同的 values 格式
+            question_id = None
+            
             if isinstance(values, (list, tuple)) and len(values) > 0:
                 question_id_str = values[0]  # 格式: "Q123"
                 if isinstance(question_id_str, str) and question_id_str.startswith('Q'):
-                    question_id = int(question_id_str[1:])
+                    try:
+                        question_id = int(question_id_str[1:])
+                    except ValueError:
+                        raise ValueError(f"無法從 '{question_id_str}' 解析問題ID")
+                elif isinstance(question_id_str, str):
+                    # 嘗試直接轉換字符串為整數
+                    try:
+                        question_id = int(question_id_str)
+                    except ValueError:
+                        raise ValueError(f"無法將 '{question_id_str}' 轉換為整數")
+                elif isinstance(question_id_str, int):
+                    question_id = question_id_str
                 else:
-                    # 如果不是期望的格式，嘗試直接轉換
-                    question_id = int(question_id_str)
+                    raise ValueError(f"無法處理的問題ID格式: {type(question_id_str)} - {question_id_str}")
             elif isinstance(values, int):
                 question_id = values
             else:
-                raise ValueError(f"無法解析問題ID: {values}")
+                raise ValueError(f"無法解析問題ID，未知格式: {type(values)} - {values}")
+            
+            if question_id is None:
+                raise ValueError("問題ID為空")
             
             # 從資料庫獲取完整問題資訊
             cursor = self.db.cursor
@@ -1134,7 +1253,12 @@ class ModernGUI:
         """標籤篩選變更時的回調"""
         selected_tags = [tag for tag, var in self.tag_vars.items() if var.get()]
         self.selected_tags = selected_tags
-        self.refresh_document_list()  # 重新整理文件列表
+        
+        # 根據當前視圖決定刷新哪個列表
+        if self.current_view == "documents":
+            self.refresh_document_list()
+        else:
+            self.refresh_question_list()
     
     def refresh_document_list(self):
         """刷新文件列表"""
