@@ -1,18 +1,108 @@
 {% extends 'layout.html' %}
-{% block title %}首頁{% endblock %}
+{% block title %}首頁 - 考題知識整理系統{% endblock %}
 {% block content %}
-<h1>考題/知識整理系統</h1>
-<p>請選擇功能：</p>
-<ul>
-    <li><a href="/questions">題庫瀏覽</a></li>
-    <li><a href="/knowledge">知識庫瀏覽</a></li>
-</ul>
-{% if subjects %}
-<h2>科目</h2>
-<ul>
-{% for s in subjects %}
-    <li><a href="/questions?subject={{s}}">{{s}}</a></li>
-{% endfor %}
-</ul>
-{% endif %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="text-center mb-5">
+            <h1 class="display-4 mb-4">🎓 考題知識整理系統</h1>
+            <p class="lead text-muted">使用 AI 技術智慧處理考題與知識點，支援多種檔案格式，提供優質的學習體驗</p>
+        </div>
+        
+        <div class="row g-4">
+            <!-- 上傳檔案 -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-1 mb-3">📁</div>
+                        <h3 class="card-title">上傳檔案</h3>
+                        <p class="card-text text-muted">上傳 TXT、PDF、DOCX、HTML、MD 等格式的檔案，自動解析考題與知識點</p>
+                        <a href="/upload" class="btn btn-primary">開始上傳</a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 題庫瀏覽 -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-1 mb-3">📚</div>
+                        <h3 class="card-title">題庫瀏覽</h3>
+                        <p class="card-text text-muted">瀏覽已處理的題目，支援 Markdown 渲染和程式碼高亮</p>
+                        <a href="/questions" class="btn btn-primary">瀏覽題庫</a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 知識庫 -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-1 mb-3">🧠</div>
+                        <h3 class="card-title">知識庫</h3>
+                        <p class="card-text text-muted">查看知識點分類與統計，了解學習進度</p>
+                        <a href="/knowledge" class="btn btn-primary">查看知識庫</a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 快速處理 -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-1 mb-3">⚡</div>
+                        <h3 class="card-title">快速處理</h3>
+                        <p class="card-text text-muted">直接貼上文字內容，快速進行 AI 處理與分析</p>
+                        <a href="/upload#text-input" class="btn btn-success">快速處理</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        {% if subjects %}
+        <div class="mt-5">
+            <h2 class="text-center mb-4">📋 科目分類</h2>
+            <div class="row g-3">
+                {% for s in subjects %}
+                <div class="col-md-3 col-sm-6">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">{{ s }}</h5>
+                            <a href="/questions?subject={{s}}" class="btn btn-outline-primary btn-sm">查看題目</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 功能特色 -->
+        <div class="mt-5">
+            <h2 class="text-center mb-4">✨ 功能特色</h2>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <div class="h2 mb-3">🤖</div>
+                        <h4>AI 智慧處理</h4>
+                        <p class="text-muted">使用 Google Gemini AI 進行智慧內容分析與處理</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <div class="h2 mb-3">💻</div>
+                        <h4>程式碼高亮</h4>
+                        <p class="text-muted">完美支援程式碼語法高亮和 Markdown 渲染</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <div class="h2 mb-3">📱</div>
+                        <h4>響應式設計</h4>
+                        <p class="text-muted">適配各種裝置螢幕，隨時隨地學習</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

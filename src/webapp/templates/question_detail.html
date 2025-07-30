@@ -1,15 +1,122 @@
 {% extends 'layout.html' %}
-{% block title %}題目詳情{% endblock %}
+{% block title %}題目詳情 - {{ question.subject }}{% endblock %}
 {% block content %}
-<h1>題目 Q{{question.id}}</h1>
-<p>科目: {{question.subject}} | 來源: {{question.doc_title}}</p>
-<div>{{html|safe}}</div>
-{% if question.knowledge_points %}
-<h3>相關知識點</h3>
-<ul>
-{% for kp in question.knowledge_points %}
-<li><a href="/knowledge/{{kp.id}}">{{kp.name}}</a></li>
-{% endfor %}
-</ul>
-{% endif %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-0">📝 題目 Q{{ question.id }}</h2>
+                    <small class="text-muted">科目: {{ question.subject }} | 來源: {{ question.doc_title }}</small>
+                </div>
+                <div>
+                    <a href="/questions" class="btn btn-outline-secondary btn-sm">← 返回題庫</a>
+                    {% if question.subject %}
+                    <a href="/questions?subject={{ question.subject }}" class="btn btn-outline-primary btn-sm">查看同科目</a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- 題目內容 -->
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">🎯 題目內容</h3>
+                    <div class="question-content">
+                        {{ question_html|safe }}
+                    </div>
+                </div>
+                
+                <!-- 答案內容 -->
+                {% if answer_html %}
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">✅ 參考答案</h3>
+                    <div class="answer-content">
+                        {{ answer_html|safe }}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- 相關知識點 -->
+                {% if question.knowledge_points %}
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">🧠 相關知識點</h3>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for kp in question.knowledge_points %}
+                        <a href="/knowledge/{{kp.id}}" class="badge bg-primary text-decoration-none">{{kp.name}}</a>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- 來源資訊 -->
+                <div class="mt-4 p-3 bg-light rounded">
+                    <h5 class="mb-2">📋 題目資訊</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>科目:</strong> {{ question.subject or '未分類' }}<br>
+                            <strong>來源文件:</strong> {{ question.doc_title or '未知' }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>建立時間:</strong> {{ question.created_at or '未知' }}<br>
+                            <strong>題目 ID:</strong> {{ question.id }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* 自定義樣式，改善內容顯示 */
+.question-content, .answer-content {
+    line-height: 1.6;
+    font-size: 1.1rem;
+}
+
+.question-content h1, .question-content h2, .question-content h3,
+.answer-content h1, .answer-content h2, .answer-content h3 {
+    color: #495057;
+    margin-top: 1.5rem;
+    margin-bottom: 0.8rem;
+}
+
+.question-content p, .answer-content p {
+    margin-bottom: 1rem;
+}
+
+.question-content ul, .question-content ol,
+.answer-content ul, .answer-content ol {
+    margin-bottom: 1rem;
+    padding-left: 2rem;
+}
+
+.question-content li, .answer-content li {
+    margin-bottom: 0.3rem;
+}
+
+.question-content blockquote, .answer-content blockquote {
+    border-left: 4px solid #007bff;
+    margin: 1rem 0;
+    padding: 0.5rem 1rem;
+    background-color: #f8f9fa;
+}
+
+.question-content table, .answer-content table {
+    width: 100%;
+    margin: 1rem 0;
+    border-collapse: collapse;
+}
+
+.question-content th, .question-content td,
+.answer-content th, .answer-content td {
+    border: 1px solid #dee2e6;
+    padding: 0.5rem;
+    text-align: left;
+}
+
+.question-content th, .answer-content th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+</style>
 {% endblock %}

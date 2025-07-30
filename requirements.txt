@@ -5,7 +5,6 @@ python-dotenv>=1.0.0
 # GUI 相關
 customtkinter>=5.2.0
 Pillow>=10.0.0
-tkinter-html-widgets>=0.4.0
 markdown>=3.4.0
 tkhtmlview>=0.2.0
 

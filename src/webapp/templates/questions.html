@@ -1,17 +1,117 @@
 {% extends 'layout.html' %}
-{% block title %}題庫{% endblock %}
+{% block title %}題庫 - 考題知識整理系統{% endblock %}
+
 {% block content %}
-<h1>題庫</h1>
-{% if subject %}<p>科目: {{subject}}</p>{% endif %}
-<table>
-    <tr><th>ID</th><th>科目</th><th>題目</th><th>來源</th></tr>
-    {% for q in questions %}
-    <tr>
-        <td><a href="/question/{{q.id}}">Q{{q.id}}</a></td>
-        <td>{{q.subject}}</td>
-        <td>{{q.text[:50]}}{% if q.text|length > 50 %}...{% endif %}</td>
-        <td>{{q.doc_title}}</td>
-    </tr>
-    {% endfor %}
-</table>
+<style>
+.col-id { width: 10%; }
+.col-subject { width: 15%; }
+.col-question { width: 50%; }
+.col-source { width: 20%; }
+.col-action { width: 5%; }
+.question-preview { max-width: 400px; }
+</style>
+
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="mb-1">📚 題庫</h1>
+                {% if subject %}
+                <p class="text-muted mb-0">
+                    科目: <span class="badge bg-primary">{{ subject }}</span>
+                    <a href="/questions" class="btn btn-outline-secondary btn-sm ms-2">顯示全部</a>
+                </p>
+                {% else %}
+                <p class="text-muted mb-0">共 {{ questions|length }} 道題目</p>
+                {% endif %}
+            </div>
+            <div>
+                <a href="/upload" class="btn btn-success">
+                    <i class="bi bi-plus-circle"></i> 上傳新檔案
+                </a>
+            </div>
+        </div>
+        
+        <!-- 科目篩選 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3">🏷️ 科目篩選</h5>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="/questions" class="btn btn-outline-primary btn-sm {% if not subject %}active{% endif %}">
+                        全部
+                    </a>
+                    {% for s in ['資料結構', '資訊管理', '資通網路與資訊安全', '資料庫應用'] %}
+                    <a href="/questions?subject={{ s }}" class="btn btn-outline-primary btn-sm {% if subject == s %}active{% endif %}">
+                        {{ s }}
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- 題目列表 -->
+        {% if questions %}
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">題目列表</h5>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th class="col-id">ID</th>
+                            <th class="col-subject">科目</th>
+                            <th class="col-question">題目預覽</th>
+                            <th class="col-source">來源文件</th>
+                            <th class="col-action">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for q in questions %}
+                        <tr>
+                            <td>
+                                <span class="badge bg-secondary">Q{{ q.id }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ q.subject }}</span>
+                            </td>
+                            <td>
+                                <div class="text-truncate question-preview" title="{{ q.text }}">
+                                    {{ q.text[:100] }}{% if q.text|length > 100 %}...{% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                <small class="text-muted">{{ q.doc_title or '未知' }}</small>
+                            </td>
+                            <td>
+                                <a href="/question/{{ q.id }}" class="btn btn-outline-primary btn-sm">
+                                    查看
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% else %}
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <div class="display-1 mb-3">📝</div>
+                <h3>還沒有題目</h3>
+                <p class="text-muted mb-4">
+                    {% if subject %}
+                    「{{ subject }}」科目中還沒有題目，試試上傳一些檔案吧！
+                    {% else %}
+                    題庫是空的，開始上傳一些檔案來建立您的題庫吧！
+                    {% endif %}
+                </p>
+                <a href="/upload" class="btn btn-primary">
+                    <i class="bi bi-upload"></i> 上傳檔案
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}

@@ -1,0 +1,116 @@
+{% extends 'layout.html' %}
+{% block title %}檔案上傳 - 考題知識整理系統{% endblock %}
+{% block content %}
+<div class="upload-container">
+    <h1>📁 檔案上傳與處理</h1>
+    
+    <!-- 檔案上傳區域 -->
+    <div class="upload-section">
+        <h2>上傳檔案</h2>
+        <form method="POST" enctype="multipart/form-data" class="upload-form">
+            <div class="form-group">
+                <label for="file">選擇檔案:</label>
+                <input type="file" name="file" id="file" accept=".txt,.pdf,.docx,.html,.htm,.md" required>
+                <small>支援格式: TXT, PDF, DOCX, HTML, MD (最大 16MB)</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="subject">科目:</label>
+                <select name="subject" id="subject" required>
+                    {% for subject in subjects %}
+                    <option value="{{ subject }}">{{ subject }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="flow_type">處理模式:</label>
+                <select name="flow_type" id="flow_type" required>
+                    <option value="content">內容處理 (一般題目解析)</option>
+                    <option value="info">資訊提取 (知識點整理)</option>
+                    <option value="answer">答案補充 (為題目生成答案)</option>
+                    <option value="mindmap">心智圖 (概念關聯)</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">🚀 上傳並處理</button>
+        </form>
+    </div>
+    
+    <!-- 文字輸入區域 -->
+    <div class="text-input-section">
+        <h2>直接輸入文字</h2>
+        <form id="textForm" class="text-form">
+            <div class="form-group">
+                <label for="text_content">文字內容:</label>
+                <textarea name="text_content" id="text_content" rows="10" cols="80" 
+                          placeholder="請在此輸入要處理的文字內容...例如考題、筆記、資料等"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="text_subject">科目:</label>
+                <select name="subject" id="text_subject" required>
+                    {% for subject in subjects %}
+                    <option value="{{ subject }}">{{ subject }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="text_flow_type">處理模式:</label>
+                <select name="flow_type" id="text_flow_type" required>
+                    <option value="content">內容處理 (一般題目解析)</option>
+                    <option value="info">資訊提取 (知識點整理)</option>
+                    <option value="answer">答案補充 (為題目生成答案)</option>
+                    <option value="mindmap">心智圖 (概念關聯)</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="btn btn-success">⚡ 處理文字</button>
+        </form>
+        
+        <div id="result" class="result-message"></div>
+    </div>
+</div>
+
+<script>
+document.getElementById('textForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const resultDiv = document.getElementById('result');
+    const submitBtn = this.querySelector('button[type="submit"]');
+    
+    // 顯示處理中狀態
+    resultDiv.innerHTML = '<p class="processing">⏳ 處理中，請稍候...</p>';
+    submitBtn.disabled = true;
+    submitBtn.textContent = '處理中...';
+    
+    fetch('/process_text', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            resultDiv.innerHTML = `<p class="success">✅ ${data.message}</p>`;
+            // 清空文字區域
+            document.getElementById('text_content').value = '';
+            // 3秒後跳轉到題庫頁面
+            setTimeout(() => {
+                window.location.href = '/questions';
+            }, 2000);
+        } else {
+            resultDiv.innerHTML = `<p class="error">❌ ${data.error}</p>`;
+        }
+    })
+    .catch(error => {
+        resultDiv.innerHTML = `<p class="error">❌ 網路錯誤: ${error.message}</p>`;
+    })
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '⚡ 處理文字';
+    });
+});
+</script>
+{% endblock %}
