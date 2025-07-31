@@ -727,9 +727,10 @@ guidance_level: "低"
         Mermaid 心智圖範例格式：
         mindmap
           root(("{subject}"))
-{nodes_text}
+            "{nodes_text}"
         
         請直接輸出 Mermaid 代碼，不要包含任何額外的解釋或 ```mermaid ... ``` 標記。
+        另外！！！請一定要輸出Mermaid格式可以接收的文字排版，要注意縮排與標點符號。
         """
         # 對於心智圖，我們期望純文字輸出，而不是 JSON
         try:
