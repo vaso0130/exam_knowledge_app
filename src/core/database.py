@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 import os
 import threading
+from contextlib import contextmanager
 
 class DatabaseManager:
     def __init__(self, db_path: str = "./db.sqlite3"):
@@ -11,6 +12,16 @@ class DatabaseManager:
         self.conn = None
         self.lock = threading.Lock()
         self.init_database()
+
+    @contextmanager
+    def _cursor(self):
+        """Thread-safe cursor context manager"""
+        with self.lock:
+            cur = self.conn.cursor()
+            try:
+                yield cur
+            finally:
+                self.conn.commit()
     
     def init_database(self):
         """初始化資料庫表格"""
@@ -18,9 +29,9 @@ class DatabaseManager:
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.execute("PRAGMA foreign_keys = ON")
         
-        cur = self.conn.cursor()
-        # 建立 documents 表格
-        cur.execute('''
+        with self._cursor() as cur:
+            # 建立 documents 表格
+            cur.execute('''
             CREATE TABLE IF NOT EXISTS documents (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT,
@@ -36,8 +47,9 @@ class DatabaseManager:
             )
         ''')
 
-        # 建立 questions 表格
-        cur.execute('''
+        with self._cursor() as cur:
+            # 建立 questions 表格
+            cur.execute('''
             CREATE TABLE IF NOT EXISTS questions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 document_id INTEGER,
@@ -53,18 +65,18 @@ class DatabaseManager:
                 FOREIGN KEY (document_id) REFERENCES documents (id)
             )
         ''')
-        
+
         # 為現有表新增 answer_sources 欄位（如果不存在）
-        cur = self.conn.cursor()
-        try:
-            cur.execute('ALTER TABLE questions ADD COLUMN answer_sources TEXT')
-            self.conn.commit()
-        except sqlite3.OperationalError:
-            # 欄位已存在，忽略錯誤
-            pass
+        with self._cursor() as cur:
+            try:
+                cur.execute('ALTER TABLE questions ADD COLUMN answer_sources TEXT')
+            except sqlite3.OperationalError:
+                # 欄位已存在，忽略錯誤
+                pass
         
-        # 建立 knowledge_points 表格
-        cur.execute('''
+        with self._cursor() as cur:
+            # 建立 knowledge_points 表格
+            cur.execute('''
             CREATE TABLE IF NOT EXISTS knowledge_points (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE,
@@ -73,8 +85,9 @@ class DatabaseManager:
             )
         ''')
 
-        # 建立 question_knowledge_links 表格
-        cur.execute('''
+        with self._cursor() as cur:
+            # 建立 question_knowledge_links 表格
+            cur.execute('''
             CREATE TABLE IF NOT EXISTS question_knowledge_links (
                 question_id INTEGER,
                 knowledge_point_id INTEGER,
@@ -150,47 +163,41 @@ class DatabaseManager:
         """關閉資料庫連接"""
         if self.conn:
             self.conn.close()
-    
-    def insert_document(self, title: str, content: str, doc_type: str = "info", 
+
+    def insert_document(self, title: str, content: str, doc_type: str = "info",
                        subject: str = None, file_path: str = None, original_content: str = None) -> int:
         """插入文件記錄"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            INSERT INTO documents (title, content, original_content, type, subject, file_path)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (title, content, original_content, doc_type, subject, file_path))
-
-        self.conn.commit()
-        return cur.lastrowid
+        with self._cursor() as cur:
+            cur.execute('''
+                INSERT INTO documents (title, content, original_content, type, subject, file_path)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (title, content, original_content, doc_type, subject, file_path))
+            return cur.lastrowid
     
     def insert_question(self, document_id: int, title: str, question_text: str, answer_text: str = None,
                        subject: str = None, answer_sources: str = None,
                        difficulty: str = None, guidance_level: str = None) -> int:
         """插入題目記錄"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            INSERT INTO questions (document_id, title, question_text, answer_text,
-                answer_sources, subject, difficulty, guidance_level)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (document_id, title, question_text, answer_text,
-              answer_sources, subject, difficulty, guidance_level))
-
-        self.conn.commit()
-        return cur.lastrowid
+        with self._cursor() as cur:
+            cur.execute('''
+                INSERT INTO questions (document_id, title, question_text, answer_text,
+                    answer_sources, subject, difficulty, guidance_level)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (document_id, title, question_text, answer_text,
+                  answer_sources, subject, difficulty, guidance_level))
+            return cur.lastrowid
     
     def add_document(self, title: str, content: str, subject: str = None, 
                     tags: str = None, file_path: str = None, source: str = None, 
                     original_content: str = None, key_points_summary: str = None, 
                     quick_quiz: str = None) -> int:
         """添加文件記錄（支援完整欄位）"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            INSERT INTO documents (title, content, original_content, type, subject, file_path, tags, source, key_points_summary, quick_quiz)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (title, content, original_content, "info", subject, file_path, tags, source, key_points_summary, quick_quiz))
-
-        self.conn.commit()
-        return cur.lastrowid
+        with self._cursor() as cur:
+            cur.execute('''
+                INSERT INTO documents (title, content, original_content, type, subject, file_path, tags, source, key_points_summary, quick_quiz)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (title, content, original_content, "info", subject, file_path, tags, source, key_points_summary, quick_quiz))
+            return cur.lastrowid
     
     def add_question(self, document_id: int, question_text: str, answer_text: str = None,
                     subject: str = None, answer_sources: str = None,
@@ -208,24 +215,22 @@ class DatabaseManager:
     
     def get_documents_by_subject(self, subject: str) -> List[Tuple]:
         """根據科目取得文件"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT id, title, content, type, subject, file_path, created_at
-            FROM documents WHERE subject = ? ORDER BY created_at DESC
-        ''', (subject,))
-
-        return cur.fetchall()
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT id, title, content, type, subject, file_path, created_at
+                FROM documents WHERE subject = ? ORDER BY created_at DESC
+            ''', (subject,))
+            return cur.fetchall()
     
     def get_questions_by_document(self, document_id: int) -> List[Tuple]:
         """根據文件ID取得題目"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT id, document_id, question_text, answer_text,
-                   subject, difficulty, guidance_level, created_at
-            FROM questions WHERE document_id = ? ORDER BY created_at DESC
-        ''', (document_id,))
-
-        return cur.fetchall()
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT id, document_id, question_text, answer_text,
+                       subject, difficulty, guidance_level, created_at
+                FROM questions WHERE document_id = ? ORDER BY created_at DESC
+            ''', (document_id,))
+            return cur.fetchall()
     
     def get_questions_by_document_id(self, document_id: int) -> List[Tuple]:
         """根據文件ID取得題目（包含標題）"""
@@ -241,48 +246,48 @@ class DatabaseManager:
     def search_documents(self, query: str, subject: str = None) -> List[Tuple]:
         """搜尋文件"""
         if subject:
-            cur = self.conn.cursor()
-            cur.execute('''
-                SELECT id, title, content, type, subject, file_path, created_at
-                FROM documents
-                WHERE subject = ? AND (content LIKE ? OR title LIKE ?)
-                ORDER BY created_at DESC
-            ''', (subject, f'%{query}%', f'%{query}%'))
+            with self._cursor() as cur:
+                cur.execute('''
+                    SELECT id, title, content, type, subject, file_path, created_at
+                    FROM documents
+                    WHERE subject = ? AND (content LIKE ? OR title LIKE ?)
+                    ORDER BY created_at DESC
+                ''', (subject, f'%{query}%', f'%{query}%'))
+                return cur.fetchall()
         else:
-            cur = self.conn.cursor()
-            cur.execute('''
-                SELECT id, title, content, type, subject, file_path, created_at
-                FROM documents
-                WHERE content LIKE ? OR title LIKE ?
-                ORDER BY created_at DESC
-            ''', (f'%{query}%', f'%{query}%'))
-
-        return cur.fetchall()
+            with self._cursor() as cur:
+                cur.execute('''
+                    SELECT id, title, content, type, subject, file_path, created_at
+                    FROM documents
+                    WHERE content LIKE ? OR title LIKE ?
+                    ORDER BY created_at DESC
+                ''', (f'%{query}%', f'%{query}%'))
+                return cur.fetchall()
     
     def get_all_subjects(self) -> List[str]:
         """取得所有科目"""
-        cur = self.conn.cursor()
-        cur.execute('SELECT DISTINCT subject FROM documents ORDER BY subject')
-        return [row[0] for row in cur.fetchall()]
+        with self._cursor() as cur:
+            cur.execute('SELECT DISTINCT subject FROM documents ORDER BY subject')
+            return [row[0] for row in cur.fetchall()]
     
     def get_statistics(self) -> Dict[str, Any]:
         """取得統計資料"""
         # 文件統計
-        cur = self.conn.cursor()
-        cur.execute('SELECT COUNT(*) FROM documents')
-        total_docs = cur.fetchone()[0]
+        with self._cursor() as cur:
+            cur.execute('SELECT COUNT(*) FROM documents')
+            total_docs = cur.fetchone()[0]
 
-        cur.execute('SELECT COUNT(*) FROM documents WHERE type = "exam"')
-        exam_docs = cur.fetchone()[0]
+            cur.execute('SELECT COUNT(*) FROM documents WHERE type = "exam"')
+            exam_docs = cur.fetchone()[0]
 
-        cur.execute('SELECT COUNT(*) FROM questions')
-        total_questions = cur.fetchone()[0]
-        
-        # 各科目統計
-        cur.execute('''
-            SELECT subject, COUNT(*) FROM documents GROUP BY subject ORDER BY subject
-        ''')
-        subject_stats = dict(cur.fetchall())
+            cur.execute('SELECT COUNT(*) FROM questions')
+            total_questions = cur.fetchone()[0]
+
+            # 各科目統計
+            cur.execute('''
+                SELECT subject, COUNT(*) FROM documents GROUP BY subject ORDER BY subject
+            ''')
+            subject_stats = dict(cur.fetchall())
         
         return {
             'total_documents': total_docs,
@@ -294,92 +299,86 @@ class DatabaseManager:
     
     def get_all_documents(self):
         """獲取所有文件"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT id, title, content, type, subject, file_path, source, created_at
-            FROM documents
-            ORDER BY created_at DESC
-        ''')
-        return cur.fetchall()
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT id, title, content, type, subject, file_path, source, created_at
+                FROM documents
+                ORDER BY created_at DESC
+            ''')
+            return cur.fetchall()
 
     def delete_document_and_questions(self, document_id):
         """刪除文件及其所有關聯的題目"""
         try:
-            # 先刪除關聯的題目
-            cur = self.conn.cursor()
-            cur.execute('DELETE FROM questions WHERE document_id = ?', (document_id,))
-
-            # 再刪除文件本身
-            cur.execute('DELETE FROM documents WHERE id = ?', (document_id,))
-
-            self.conn.commit()
+            with self._cursor() as cur:
+                # 先刪除關聯的題目
+                cur.execute('DELETE FROM questions WHERE document_id = ?', (document_id,))
+                # 再刪除文件本身
+                cur.execute('DELETE FROM documents WHERE id = ?', (document_id,))
             return True
         except sqlite3.Error as e:
             print(f"刪除文件時發生資料庫錯誤: {e}")
-            self.conn.rollback()
             return False
     
     def get_all_questions_with_source(self) -> List[Tuple]:
         """取得所有題目及其來源文件資訊"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
-                   q.difficulty, q.guidance_level, d.title, q.created_at
-            FROM questions q
-            JOIN documents d ON q.document_id = d.id
-            ORDER BY q.created_at DESC
-        ''')
-
-        return cur.fetchall()
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
+                       q.difficulty, q.guidance_level, d.title, q.created_at
+                FROM questions q
+                JOIN documents d ON q.document_id = d.id
+                ORDER BY q.created_at DESC
+            ''')
+            return cur.fetchall()
     
     def get_questions_by_subject(self, subject: str) -> List[Tuple]:
         """根據科目取得所有題目"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
-                   q.difficulty, q.guidance_level, d.title, q.created_at
-            FROM questions q
-            JOIN documents d ON q.document_id = d.id
-            WHERE q.subject = ?
-            ORDER BY q.created_at DESC
-        ''', (subject,))
-
-        return cur.fetchall()
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
+                       q.difficulty, q.guidance_level, d.title, q.created_at
+                FROM questions q
+                JOIN documents d ON q.document_id = d.id
+                WHERE q.subject = ?
+                ORDER BY q.created_at DESC
+            ''', (subject,))
+            return cur.fetchall()
     
     def search_questions(self, query: str, subject: str = None) -> List[Tuple]:
         """搜尋題目"""
         if subject:
-            cur = self.conn.cursor()
-            cur.execute('''
-                SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
-                       q.difficulty, q.guidance_level, d.title, q.created_at
-                FROM questions q
-                JOIN documents d ON q.document_id = d.id
-                WHERE q.subject = ? AND (q.question_text LIKE ? OR q.answer_text LIKE ?)
-                ORDER BY q.created_at DESC
-            ''', (subject, f'%{query}%', f'%{query}%'))
+            with self._cursor() as cur:
+                cur.execute('''
+                    SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
+                           q.difficulty, q.guidance_level, d.title, q.created_at
+                    FROM questions q
+                    JOIN documents d ON q.document_id = d.id
+                    WHERE q.subject = ? AND (q.question_text LIKE ? OR q.answer_text LIKE ?)
+                    ORDER BY q.created_at DESC
+                ''', (subject, f'%{query}%', f'%{query}%'))
+                return cur.fetchall()
         else:
-            cur = self.conn.cursor()
-            cur.execute('''
-                SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
-                       q.difficulty, q.guidance_level, d.title, q.created_at
-                FROM questions q
-                JOIN documents d ON q.document_id = d.id
-                WHERE q.question_text LIKE ? OR q.answer_text LIKE ?
-                ORDER BY q.created_at DESC
-            ''', (f'%{query}%', f'%{query}%'))
-
-        return cur.fetchall()
+            with self._cursor() as cur:
+                cur.execute('''
+                    SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
+                           q.difficulty, q.guidance_level, d.title, q.created_at
+                    FROM questions q
+                    JOIN documents d ON q.document_id = d.id
+                    WHERE q.question_text LIKE ? OR q.answer_text LIKE ?
+                    ORDER BY q.created_at DESC
+                ''', (f'%{query}%', f'%{query}%'))
+                return cur.fetchall()
     
     def get_document_by_id(self, document_id: int) -> Optional[Dict[str, Any]]:
         """根據ID取得單一文件"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT id, title, content, original_content, type, subject, file_path, tags, source, mindmap, created_at, key_points_summary, quick_quiz
-            FROM documents WHERE id = ?
-        ''', (document_id,))
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT id, title, content, original_content, type, subject, file_path, tags, source, mindmap, created_at, key_points_summary, quick_quiz
+                FROM documents WHERE id = ?
+            ''', (document_id,))
 
-        row = cur.fetchone()
+            row = cur.fetchone()
         if row:
             keys = ["id", "title", "content", "original_content", "type", "subject", "file_path", "tags", "source", "mindmap", "created_at", "key_points_summary", "quick_quiz"]
             return dict(zip(keys, row))
@@ -389,17 +388,17 @@ class DatabaseManager:
 
     def get_question_by_id(self, question_id: int) -> Optional[Dict[str, Any]]:
         """根據ID取得單一問題"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT q.id, q.document_id, q.title, q.question_text, q.answer_text,
-                   q.answer_sources, q.subject, q.difficulty, q.guidance_level,
-                   q.created_at, q.mindmap_code, d.title
-            FROM questions q
-            LEFT JOIN documents d ON q.document_id = d.id
-            WHERE q.id = ?
-        ''', (question_id,))
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT q.id, q.document_id, q.title, q.question_text, q.answer_text,
+                       q.answer_sources, q.subject, q.difficulty, q.guidance_level,
+                       q.created_at, q.mindmap_code, d.title
+                FROM questions q
+                LEFT JOIN documents d ON q.document_id = d.id
+                WHERE q.id = ?
+            ''', (question_id,))
 
-        row = cur.fetchone()
+            row = cur.fetchone()
         if row:
             keys = [
                 "id",
@@ -425,23 +424,21 @@ class DatabaseManager:
     
     def update_question_mindmap(self, question_id: int, mindmap_code: str):
         """更新問題的心智圖程式碼"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            UPDATE questions
-            SET mindmap_code = ?
-            WHERE id = ?
-        ''', (mindmap_code, question_id))
-        self.conn.commit()
+        with self._cursor() as cur:
+            cur.execute('''
+                UPDATE questions
+                SET mindmap_code = ?
+                WHERE id = ?
+            ''', (mindmap_code, question_id))
 
     def update_document_mindmap(self, document_id: int, mindmap_data: str):
         """更新文檔的心智圖資料"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            UPDATE documents
-            SET mindmap = ?
-            WHERE id = ?
-        ''', (mindmap_data, document_id))
-        self.conn.commit()
+        with self._cursor() as cur:
+            cur.execute('''
+                UPDATE documents
+                SET mindmap = ?
+                WHERE id = ?
+            ''', (mindmap_data, document_id))
 
     # --- 新增知識點相關方法 ---
 
@@ -451,92 +448,90 @@ class DatabaseManager:
 
     def add_or_get_knowledge_point(self, name: str, subject: str, description: str = "") -> int:
         """新增或取得知識點，返回其ID"""
-        cur = self.conn.cursor()
-        cur.execute('SELECT id FROM knowledge_points WHERE name = ?', (name,))
-        result = cur.fetchone()
-        if result:
-            return result[0]
-        else:
-            cur.execute(
-                'INSERT INTO knowledge_points (name, subject, description) VALUES (?, ?, ?)',
-                (name, subject, description)
-            )
-            self.conn.commit()
-            return cur.lastrowid
+        with self._cursor() as cur:
+            cur.execute('SELECT id FROM knowledge_points WHERE name = ?', (name,))
+            result = cur.fetchone()
+            if result:
+                return result[0]
+            else:
+                cur.execute(
+                    'INSERT INTO knowledge_points (name, subject, description) VALUES (?, ?, ?)',
+                    (name, subject, description)
+                )
+                return cur.lastrowid
 
     def link_question_to_knowledge_point(self, question_id: int, knowledge_point_id: int):
         """將問題與知識點關聯"""
-        cur = self.conn.cursor()
-        cur.execute(
-            'INSERT OR IGNORE INTO question_knowledge_links (question_id, knowledge_point_id) VALUES (?, ?)',
-            (question_id, knowledge_point_id)
-        )
-        self.conn.commit()
+        with self._cursor() as cur:
+            cur.execute(
+                'INSERT OR IGNORE INTO question_knowledge_links (question_id, knowledge_point_id) VALUES (?, ?)',
+                (question_id, knowledge_point_id)
+            )
 
     def get_knowledge_points_for_question(self, question_id: int) -> List[Dict[str, Any]]:
         """獲取單一問題的所有關聯知識點"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT kp.id, kp.name, kp.subject
-            FROM knowledge_points kp
-            JOIN question_knowledge_links qkl ON kp.id = qkl.knowledge_point_id
-            WHERE qkl.question_id = ?
-        ''', (question_id,))
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT kp.id, kp.name, kp.subject
+                FROM knowledge_points kp
+                JOIN question_knowledge_links qkl ON kp.id = qkl.knowledge_point_id
+                WHERE qkl.question_id = ?
+            ''', (question_id,))
 
-        points = []
-        for row in cur.fetchall():
-            points.append({"id": row[0], "name": row[1], "subject": row[2]})
-        return points
+            points = []
+            for row in cur.fetchall():
+                points.append({"id": row[0], "name": row[1], "subject": row[2]})
+            return points
 
     def get_questions_for_knowledge_point(self, knowledge_point_id: int) -> List[Dict[str, Any]]:
         """獲取與某個知識點關聯的所有問題"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT q.id, q.subject, q.question_text, q.answer_text, d.title, q.created_at, q.document_id
-            FROM questions q
-            JOIN question_knowledge_links qkl ON q.id = qkl.question_id
-            JOIN documents d ON q.document_id = d.id
-            WHERE qkl.knowledge_point_id = ?
-            ORDER BY q.created_at DESC
-        ''', (knowledge_point_id,))
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT q.id, q.subject, q.question_text, q.answer_text, d.title, q.created_at, q.document_id
+                FROM questions q
+                JOIN question_knowledge_links qkl ON q.id = qkl.question_id
+                JOIN documents d ON q.document_id = d.id
+                WHERE qkl.knowledge_point_id = ?
+                ORDER BY q.created_at DESC
+            ''', (knowledge_point_id,))
 
-        results = cur.fetchall()
-        questions = []
-        for row in results:
-            questions.append({
-                'id': row[0],
-                'subject': row[1],
-                'text': row[2],
-                'answer_text': row[3],
-                'doc_title': row[4],
-                'created_at': row[5],
-                'document_id': row[6],
-                'doc_id': row[6]  # 為了與模板兼容
-            })
-        return questions
+            results = cur.fetchall()
+            questions = []
+            for row in results:
+                questions.append({
+                    'id': row[0],
+                    'subject': row[1],
+                    'text': row[2],
+                    'answer_text': row[3],
+                    'doc_title': row[4],
+                    'created_at': row[5],
+                    'document_id': row[6],
+                    'doc_id': row[6]  # 為了與模板兼容
+                })
+            return questions
 
     def get_all_knowledge_points_by_subject(self) -> Dict[str, List[Dict[str, Any]]]:
         """按科目獲取所有知識點"""
-        cur = self.conn.cursor()
-        cur.execute('SELECT id, name, subject FROM knowledge_points ORDER BY subject, name')
+        with self._cursor() as cur:
+            cur.execute('SELECT id, name, subject FROM knowledge_points ORDER BY subject, name')
 
-        subject_map = {}
-        for row in cur.fetchall():
-            point_id, name, subject = row
-            if subject not in subject_map:
-                subject_map[subject] = []
-            subject_map[subject].append({"id": point_id, "name": name})
-        return subject_map
+            subject_map = {}
+            for row in cur.fetchall():
+                point_id, name, subject = row
+                if subject not in subject_map:
+                    subject_map[subject] = []
+                subject_map[subject].append({"id": point_id, "name": name})
+            return subject_map
 
     def get_knowledge_point_by_id(self, knowledge_point_id: int) -> Optional[Dict[str, Any]]:
         """根據ID取得單一知識點"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT id, name, subject, description
-            FROM knowledge_points WHERE id = ?
-        ''', (knowledge_point_id,))
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT id, name, subject, description
+                FROM knowledge_points WHERE id = ?
+            ''', (knowledge_point_id,))
 
-        row = cur.fetchone()
+            row = cur.fetchone()
         if row:
             return {
                 "id": row[0],
@@ -548,68 +543,68 @@ class DatabaseManager:
 
     def get_all_knowledge_points_with_stats(self) -> Dict[str, List[Dict[str, Any]]]:
         """按科目獲取所有知識點，並包含關聯問題數量"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT
-                kp.id,
-                kp.name,
-                kp.subject,
-                COUNT(qkl.question_id) as question_count
-            FROM knowledge_points kp
-            LEFT JOIN question_knowledge_links qkl ON kp.id = qkl.knowledge_point_id
-            GROUP BY kp.id, kp.name, kp.subject
-            ORDER BY kp.subject, kp.name
-        ''')
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT
+                    kp.id,
+                    kp.name,
+                    kp.subject,
+                    COUNT(qkl.question_id) as question_count
+                FROM knowledge_points kp
+                LEFT JOIN question_knowledge_links qkl ON kp.id = qkl.knowledge_point_id
+                GROUP BY kp.id, kp.name, kp.subject
+                ORDER BY kp.subject, kp.name
+            ''')
 
-        subject_map = {}
-        for row in cur.fetchall():
-            point_id, name, subject, count = row
-            if subject not in subject_map:
-                subject_map[subject] = []
-            subject_map[subject].append({"id": point_id, "name": name, "question_count": count})
-        return subject_map
+            subject_map = {}
+            for row in cur.fetchall():
+                point_id, name, subject, count = row
+                if subject not in subject_map:
+                    subject_map[subject] = []
+                subject_map[subject].append({"id": point_id, "name": name, "question_count": count})
+            return subject_map
 
     def get_all_knowledge_points(self) -> List[tuple]:
         """取得所有知識點（簡單格式，用於相容性）"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT id, name, subject, description
-            FROM knowledge_points
-            ORDER BY subject, name
-        ''')
-        return cur.fetchall()
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT id, name, subject, description
+                FROM knowledge_points
+                ORDER BY subject, name
+            ''')
+            return cur.fetchall()
 
     def get_questions_by_knowledge_point(self, knowledge_point_id: int) -> List[tuple]:
         """取得某個知識點相關的所有題目"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT q.id, q.subject, q.title, q.question_text, q.answer, q.explanation
-            FROM questions q
-            JOIN question_knowledge_links qkl ON q.id = qkl.question_id
-            WHERE qkl.knowledge_point_id = ?
-            ORDER BY q.id
-        ''', (knowledge_point_id,))
-        return cur.fetchall()
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT q.id, q.subject, q.title, q.question_text, q.answer, q.explanation
+                FROM questions q
+                JOIN question_knowledge_links qkl ON q.id = qkl.question_id
+                WHERE qkl.knowledge_point_id = ?
+                ORDER BY q.id
+            ''', (knowledge_point_id,))
+            return cur.fetchall()
 
     def get_documents_with_summaries(self) -> List[Dict[str, Any]]:
         """取得所有包含學習摘要或快速測驗的文件"""
-        cur = self.conn.cursor()
-        cur.execute('''
-            SELECT id, title, subject, created_at, key_points_summary, quick_quiz
-            FROM documents
-            WHERE (key_points_summary IS NOT NULL AND key_points_summary != '')
-               OR (quick_quiz IS NOT NULL AND quick_quiz != '')
-            ORDER BY created_at DESC
-        ''')
+        with self._cursor() as cur:
+            cur.execute('''
+                SELECT id, title, subject, created_at, key_points_summary, quick_quiz
+                FROM documents
+                WHERE (key_points_summary IS NOT NULL AND key_points_summary != '')
+                   OR (quick_quiz IS NOT NULL AND quick_quiz != '')
+                ORDER BY created_at DESC
+            ''')
 
-        results = []
-        for row in cur.fetchall():
-            results.append({
-                'id': row[0],
-                'title': row[1],
-                'subject': row[2] or '未分類',
-                'created_at': row[3],
-                'has_summary': bool(row[4]),
-                'has_quiz': bool(row[5])
-            })
-        return results
+            results = []
+            for row in cur.fetchall():
+                results.append({
+                    'id': row[0],
+                    'title': row[1],
+                    'subject': row[2] or '未分類',
+                    'created_at': row[3],
+                    'has_summary': bool(row[4]),
+                    'has_quiz': bool(row[5])
+                })
+            return results
