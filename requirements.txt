@@ -19,6 +19,7 @@ markdown>=3.7.0
 
 # 其他工具
 asyncio-throttle>=1.0.0
+charset-normalizer>=3.4.2
 
 # OCR 和圖片處理相關
 google-cloud-vision>=3.7.0

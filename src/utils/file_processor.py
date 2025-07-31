@@ -1,6 +1,7 @@
 import os
 import requests
 from typing import Optional, Tuple
+from charset_normalizer import from_path
 from urllib.parse import urlparse
 import tempfile
 from pathlib import Path
@@ -126,20 +127,33 @@ class FileProcessor:
     
     @staticmethod
     def read_text_file(file_path: str) -> str:
-        """讀取純文字檔案"""
+        """讀取純文字檔案，盡可能自動偵測編碼並支援 Unicode/emoji"""
+
+        # 先嘗試以 UTF-8 讀取
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 return f.read()
         except UnicodeDecodeError:
-            # 嘗試其他編碼
-            encodings = ['big5', 'gbk', 'cp1252']
-            for encoding in encodings:
-                try:
-                    with open(file_path, 'r', encoding=encoding) as f:
-                        return f.read()
-                except UnicodeDecodeError:
-                    continue
-            raise ValueError(f"無法讀取檔案 {file_path}，編碼格式不支援")
+            pass
+
+        # 使用 charset-normalizer 自動偵測編碼
+        try:
+            detected = from_path(file_path).best()
+            if detected:
+                return str(detected)
+        except Exception:
+            pass
+
+        # 最後嘗試常見的其他編碼，忽略錯誤以保留可解析的部分
+        encodings = ['big5', 'gbk', 'cp1252', 'latin1']
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding, errors='ignore') as f:
+                    return f.read()
+            except Exception:
+                continue
+
+        raise ValueError(f"無法讀取檔案 {file_path}，編碼格式不支援")
     
     def read_pdf_file(self, file_path: str) -> str:
         """讀取PDF檔案，支援智慧型 OCR"""
