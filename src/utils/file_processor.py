@@ -131,11 +131,21 @@ class FileProcessor:
         if not text:
             return ""
 
+        import unicodedata
+
         cleaned_lines = []
         for line in text.splitlines():
             line = line.replace('\u3000', ' ').replace('\xa0', ' ')
             line = line.replace('←', '<-').replace('→', '->')
-            cleaned_lines.append(line.rstrip())
+
+            # 移除私用區與控制字元，避免截斷或異常符號
+            filtered = []
+            for ch in line:
+                cat = unicodedata.category(ch)
+                if cat.startswith('C') and ch not in ('\n', '\t'):
+                    continue
+                filtered.append(ch)
+            cleaned_lines.append(''.join(filtered).rstrip())
 
         return "\n".join(cleaned_lines)
     
