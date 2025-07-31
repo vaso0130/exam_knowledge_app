@@ -1,6 +1,4 @@
-請幫我處理
-
-可能會發生的錯誤: Recursive use of cursors not allowed
+處理可能會發生的錯誤: Recursive use of cursors not allowed
 
 以及解析答案會有問題
 
