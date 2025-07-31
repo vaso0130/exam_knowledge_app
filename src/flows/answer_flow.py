@@ -21,12 +21,16 @@ class AnswerFlow:
 
     @staticmethod
     def _sanitize_question_text(text: str) -> str:
-        """移除包含答案的行"""
+        """移除包含解答或說明標題的行"""
         if not text:
             return text
+
+        import re
+
+        pattern = re.compile(r"^\s*(答案|解答|參考答案|建議|說明|解析)[\s:：]", re.I)
         lines = []
         for line in text.splitlines():
-            if any(k in line for k in ["答案", "解答", "參考答案", "建議"]):
+            if pattern.match(line):
                 continue
             lines.append(line)
         return "\n".join(lines).strip()
