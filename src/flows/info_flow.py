@@ -60,8 +60,8 @@ class InfoFlow:
             
             # 3. QAGenerator - 生成模擬題
             print("正在生成模擬題...")
-            questions = await self.gemini.generate_questions(
-                summary_data.get('bullets', [])
+            questions = await self.gemini.generate_questions_from_text(
+                cleaned_text, subject
             )
             
             # 🆕 4. 新增：生成重點摘要與快速測驗選擇題

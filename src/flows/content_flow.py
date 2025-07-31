@@ -461,7 +461,8 @@ class ContentFlow:
                     quick_quiz_json = None
                 
                 # 更新文檔記錄
-                self.db.cursor.execute('''
+                cur = self.db.conn.cursor()
+                cur.execute('''
                     UPDATE documents
                     SET content = ?, key_points_summary = ?, quick_quiz = ?
                     WHERE id = ?
