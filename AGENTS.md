@@ -1,9 +1,9 @@
 修復問題
 
-檔案處理失敗: 'cp950' codec can't encode character '\U0001f916' in position 0: illegal multibyte sequencevu
+如果題目包含虛擬碼（尤其是PDF，請參考範例pdf - test.pdf）
+就無法好好格式化程式
 
-要可以支援所有編碼！
-
-當然也要可以支援emoji 或 Unicode
+另外在生成心智圖上，可能要對知識點進行預處理
+因為如果知識點包含空格，就會導致渲染失敗（目前理解應該是這樣）
 
 請幫我修復
