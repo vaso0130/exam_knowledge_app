@@ -4,6 +4,7 @@ import concurrent.futures
 from src.core.gemini_client import GeminiClient
 from src.core.database import DatabaseManager
 import json
+from ..utils.markdown_utils import format_code_blocks
 
 class ContentFlow:
     """內容處理流程管理器 - 統一管理所有內容分析、問題生成和知識點關聯"""
@@ -16,13 +17,24 @@ class ContentFlow:
 
     @staticmethod
     def _sanitize_question_text(text: str) -> str:
-        """移除可能包含解答或說明標題的行"""
+        """移除可能包含解答或說明標題的行，但保留程式碼區塊內的內容"""
         if not text:
             return text
         import re
         pattern = re.compile(r"^\s*(答案|解答|參考答案|建議|說明|解析)[\s:：]", re.I)
-        lines = [line for line in text.splitlines() if not pattern.match(line)]
-        return "\n".join(lines).strip()
+        lines = text.splitlines()
+        sanitized_lines = []
+        in_code_block = False
+
+        for line in lines:
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+                sanitized_lines.append(line)
+            elif in_code_block:
+                sanitized_lines.append(line)
+            elif not pattern.match(line):
+                sanitized_lines.append(line)
+        return "\n".join(sanitized_lines).strip()
 
     
     
@@ -122,14 +134,17 @@ class ContentFlow:
                 question_id = self.db.insert_question(
                     document_id=doc_id,
                     title=question_data.get('title', f'題目 {i}'),
-                    question_text=question_text,
-                    answer_text=answer_text,
+                    question_text=format_code_blocks(question_text),
+                    answer_text=format_code_blocks(answer_text),
                     subject=subject,
                     difficulty=question_data.get('difficulty'),
                     guidance_level=question_data.get('guidance_level')
                 )
                 print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
                 
+                
+                
+                knowledge_points = question_data.get('knowledge_points', [])
                 knowledge_points = question_data.get('knowledge_points', [])
                 for kp_name in knowledge_points:
                     kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
@@ -169,13 +184,17 @@ class ContentFlow:
             question_id = self.db.insert_question(
                 document_id=doc_id,
                 title=q_data.get('title', '模擬題'),
-                question_text=q_data.get('question', ''),
-                answer_text=self._extract_answer_string(q_data.get('answer', '')),
+                question_text=format_code_blocks(q_data.get('question', '')),
+                answer_text=format_code_blocks(self._extract_answer_string(q_data.get('answer', ''))),
                 subject=subject,
                 difficulty=q_data.get('difficulty'),
             )
             saved_questions.append({'id': question_id, **q_data})
             
+            
+
+            
+
             for kp_name in q_data.get('knowledge_points', []):
                 kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
                 self.db.link_question_to_knowledge_point(question_id, kp_id)
