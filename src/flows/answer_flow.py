@@ -19,6 +19,18 @@ class AnswerFlow:
         self.db = db_manager
         self.file_processor = FileProcessor()
 
+    @staticmethod
+    def _sanitize_question_text(text: str) -> str:
+        """移除包含答案的行"""
+        if not text:
+            return text
+        lines = []
+        for line in text.splitlines():
+            if any(k in line for k in ["答案", "解答", "參考答案", "建議"]):
+                continue
+            lines.append(line)
+        return "\n".join(lines).strip()
+
     def process_file(self, file_path: str, filename: str, subject: str) -> Dict[str, Any]:
         """處理檔案的同步包裝方法"""
         try:
@@ -51,6 +63,9 @@ class AnswerFlow:
             additional_info = {}
             
         try:
+            # 先清理題目內容可能包含的答案
+            question_text = self._sanitize_question_text(question_text)
+
             # 1. 生成答案
             print("正在生成答案...")
             answer_data = await self.gemini.generate_answer(question_text)
@@ -75,6 +90,16 @@ class AnswerFlow:
                 knowledge_points=knowledge_points
             )
 
+            # 為問題生成心智圖
+            mindmap_code = None
+            if knowledge_points:
+                try:
+                    mindmap_code = await self.gemini.generate_mindmap(subject, knowledge_points)
+                    if mindmap_code:
+                        self.db.update_question_mindmap(result['question_id'], mindmap_code)
+                except Exception as e:
+                    print(f"生成心智圖失敗: {e}")
+
             return {
                 'success': True,
                 'type': 'question',
@@ -82,7 +107,8 @@ class AnswerFlow:
                 'data': {
                     'answer': answer_data['answer'],
                     'sources': answer_data.get('sources', []),
-                    'knowledge_points': knowledge_points
+                    'knowledge_points': knowledge_points,
+                    'mindmap': mindmap_code
                 }
             }
 

@@ -10,6 +10,7 @@ import tempfile
 import asyncio
 from pathlib import Path
 from datetime import datetime
+import re
 
 
 def create_app(db_path: str = "./db.sqlite3"):
@@ -188,13 +189,22 @@ def create_app(db_path: str = "./db.sqlite3"):
                 # 獲取網址內容
                 from ..utils.file_processor import FileProcessor
                 web_content = FileProcessor.fetch_url_content_sync(url_content)
-                
+
                 if not web_content or len(web_content.strip()) < 10:
                     return jsonify({'error': '無法從該網址獲取有效內容'}), 400
-                
+
+                # 嘗試從內容中擷取標題作為檔名
+                title = '網頁內容'
+                first_line = web_content.strip().splitlines()[0] if web_content else ''
+                m = re.match(r'^#\s*(.+)', first_line)
+                if m:
+                    candidate = m.group(1).strip()
+                    if candidate:
+                        title = candidate
+
                 # 使用智慧內容處理，讓 AI 自動判斷科目和內容類型
                 result = flow_manager.content_flow.complete_ai_processing(
-                    web_content, f'網頁內容', suggested_subject, source_url=url_content
+                    web_content, title, suggested_subject, source_url=url_content
                 )
                 
                 return jsonify({

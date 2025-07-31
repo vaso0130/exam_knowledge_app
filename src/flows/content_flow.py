@@ -13,6 +13,18 @@ class ContentFlow:
         # 初始化檔案處理器
         from ..utils.file_processor import FileProcessor
         self.file_processor = FileProcessor()
+
+    @staticmethod
+    def _sanitize_question_text(text: str) -> str:
+        """移除可能包含答案提示的行"""
+        if not text:
+            return text
+        lines = []
+        for line in text.splitlines():
+            if any(k in line for k in ["答案", "解答", "參考答案", "建議"]):
+                continue
+            lines.append(line)
+        return "\n".join(lines).strip()
     
     def process_file(self, file_path: str, filename: str, suggested_subject: str = None) -> Dict[str, Any]:
         """
@@ -140,6 +152,9 @@ class ContentFlow:
                             question_text = formatted_question
                         except Exception as e:
                             print(f"    格式化失敗，使用原始內容: {e}")
+
+                    # 再次清理可能的答案文字
+                    question_text = self._sanitize_question_text(question_text)
                     
                     # 如果沒有答案，使用 AI 生成
                     if not answer_text and question_text:
@@ -277,6 +292,9 @@ class ContentFlow:
                             except Exception as e:
                                 print(f"      格式化失敗，使用原始內容: {e}")
                         
+                        # 再次清理題目內容，避免含有答案
+                        question_text = self._sanitize_question_text(question_text)
+
                         question_id = self.db.insert_question(
                             document_id=doc_id,
                             title=question.get('title', f'模擬題{i}'),
