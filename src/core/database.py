@@ -396,17 +396,31 @@ class DatabaseManager:
             points.append({"id": row[0], "name": row[1], "subject": row[2]})
         return points
 
-    def get_questions_for_knowledge_point(self, knowledge_point_id: int) -> List[Tuple]:
+    def get_questions_for_knowledge_point(self, knowledge_point_id: int) -> List[Dict[str, Any]]:
         """獲取與某個知識點關聯的所有問題"""
         self.cursor.execute('''
-            SELECT q.id, q.subject, q.question_text, q.answer_text, d.title, q.created_at
+            SELECT q.id, q.subject, q.question_text, q.answer_text, d.title, q.created_at, q.document_id
             FROM questions q
             JOIN question_knowledge_links qkl ON q.id = qkl.question_id
             JOIN documents d ON q.document_id = d.id
             WHERE qkl.knowledge_point_id = ?
             ORDER BY q.created_at DESC
         ''', (knowledge_point_id,))
-        return self.cursor.fetchall()
+        
+        results = self.cursor.fetchall()
+        questions = []
+        for row in results:
+            questions.append({
+                'id': row[0],
+                'subject': row[1],
+                'text': row[2],
+                'answer_text': row[3],
+                'doc_title': row[4],
+                'created_at': row[5],
+                'document_id': row[6],
+                'doc_id': row[6]  # 為了與模板兼容
+            })
+        return questions
 
     def get_all_knowledge_points_by_subject(self) -> Dict[str, List[Dict[str, Any]]]:
         """按科目獲取所有知識點"""

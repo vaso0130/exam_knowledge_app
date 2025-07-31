@@ -322,12 +322,12 @@ def create_app(db_path: str = "./db.sqlite3"):
             if not knowledge_point:
                 abort(404)
 
-            questions = db.get_questions_by_knowledge_point(id)
+            questions = db.get_questions_for_knowledge_point(id)
             
             # 獲取文檔 ID，優先從題目中獲取
             doc_id = None
             if questions:
-                doc_id = questions[0].get('document_id')
+                doc_id = questions[0]['document_id']
 
             mindmap_data = None
             if doc_id:
