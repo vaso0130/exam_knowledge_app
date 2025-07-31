@@ -88,17 +88,18 @@ class InfoFlow:
             doc_id = result['document_id']
             doc_title = os.path.basename(result['file_path'])
             
-            # 使用 ContentProcessor 處理文本
-            processing_result = await self.content_processor.process_content(
-                text=cleaned_text,
-                subject=subject,
-                doc_title=doc_title,
-                doc_id=doc_id
-            )
+            # 移除對 content_processor 的調用，因為學習資料不應該被當作考題來解析
+            # processing_result = await self.content_processor.process_content(
+            #     text=cleaned_text,
+            #     subject=subject,
+            #     doc_title=doc_title,
+            #     doc_id=doc_id
+            # )
+            # if not processing_result.get('success'):
+            #      print(f"警告：無法處理內容以提取知識點：{processing_result.get('error')}")
 
-            if not processing_result.get('success'):
-                 print(f"警告：無法處理內容以提取知識點：{processing_result.get('error')}")
-
+            # 直接使用 Tagger 生成的標籤作為知識點
+            knowledge_points = tags
 
             return {
                 'success': True,
@@ -112,9 +113,9 @@ class InfoFlow:
                     'bullets': summary_data.get('bullets', []),
                     'tags': tags,
                     'questions': questions,
-                    'knowledge_points': processing_result.get('knowledge_points', []),
-                    'key_points_summary': key_points_summary,  # 🆕 新增
-                    'quick_quiz': quick_quiz  # 🆕 新增
+                    'knowledge_points': knowledge_points,
+                    'key_points_summary': key_points_summary,
+                    'quick_quiz': quick_quiz
                 }
             }
             
@@ -161,9 +162,23 @@ class InfoFlow:
         # 寫入檔案
         FileProcessor.save_markdown(markdown_content, file_path)
         
-        # 儲存到資料庫
+        # 儲存到資料庫 - 增加資料型態檢查與轉換
         import json
-        quick_quiz_json = json.dumps(quick_quiz, ensure_ascii=False) if quick_quiz else None
+        
+        # 確保 key_points_summary 是字串格式，防止 'dict' object has no attribute 'replace' 錯誤
+        if isinstance(key_points_summary, dict):
+            print("警告：key_points_summary 是字典格式，正在轉換為文字...")
+            key_points_summary = json.dumps(key_points_summary, ensure_ascii=False, indent=2)
+        elif key_points_summary is None:
+            key_points_summary = ""
+        else:
+            key_points_summary = str(key_points_summary)  # 確保是字串
+        
+        # 處理 quick_quiz 的 JSON 序列化
+        if isinstance(quick_quiz, list) and quick_quiz:
+            quick_quiz_json = json.dumps(quick_quiz, ensure_ascii=False)
+        else:
+            quick_quiz_json = None
         
         doc_id = self.db.add_document(
             title=filename,

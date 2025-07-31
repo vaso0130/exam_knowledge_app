@@ -7,7 +7,40 @@ from src.core.database import DatabaseManager
 class ContentFlow:
     """內容處理流程管理器 - 統一管理所有內容分析、問題生成和知識點關聯"""
     
-    def __init__(self, gemini_client: GeminiClient, db_manager: DatabaseManager):
+    def __init__(self, gemini_client: GeminiClient, db_manager: Datab            # 步驟5: 生成互動選擇題
+            print("  🎯 生成互動選擇題...")
+            try:
+                quick_quiz = await self.gemini.generate_quick_quiz(content, subject)
+                print(f"    ✅ 生成了 {len(quick_quiz)} 道選擇題")
+            except Exception as e:
+                print(f"    ❌ 互動選擇題生成失敗: {e}")
+                quick_quiz = []
+            
+            # 步驟6: 組合完整的學習頁面內容
+            print("  🔗 組合完整的學習頁面內容...")
+            try:
+                # 組合三個部分：資料主文 + 知識摘要 + 互動選擇題
+                complete_learning_content = f"""# 📚 學習資料
+
+## 📄 資料主文
+{cleaned_main_content}
+
+---
+
+{knowledge_summary}
+
+---
+
+## 🎯 互動選擇題
+""" + (f"共 {len(quick_quiz)} 道題目，請在頁面下方作答。" if quick_quiz else "暫無互動選擇題。")
+                
+                print(f"    ✅ 完整學習內容組合完成（{len(complete_learning_content)} 字元）")
+                
+            except Exception as e:
+                print(f"    ❌ 學習內容組合失敗: {e}")
+                complete_learning_content = f"{cleaned_main_content}\n\n{knowledge_summary}"
+            
+            # 步驟7: 更新文檔記錄，加入完整的學習內容和選擇題):
         self.gemini = gemini_client
         self.db = db_manager
         # 初始化檔案處理器
@@ -211,12 +244,10 @@ class ContentFlow:
         學習資料處理流程：
         1. 提取知識點
         2. 生成申論模擬題（存入題庫）
-        3. AI清理和整理資料主文
-        4. AI生成知識摘要
-        5. 生成互動選擇題
-        6. 組合完整的學習頁面內容
-        7. 更新文檔記錄
-        8. 生成心智圖
+        3. AI整理學習筆記格式
+        4. 生成互動選擇題
+        5. 更新文檔記錄
+        6. 生成心智圖
         """
         try:
             print("📚 執行學習資料處理流程...")
@@ -300,7 +331,7 @@ class ContentFlow:
             print(f"    ✅ 生成了 {len(saved_questions)} 道申論模擬題")
             
             # 步驟3: AI清理和整理資料主文
-            print("  📝 AI清理和整理資料主文...")
+            print("  � AI清理和整理資料主文...")
             try:
                 cleaned_main_content = await self.gemini.clean_and_organize_content(content)
                 print(f"    ✅ 資料主文整理完成（{len(cleaned_main_content)} 字元）")
@@ -326,42 +357,18 @@ class ContentFlow:
                 print(f"    ❌ 互動選擇題生成失敗: {e}")
                 quick_quiz = []
             
-            # 步驟6: 組合完整的學習頁面內容
-            print("  🔗 組合完整的學習頁面內容...")
-            try:
-                # 組合三個部分：資料主文 + 知識摘要 + 互動選擇題
-                complete_learning_content = f"""# 📚 學習資料
-
-## 📄 資料主文
-{cleaned_main_content}
-
----
-
-{knowledge_summary}
-
----
-
-## 🎯 互動選擇題
-""" + (f"共 {len(quick_quiz)} 道題目，請在頁面下方作答。" if quick_quiz else "暫無互動選擇題。")
-                
-                print(f"    ✅ 完整學習內容組合完成（{len(complete_learning_content)} 字元）")
-                
-            except Exception as e:
-                print(f"    ❌ 學習內容組合失敗: {e}")
-                complete_learning_content = f"{cleaned_main_content}\n\n{knowledge_summary}"
-            
-            # 步驟7: 更新文檔記錄，加入完整的學習內容和選擇題
+            # 步驟5: 更新文檔記錄，加入學習筆記和選擇題
             print("  💾 更新文檔記錄...")
             try:
                 import json
                 
                 # 確保數據格式正確
-                if isinstance(complete_learning_content, dict):
-                    complete_learning_content = json.dumps(complete_learning_content, ensure_ascii=False, indent=2)
-                elif complete_learning_content is None:
-                    complete_learning_content = ""
+                if isinstance(key_points_summary, dict):
+                    key_points_summary = json.dumps(key_points_summary, ensure_ascii=False, indent=2)
+                elif key_points_summary is None:
+                    key_points_summary = ""
                 else:
-                    complete_learning_content = str(complete_learning_content)
+                    key_points_summary = str(key_points_summary)
                 
                 # 處理 quick_quiz 的 JSON 序列化
                 if isinstance(quick_quiz, list) and quick_quiz:
@@ -374,7 +381,7 @@ class ContentFlow:
                     UPDATE documents 
                     SET key_points_summary = ?, quick_quiz = ?
                     WHERE id = ?
-                ''', (complete_learning_content, quick_quiz_json, doc_id))
+                ''', (key_points_summary, quick_quiz_json, doc_id))
                 self.db.conn.commit()
                 
                 print(f"    ✅ 文檔 {doc_id} 記錄更新完成")
@@ -382,7 +389,7 @@ class ContentFlow:
             except Exception as e:
                 print(f"    ❌ 文檔記錄更新失敗: {e}")
             
-            # 步驟8: 生成總結心智圖
+            # 步驟6: 生成總結心智圖
             print("  🗺️ 生成學習資料心智圖...")
             overall_mindmap = None
             try:
@@ -407,10 +414,8 @@ class ContentFlow:
                 'document_id': doc_id,
                 'questions': saved_questions,  # 申論模擬題
                 'knowledge_points': all_knowledge_point_names,
-                'cleaned_main_content': cleaned_main_content,  # AI整理的主文內容
-                'knowledge_summary': knowledge_summary,  # 知識摘要
+                'key_points_summary': key_points_summary,  # AI整理的學習筆記
                 'quick_quiz': quick_quiz,  # 互動選擇題
-                'complete_learning_content': complete_learning_content,  # 完整的學習頁面內容
                 'mindmap': overall_mindmap,
                 'message': f'學習資料處理完成！生成了 {len(saved_questions)} 道申論題、{len(quick_quiz)} 道選擇題，提取了 {len(knowledge_points)} 個知識點'
             }
@@ -418,3 +423,113 @@ class ContentFlow:
         except Exception as e:
             print(f"學習資料處理流程發生錯誤: {e}")
             raise e
+            
+            return {
+                'success': True,
+                'content_type': 'study_material',
+                'subject': subject,
+                'document_id': doc_id,
+                'questions': saved_questions,
+                'knowledge_points': knowledge_points,
+                'message': f'成功處理學習資料，提取了 {len(knowledge_points)} 個知識點，生成了 {len(saved_questions)} 道模擬題'
+            }
+            
+        except Exception as e:
+            print(f"學習資料處理流程發生錯誤: {e}")
+            raise e
+
+    async def process_content(self, text: str, subject: str, doc_title: str, doc_id: int) -> Dict[str, Any]:
+        """
+        處理單一文本內容，提取知識點、生成問題並儲存。
+        第二步實施：AI 能力升級 - 自動識別與關聯
+        """
+        try:
+            # 1. 整體提取知識點（用於文檔級別的分類）
+            print(f"正在從文本中提取 '{subject}' 科的整體知識點...")
+            document_knowledge_points = await self.gemini.extract_knowledge_points(text, subject)
+            if not document_knowledge_points:
+                print("未能提取到文檔知識點，但仍繼續處理...")
+
+            # 2. 生成模擬題（帶有個別的知識點標籤）
+            print("正在根據文本生成模擬題，並為每題自動標註知識點...")
+            generated_questions = await self.gemini.generate_questions_from_text(text, subject)
+            if not generated_questions:
+                print("AI未生成模擬題，但流程繼續...")
+                generated_questions = []  # 設為空列表而不是中止流程
+
+            # 3. 儲存資料並建立知識點關聯
+            print("正在儲存問題與知識點關聯...")
+            saved_data = await self._store_question_and_knowledge_data(
+                document_id=doc_id,
+                subject=subject,
+                questions=generated_questions,
+                document_knowledge_points=document_knowledge_points or []
+            )
+
+            return {
+                'success': True,
+                'type': 'question_batch',
+                'document_id': doc_id,
+                'question_ids': saved_data['question_ids'],
+                'knowledge_points': saved_data['all_knowledge_points'],
+                'data': {
+                    'questions': generated_questions
+                }
+            }
+
+        except Exception as e:
+            print(f"處理內容時發生錯誤: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _store_question_and_knowledge_data(self, document_id: int, subject: str,
+                                                 questions: List[Dict[str, Any]],
+                                                 document_knowledge_points: List[str]) -> Dict[str, Any]:
+        """
+        儲存問題、知識點，並建立兩者之間的關聯。
+        第二步升級：每個問題都有自己的知識點標籤
+        """
+        all_knowledge_points = set(document_knowledge_points)  # 收集所有知識點
+        question_ids = []
+        
+        # 處理每個問題
+        for q in questions:
+            # 儲存問題
+            question_id = self.db.insert_question(
+                document_id=document_id,
+                title=q.get('title', '無標題'),
+                question_text=q.get('question', ''),
+                answer_text=q.get('answer', ''),
+                subject=subject
+            )
+            question_ids.append(question_id)
+            
+            # 處理這個問題的個別知識點標籤
+            question_knowledge_points = q.get('knowledge_points', [])
+            question_tags = q.get('tags', [])
+            
+            # 合併知識點和標籤（標籤也視為知識點的一種）
+            combined_points = question_knowledge_points + question_tags
+            all_knowledge_points.update(combined_points)
+            
+            # 為每個問題建立知識點關聯
+            for kp_name in combined_points:
+                if kp_name.strip():  # 確保不是空字串
+                    # 新增或取得知識點 ID
+                    kp_id = self.db.add_knowledge_point(name=kp_name.strip(), subject=subject)
+                    # 建立問題與知識點的關聯
+                    self.db.link_question_to_knowledge_point(question_id, kp_id)
+            
+            print(f"問題 {question_id} 已關聯到 {len(combined_points)} 個知識點")
+        
+        # 也為文檔級別的知識點建立關聯（如果有的話）
+        for doc_kp in document_knowledge_points:
+            if doc_kp.strip():
+                kp_id = self.db.add_knowledge_point(name=doc_kp.strip(), subject=subject)
+                # 將文檔知識點與所有問題關聯
+                for q_id in question_ids:
+                    self.db.link_question_to_knowledge_point(q_id, kp_id)
+        
+        return {
+            "question_ids": question_ids,
+            "all_knowledge_points": list(all_knowledge_points)
+        }
