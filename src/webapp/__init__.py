@@ -172,6 +172,7 @@ def create_app(db_path: str = "./db.sqlite3"):
     def process_url():
         """處理網址內容"""
         try:
+            
             url_content = request.form.get('url_content', '').strip()
             suggested_subject = request.form.get('subject', '').strip()  # 允許空值
             flow_type = request.form.get('flow_type', 'smart')
@@ -186,7 +187,7 @@ def create_app(db_path: str = "./db.sqlite3"):
             try:
                 # 獲取網址內容
                 from ..utils.file_processor import FileProcessor
-                web_content = FileProcessor.fetch_url_content(url_content)
+                web_content = FileProcessor.fetch_url_content_sync(url_content)
                 
                 if not web_content or len(web_content.strip()) < 10:
                     return jsonify({'error': '無法從該網址獲取有效內容'}), 400
@@ -569,6 +570,15 @@ def create_app(db_path: str = "./db.sqlite3"):
             flash('此文件尚未生成學習摘要與測驗', 'warning')
             return redirect(url_for('learning_summaries'))
             
+        import markdown
+        md = markdown.Markdown(extensions=[
+            'codehilite',
+            'fenced_code',
+            'tables',
+            'toc'
+        ])
+        document['content'] = md.convert(document.get('content', ''))
+        document['key_points_summary'] = md.convert(document.get('key_points_summary', ''))
         return render_template('learning_summary_detail.html', document=document)
         
     return app

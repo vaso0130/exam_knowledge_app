@@ -227,9 +227,14 @@ class ContentFlow:
             knowledge_points = []
             all_knowledge_point_names = []
             
+            # 檢查知識點提取結果
+            if not knowledge_points_raw:
+                print("  ⚠️ 知識點提取失敗，使用預設知識點")
+                knowledge_points_raw = [f"{subject}基本概念"]
+            
             # 儲存知識點到資料庫
             for kp_name in knowledge_points_raw:
-                if kp_name.strip():
+                if kp_name and kp_name.strip():
                     kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
                     knowledge_points.append({
                         'id': kp_id,
@@ -245,57 +250,61 @@ class ContentFlow:
             generated_questions = await self.gemini.generate_questions_from_text(content, subject)
             saved_questions = []
             
-            for i, question in enumerate(generated_questions, 1):
-                try:
-                    print(f"    處理第 {i}/{len(generated_questions)} 道模擬題...")
-                    
-                    # 格式化題目內容
-                    question_text = question.get('question', '')
-                    if question_text:
-                        try:
-                            formatted_question = await self.gemini.format_question_content(question_text)
-                            question_text = formatted_question
-                        except Exception as e:
-                            print(f"      格式化失敗，使用原始內容: {e}")
-                    
-                    question_id = self.db.insert_question(
-                        document_id=doc_id,
-                        title=question.get('title', f'模擬題{i}'),
-                        subject=subject,
-                        question_text=question_text,
-                        answer_text=question.get('answer', '')
-                    )
-                    
-                    # 關聯問題與知識點
-                    question_kps = question.get('knowledge_points', [])
-                    actual_kps = []
-                    for kp_name in question_kps:
-                        if kp_name.strip():
-                            # 找到對應的知識點 ID
-                            kp_id = None
-                            for kp in knowledge_points:
-                                if kp['name'] == kp_name.strip():
-                                    kp_id = kp['id']
-                                    break
-                            
-                            if not kp_id:
-                                # 如果知識點不存在，創建新的
-                                kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
-                            
-                            self.db.link_question_to_knowledge_point(question_id, kp_id)
-                            actual_kps.append(kp_name.strip())
-                    
-                    saved_questions.append({
-                        'id': question_id,
-                        'title': question.get('title', f'模擬題{i}'),
-                        'question': question_text,
-                        'answer': question.get('answer', ''),
-                        'knowledge_points': actual_kps
-                    })
-                    
-                except Exception as e:
-                    print(f"      處理第 {i} 題時發生錯誤: {e}")
-                    continue
+            # 檢查申論題生成結果
+            if not generated_questions:
+                print("  ⚠️ 申論題生成失敗，跳過此步驟")
+            else:
+                for i, question in enumerate(generated_questions, 1):
+                    try:
+                        print(f"    處理第 {i}/{len(generated_questions)} 道模擬題...")
+                        
+                        # 格式化題目內容
+                        question_text = question.get('question', '')
+                        if question_text:
+                            try:
+                                formatted_question = await self.gemini.format_question_content(question_text)
+                                question_text = formatted_question
+                            except Exception as e:
+                                print(f"      格式化失敗，使用原始內容: {e}")
+                        
+                        question_id = self.db.insert_question(
+                            document_id=doc_id,
+                            title=question.get('title', f'模擬題{i}'),
+                            subject=subject,
+                            question_text=question_text,
+                            answer_text=question.get('answer', '')
+                        )
+                        
+                        # 關聯問題與知識點
+                        question_kps = question.get('knowledge_points', [])
+                        actual_kps = []
+                        for kp_name in question_kps:
+                            if kp_name and kp_name.strip():
+                                # 找到對應的知識點 ID
+                                kp_id = None
+                                for kp in knowledge_points:
+                                    if kp['name'] == kp_name.strip():
+                                        kp_id = kp['id']
+                                        break
+                                
+                                if not kp_id:
+                                    # 如果知識點不存在，創建新的
+                                    kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
+                                
+                                self.db.link_question_to_knowledge_point(question_id, kp_id)
+                                actual_kps.append(kp_name.strip())
+                        
+                        saved_questions.append({
+                            'id': question_id,
+                            'title': question.get('title', f'模擬題{i}'),
+                            'question': question_text,
+                            'answer': question.get('answer', ''),
+                            'knowledge_points': actual_kps
+                        })
+                        
+                    except Exception as e:
+                        print(f"      處理第 {i} 題時發生錯誤: {e}")
+                        continue
             
             print(f"    ✅ 生成了 {len(saved_questions)} 道申論模擬題")
             
@@ -308,21 +317,73 @@ class ContentFlow:
                 print(f"    ❌ 資料主文整理失敗: {e}")
                 cleaned_main_content = content  # 使用原始內容作為後備
             
-            # 步驟4: AI生成知識摘要
-            print("  📋 AI生成知識摘要...")
+            # 步驟4: AI生成結構化知識摘要
+            print("  📋 AI生成結構化知識摘要...")
             try:
-                knowledge_summary = await self.gemini.generate_key_points_summary(content)
-                print(f"    ✅ 知識摘要生成完成（{len(knowledge_summary)} 字元）")
+                summary_result = await self.gemini.generate_summary(content)
+                
+                # 構建新格式的知識摘要
+                knowledge_summary = "## 📋 知識重點摘要\n\n"
+                
+                if 'key_concepts' in summary_result and summary_result['key_concepts']:
+                    knowledge_summary += "### 🔑 核心概念\n"
+                    for concept in summary_result['key_concepts']:
+                        if isinstance(concept, dict) and 'name' in concept and 'description' in concept:
+                            knowledge_summary += f"- **{concept['name']}**：{concept['description']}\n"
+                        else:
+                            knowledge_summary += f"- {concept}\n"
+                    knowledge_summary += "\n"
+                
+                if 'technical_terms' in summary_result and summary_result['technical_terms']:
+                    knowledge_summary += "### 🔧 技術術語\n"
+                    for term in summary_result['technical_terms']:
+                        if isinstance(term, dict) and 'name' in term and 'description' in term:
+                            knowledge_summary += f"- **{term['name']}**：{term['description']}\n"
+                        else:
+                            knowledge_summary += f"- {term}\n"
+                    knowledge_summary += "\n"
+                
+                if 'classification_info' in summary_result and summary_result['classification_info']:
+                    knowledge_summary += "### 📊 分類資訊\n"
+                    for info in summary_result['classification_info']:
+                        if isinstance(info, dict) and 'name' in info and 'description' in info:
+                            knowledge_summary += f"- **{info['name']}**：{info['description']}\n"
+                        else:
+                            knowledge_summary += f"- {info}\n"
+                    knowledge_summary += "\n"
+                
+                if 'practical_applications' in summary_result and summary_result['practical_applications']:
+                    knowledge_summary += "### 💡 實務應用\n"
+                    for app in summary_result['practical_applications']:
+                        if isinstance(app, dict) and 'name' in app and 'description' in app:
+                            knowledge_summary += f"- **{app['name']}**：{app['description']}\n"
+                        else:
+                            knowledge_summary += f"- {app}\n"
+                    knowledge_summary += "\n"
+                
+                if 'bullets' in summary_result and summary_result['bullets']:
+                    knowledge_summary += "### 🎯 重點整理\n"
+                    for bullet in summary_result['bullets']:
+                        knowledge_summary += f"- {bullet}\n"
+                    knowledge_summary += "\n"
+                
+                print(f"    ✅ 結構化知識摘要生成完成（{len(knowledge_summary)} 字元）")
             except Exception as e:
                 print(f"    ❌ 知識摘要生成失敗: {e}")
-                knowledge_summary = f"知識摘要生成失敗，錯誤：{str(e)}"
+                knowledge_summary = f"## 📋 知識重點摘要\n\n知識摘要生成失敗，錯誤：{str(e)}"
             
             # 步驟5: 生成互動選擇題
             print("  🎯 生成互動選擇題...")
+            quick_quiz = []
             try:
                 quick_quiz = await self.gemini.generate_quick_quiz(content, subject)
-                print(f"    ✅ 生成了 {len(quick_quiz)} 道選擇題")
+                if quick_quiz:
+                    print(f"    ✅ 生成了 {len(quick_quiz)} 道選擇題")
+                else:
+                    print("    ⚠️ 選擇題生成失敗，返回空列表")
             except Exception as e:
+                print(f"    ❌ 互動選擇題生成失敗: {e}")
+                quick_quiz = []
                 print(f"    ❌ 互動選擇題生成失敗: {e}")
                 quick_quiz = []
             
@@ -417,4 +478,14 @@ class ContentFlow:
             
         except Exception as e:
             print(f"學習資料處理流程發生錯誤: {e}")
-            raise e
+            # 返回一個安全的默認結果，而不是拋出異常
+            return {
+                'questions': [],
+                'knowledge_points': [],
+                'cleaned_main_content': content,  # 使用原始內容
+                'knowledge_summary': f"## 處理失敗\n\n處理過程中發生錯誤：{str(e)}",
+                'quick_quiz': [],
+                'complete_learning_content': content,
+                'mindmap': None,
+                'message': f'學習資料處理失敗：{str(e)}'
+            }

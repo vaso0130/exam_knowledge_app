@@ -1,1 +1,0 @@
-請參照REFACTORING_PLAN.md來完成迭代開發。

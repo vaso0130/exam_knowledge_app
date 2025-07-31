@@ -221,26 +221,185 @@ class FileProcessor:
             raise ValueError(f"無法讀取HTML檔案 {file_path}: {e}")
     
     @staticmethod
-    def fetch_url_content(url: str) -> str:
-        """從URL獲取內容"""
+    def fetch_url_content_sync(url: str) -> str:
+        """同步版本的 URL 內容獲取 - 用於 Flask 路由"""
         try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
+            # 在新的線程中創建事件循環
+            import asyncio
+            import threading
             
-            if BeautifulSoup is not None:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                # 移除 script 和 style 標籤
-                for script in soup(["script", "style"]):
-                    script.decompose()
-                return soup.get_text(separator='\n').strip()
+            result_container = {'result': None, 'error': None}
+            
+            def run_async():
+                try:
+                    # 創建新的事件循環
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        result = loop.run_until_complete(FileProcessor._fetch_url_async(url))
+                        result_container['result'] = result
+                    finally:
+                        loop.close()
+                except Exception as e:
+                    result_container['error'] = e
+            
+            # 在獨立線程中運行異步代碼
+            thread = threading.Thread(target=run_async)
+            thread.start()
+            thread.join(timeout=60)  # 60秒超時
+            
+            if result_container['error']:
+                raise result_container['error']
+            
+            if result_container['result']:
+                return result_container['result']
             else:
-                return response.text
+                # 如果沒有結果，回退到傳統方法
+                return FileProcessor._fetch_url_fallback(url)
                 
         except Exception as e:
-            raise ValueError(f"無法獲取URL內容 {url}: {e}")
+            print(f"Playwright 抓取失敗，使用傳統方法: {e}")
+            return FileProcessor._fetch_url_fallback(url)
+    
+    @staticmethod
+    def _fetch_url_fallback(url: str) -> str:
+        """傳統方法的 URL 抓取回退方案"""
+        import requests
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 移除不需要的元素
+            for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                script.decompose()
+            
+            # 嘗試找到主要內容
+            main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
+            if main_content:
+                text = main_content.get_text(separator='\n').strip()
+            else:
+                text = soup.get_text(separator='\n').strip()
+            
+            # 清理文字
+            lines = [line.strip() for line in text.split('\n') if line.strip()]
+            cleaned_text = '\n'.join(lines)
+            
+            # 限制內容長度，避免巨量文字消耗配額
+            max_length = 100000  # 100KB 文字限制
+            if len(cleaned_text) > max_length:
+                cleaned_text = cleaned_text[:max_length] + "\n\n... (內容過長，已截斷)"
+            
+            return cleaned_text
+            
+        except ImportError:
+            response_text = response.text
+            # 同樣限制長度
+            max_length = 100000
+            if len(response_text) > max_length:
+                response_text = response_text[:max_length] + "\n\n... (內容過長，已截斷)"
+            return response_text
+    
+    @staticmethod
+    async def _fetch_url_async(url: str) -> str:
+        """異步獲取 URL 內容的內部方法"""
+        try:
+            from .playwright_scraper import scrape_single_page
+            
+            # 執行異步爬取
+            result = await scrape_single_page(url, headless=True)
+            
+            if result['status'] == 'success':
+                # 建構完整內容，包含表格
+                content_parts = []
+                
+                # 添加標題
+                if result['title']:
+                    content_parts.append(f"# {result['title']}\n")
+                
+                # 添加表格（優先處理）
+                if result['tables']:
+                    content_parts.append("## 表格資訊\n")
+                    for i, table in enumerate(result['tables']):
+                        if table['markdown']:
+                            content_parts.append(f"### 表格 {i+1}\n{table['markdown']}\n")
+                
+                # 添加主要文字內容
+                if result['text_content']:
+                    content_parts.append("## 主要內容\n")
+                    content_parts.append(result['text_content'])
+                
+                # 添加圖片資訊 - 只用原始連結，不做 base64 處理
+                if result['images']:
+                    content_parts.append("\n## 圖片資訊\n")
+                    image_count = 0
+                    for i, img in enumerate(result['images']):
+                        if image_count >= 5:
+                            break
+                        img_src = img['src']
+                        img_alt = img['alt'] or img['title'] or f"圖片 {i+1}"
+                        content_parts.append(f"![{img_alt}]({img_src})")
+                        image_count += 1
+                
+                full_content = '\n\n'.join(content_parts)
+                
+                # 限制最終內容大小，避免過度消耗 API 配額
+                max_length = 100000  # 100KB 文字限制
+                if len(full_content) > max_length:
+                    full_content = full_content[:max_length] + "\n\n... (內容過長，已截斷)"
+                
+                if len(full_content.strip()) > 50:  # 確保有足夠內容
+                    return full_content
+            
+        except ImportError:
+            pass  # Playwright 未安裝，回退到傳統方法
+        except Exception as e:
+            print(f"Playwright 爬取失敗，回退到傳統方法: {e}")
+        
+        # 回退到傳統的 requests + BeautifulSoup 方法
+        import requests
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.content, 'html.parser')
+            # 移除 script 和 style 標籤
+            for script in soup(["script", "style"]):
+                script.decompose()
+            
+            text_content = soup.get_text(separator='\n').strip()
+            
+            # 限制內容長度，避免巨量文字消耗配額
+            max_length = 100000  # 100KB 文字限制
+            if len(text_content) > max_length:
+                text_content = text_content[:max_length] + "\n\n... (內容過長，已截斷)"
+            
+            return text_content
+        except ImportError:
+            response_text = response.text
+            # 同樣限制長度
+            max_length = 100000
+            if len(response_text) > max_length:
+                response_text = response_text[:max_length] + "\n\n... (內容過長，已截斷)"
+            return response_text
+
+    # 已移除 base64 相關圖片處理，所有圖片只用原始連結
+
+    @staticmethod
+    async def fetch_url_content(url: str) -> str:
+        """從URL獲取內容 - 使用 Playwright 進階爬取"""
+        return await FileProcessor._fetch_url_async(url)
     
     @classmethod
     def process_input(cls, input_data: str) -> Tuple[str, str]:
@@ -256,7 +415,7 @@ class FileProcessor:
         # 檢查是否為URL
         if input_data.startswith(('http://', 'https://')):
             try:
-                content = cls.fetch_url_content(input_data)
+                content = cls.fetch_url_content_sync(input_data)
                 return content, 'url'
             except Exception as e:
                 raise ValueError(f"URL處理失敗: {e}")

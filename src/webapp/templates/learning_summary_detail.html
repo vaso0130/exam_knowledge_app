@@ -18,20 +18,38 @@
             </div>
             <div class="card-body">
                 
-                <!-- 🆕 整理後的文章內容 -->
+                <!-- 🆕 AI整理後的文章內容 -->
                 {% if document.content %}
                 <div class="mb-5">
-                    <h3 class="border-bottom pb-2 mb-4">📄 文章內容</h3>
+                    <h3 class="border-bottom pb-2 mb-4">
+                        📄 AI整理後的文章內容 
+                        <small class="text-muted">(已移除廣告和無關內容，重新排版)</small>
+                    </h3>
                     <div class="content-display p-4 border rounded bg-light">
                         <div class="markdown-content">{{ document.content|safe }}</div>
                     </div>
+                    <!-- 新增查看原始內容的選項 -->
+                    {% if document.original_content and document.original_content != document.content %}
+                    <div class="mt-2">
+                        <button class="btn btn-outline-secondary btn-sm" onclick="toggleOriginalContent()">
+                            📰 查看網頁原始內容
+                        </button>
+                        <div id="original-content" class="mt-3 p-4 border rounded bg-warning bg-opacity-10 d-none">
+                            <h6>📰 網頁原始內容：</h6>
+                            <div class="small text-muted">{{ document.original_content[:500]|safe }}{% if document.original_content|length > 500 %}...{% endif %}</div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
                 {% endif %}
 
-                <!-- 🆕 重點摘要 -->
+                <!-- 🆕 AI生成的重點摘要 -->
                 {% if document.key_points_summary %}
                 <div class="mb-5">
-                    <h3 class="border-bottom pb-2 mb-4">⭐ 重點摘要</h3>
+                    <h3 class="border-bottom pb-2 mb-4">
+                        ⭐ AI生成的重點摘要 
+                        <small class="text-muted">(基於原始內容結構化整理)</small>
+                    </h3>
                     <div class="alert alert-info">
                         <div class="markdown-content">{{ document.key_points_summary|safe }}</div>
                     </div>
@@ -62,6 +80,20 @@
 </div>
 
 <script>
+// 切換原始內容顯示
+function toggleOriginalContent() {
+    const originalContent = document.getElementById('original-content');
+    const button = document.querySelector('button[onclick="toggleOriginalContent()"]');
+    
+    if (originalContent.classList.contains('d-none')) {
+        originalContent.classList.remove('d-none');
+        button.textContent = '🔼 隱藏網頁原始內容';
+    } else {
+        originalContent.classList.add('d-none');
+        button.textContent = '📰 查看網頁原始內容';
+    }
+}
+
 // 快速測驗功能
 {% if document.quick_quiz %}
 let quickQuizData = null;
