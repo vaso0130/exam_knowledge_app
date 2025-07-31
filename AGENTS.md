@@ -12,4 +12,4 @@ ibute 'throttler'
 a.AI整理後的文章內容 :無法顯示表格
 b. AI生成的重點摘要 :會出現主文
 
-先忽視REFACTORING_PLAN.md的請求？
+先忽視REFACTORING_PLAN.md的請求
