@@ -64,7 +64,12 @@ class InfoFlow:
                 summary_data.get('bullets', [])
             )
             
-            # 4. StorageAgent - 儲存資料
+            # 🆕 4. 新增：生成重點摘要與快速測驗選擇題
+            print("正在生成重點摘要與快速測驗...")
+            key_points_summary = await self.gemini.generate_key_points_summary(cleaned_text)
+            quick_quiz = await self.gemini.generate_quick_quiz(cleaned_text, subject)
+            
+            # 5. StorageAgent - 儲存資料
             print("正在儲存資料...")
             result = await self._store_info_data(
                 raw_text=raw_text,
@@ -73,10 +78,12 @@ class InfoFlow:
                 subject=subject,
                 tags=tags,
                 questions=questions,
-                source=source
+                source=source,
+                key_points_summary=key_points_summary,  # 🆕 新增參數
+                quick_quiz=quick_quiz  # 🆕 新增參數
             )
             
-            # 5. Process content for knowledge points
+            # 6. Process content for knowledge points
             print("正在處理內容以提取知識點...")
             doc_id = result['document_id']
             doc_title = os.path.basename(result['file_path'])
@@ -105,7 +112,9 @@ class InfoFlow:
                     'bullets': summary_data.get('bullets', []),
                     'tags': tags,
                     'questions': questions,
-                    'knowledge_points': processing_result.get('knowledge_points', [])
+                    'knowledge_points': processing_result.get('knowledge_points', []),
+                    'key_points_summary': key_points_summary,  # 🆕 新增
+                    'quick_quiz': quick_quiz  # 🆕 新增
                 }
             }
             
@@ -118,8 +127,12 @@ class InfoFlow:
     
     async def _store_info_data(self, raw_text: str, cleaned_text: str,
                               summary_data: Dict[str, Any], subject: str,
-                              tags: List[str], questions: List[Dict[str, Any]], source: str) -> Dict[str, Any]:
+                              tags: List[str], questions: List[Dict[str, Any]], source: str,
+                              key_points_summary: str = "", quick_quiz: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """儲存學習資料"""
+        
+        if quick_quiz is None:
+            quick_quiz = []
         
         # 生成唯一檔案名稱
         content_hash = hashlib.md5(cleaned_text.encode()).hexdigest()[:8]
@@ -140,20 +153,27 @@ class InfoFlow:
             tags=tags,
             questions=questions,
             subject=subject,
-            source=source
+            source=source,
+            key_points_summary=key_points_summary,  # 🆕 新增參數
+            quick_quiz=quick_quiz  # 🆕 新增參數
         )
         
         # 寫入檔案
         FileProcessor.save_markdown(markdown_content, file_path)
         
         # 儲存到資料庫
+        import json
+        quick_quiz_json = json.dumps(quick_quiz, ensure_ascii=False) if quick_quiz else None
+        
         doc_id = self.db.add_document(
             title=filename,
             content=cleaned_text,
             subject=subject,
             tags=",".join(tags),
             file_path=file_path,
-            source=source
+            source=source,
+            key_points_summary=key_points_summary,
+            quick_quiz=quick_quiz_json
         )
         
         question_ids = []
@@ -173,28 +193,67 @@ class InfoFlow:
         }
         
     def _generate_info_markdown(self, original_text: str, summary: str, bullets: List[str],
-                                tags: List[str], questions: List[Dict[str, Any]], subject: str, source: str) -> str:
+                                tags: List[str], questions: List[Dict[str, Any]], subject: str, source: str,
+                                key_points_summary: str = "", quick_quiz: List[Dict[str, Any]] = None) -> str:
         """生成學習資料的 Markdown 格式內容"""
+        
+        if quick_quiz is None:
+            quick_quiz = []
         
         md_content = f"# {subject} 學習筆記\n\n"
         md_content += f"**來源:** {source}\n"
         md_content += f"**標籤:** {', '.join(tags)}\n\n"
         
-        md_content += "## 摘要\n"
+        # 🆕 新增：原始全文區域
+        md_content += "## 📄 原始文本\n"
+        md_content += f"{original_text}\n\n"
+        md_content += "---\n\n"
+        
+        # 🆕 新增：重點摘要區域
+        if key_points_summary:
+            md_content += "## ⭐ 重點摘要\n"
+            md_content += f"{key_points_summary}\n\n"
+            md_content += "---\n\n"
+        
+        # 🆕 新增：快速測驗區域
+        if quick_quiz:
+            md_content += "## 🎯 快速測驗\n"
+            md_content += "*快速檢驗您對重點知識的掌握程度*\n\n"
+            for i, q in enumerate(quick_quiz, 1):
+                md_content += f"**{i}. {q.get('question', '')}**\n\n"
+                
+                # 處理選擇題選項
+                if q.get('type') == 'multiple_choice' and q.get('options'):
+                    for opt in q['options']:
+                        md_content += f"   {opt}\n"
+                    md_content += f"\n   **正解：{q.get('correct_answer', '')}**\n"
+                    if q.get('explanation'):
+                        md_content += f"   **解析：{q.get('explanation', '')}**\n"
+                elif q.get('type') == 'true_false':
+                    md_content += f"   **正解：{'是' if q.get('correct_answer') else '否'}**\n"
+                    if q.get('explanation'):
+                        md_content += f"   **解析：{q.get('explanation', '')}**\n"
+                else:
+                    md_content += f"   **答案：{q.get('correct_answer', '')}**\n"
+                    if q.get('explanation'):
+                        md_content += f"   **解析：{q.get('explanation', '')}**\n"
+                md_content += "\n"
+            md_content += "---\n\n"
+        
+        # 原有的摘要區域（保持向後相容）
+        md_content += "## 📋 學習摘要\n"
         md_content += f"{summary}\n\n"
         
-        md_content += "## 重點整理\n"
+        md_content += "## 📝 重點整理\n"
         for bullet in bullets:
             md_content += f"- {bullet}\n"
         md_content += "\n"
         
-        md_content += "## 模擬試題\n"
+        # 原有的模擬試題區域（保持向後相容）
+        md_content += "## 📚 模擬試題\n"
+        md_content += "*深度理解與應用練習*\n\n"
         for i, q in enumerate(questions, 1):
             md_content += f"**題目 {i}:** {q['stem']}\n\n"
             md_content += f"**答案:**\n{q['answer']}\n\n"
-            
-        md_content += "---\n\n"
-        md_content += "## 原始文本\n"
-        md_content += original_text
         
         return md_content

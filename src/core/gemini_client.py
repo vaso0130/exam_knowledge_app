@@ -785,3 +785,72 @@ class GeminiClient:
         except Exception as e:
             print(f"內容格式化錯誤: {e}")
             return raw_question  # 如果格式化失敗，返回原始內容
+
+    async def generate_key_points_summary(self, content: str) -> str:
+        """生成重點摘要"""
+        
+        prompt = f"""
+你是一位專業的學習內容分析師。請針對以下學習資料，產生一份簡潔而全面的重點摘要。
+
+**任務要求：**
+1. 提取文章的核心概念和重要知識點
+2. 用條列式或段落形式整理重點
+3. 重點應該涵蓋主要概念、重要細節、關鍵結論
+4. 語言簡潔明瞭，適合快速複習
+5. 保持學術性和準確性
+
+**學習資料：**
+{content}
+
+**請以清晰的格式輸出重點摘要：**
+"""
+        
+        try:
+            response = await self.generate_async(prompt)
+            return response.strip() if response else ""
+        except Exception as e:
+            print(f"生成重點摘要錯誤: {e}")
+            return ""
+
+    async def generate_quick_quiz(self, content: str, subject: str) -> List[Dict[str, Any]]:
+        """生成快速測驗選擇題"""
+        
+        prompt = f"""
+你是一位專業的教育測驗設計師。請根據以下學習資料，設計5道選擇題來快速檢驗學習者對重點知識的掌握。
+
+**設計原則：**
+1. 題目應該測試對核心概念的理解，而非細節記憶
+2. 避免涉及具體的公司名稱、產品名稱或時事新聞
+3. 專注於知識點本身的原理、概念和應用
+4. 每題提供4個選項，其中只有1個正確答案
+5. 提供簡潔明確的解析說明
+
+**科目領域：** {subject}
+
+**學習資料：**
+{content}
+
+**請以JSON格式回應，包含5道選擇題：**
+{{
+    "quiz": [
+        {{
+            "question": "題目內容",
+            "type": "multiple_choice",
+            "options": ["A. 選項1", "B. 選項2", "C. 選項3", "D. 選項4"],
+            "correct_answer": "A",
+            "explanation": "解析說明"
+        }}
+    ]
+}}
+"""
+        
+        try:
+            parsed_response = await self._generate_with_json_parsing(prompt)
+            if parsed_response and 'quiz' in parsed_response:
+                return parsed_response['quiz']
+            else:
+                print("警告：無法解析快速測驗JSON回應")
+                return []
+        except Exception as e:
+            print(f"生成快速測驗錯誤: {e}")
+            return []

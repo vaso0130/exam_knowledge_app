@@ -109,6 +109,22 @@ class DatabaseManager:
         except sqlite3.OperationalError:
             # 欄位已存在，忽略錯誤
             pass
+        
+        # 為現有表新增 key_points_summary 欄位（如果不存在）
+        try:
+            self.cursor.execute('ALTER TABLE documents ADD COLUMN key_points_summary TEXT')
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            # 欄位已存在，忽略錯誤
+            pass
+        
+        # 為現有表新增 quick_quiz 欄位（如果不存在）
+        try:
+            self.cursor.execute('ALTER TABLE documents ADD COLUMN quick_quiz TEXT')
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            # 欄位已存在，忽略錯誤
+            pass
     
     def close(self):
         """關閉資料庫連接"""
@@ -140,12 +156,14 @@ class DatabaseManager:
         return self.cursor.lastrowid
     
     def add_document(self, title: str, content: str, subject: str = None, 
-                    tags: str = None, file_path: str = None, source: str = None, original_content: str = None) -> int:
-        """添加文件記錄（支援 tags、source 和 original_content）"""
+                    tags: str = None, file_path: str = None, source: str = None, 
+                    original_content: str = None, key_points_summary: str = None, 
+                    quick_quiz: str = None) -> int:
+        """添加文件記錄（支援完整欄位）"""
         self.cursor.execute('''
-            INSERT INTO documents (title, content, original_content, type, subject, file_path, tags, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (title, content, original_content, "info", subject, file_path, tags, source))
+            INSERT INTO documents (title, content, original_content, type, subject, file_path, tags, source, key_points_summary, quick_quiz)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (title, content, original_content, "info", subject, file_path, tags, source, key_points_summary, quick_quiz))
         
         self.conn.commit()
         return self.cursor.lastrowid
@@ -304,13 +322,13 @@ class DatabaseManager:
     def get_document_by_id(self, document_id: int) -> Optional[Dict[str, Any]]:
         """根據ID取得單一文件"""
         self.cursor.execute('''
-            SELECT id, title, content, original_content, type, subject, file_path, tags, source, mindmap, created_at 
+            SELECT id, title, content, original_content, type, subject, file_path, tags, source, mindmap, created_at, key_points_summary, quick_quiz
             FROM documents WHERE id = ?
         ''', (document_id,))
         
         row = self.cursor.fetchone()
         if row:
-            keys = ["id", "title", "content", "original_content", "type", "subject", "file_path", "tags", "source", "mindmap", "created_at"]
+            keys = ["id", "title", "content", "original_content", "type", "subject", "file_path", "tags", "source", "mindmap", "created_at", "key_points_summary", "quick_quiz"]
             return dict(zip(keys, row))
         return None
 

@@ -34,12 +34,40 @@
                     </div>
                 </div>
 
-                <!-- 處理後內容 -->
+                <!-- 🆕 原始全文 -->
                 {% if document.content %}
                 <div class="mb-4">
-                    <h3 class="border-bottom pb-2 mb-3">📋 處理後內容</h3>
+                    <h3 class="border-bottom pb-2 mb-3">� 原始全文</h3>
                     <div class="content-display p-3 border rounded bg-light">
-                        <pre class="mb-0">{{ document.content }}</pre>
+                        <div class="markdown-content">{{ document.content|safe }}</div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- 🆕 重點摘要 -->
+                {% if document.key_points_summary %}
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">⭐ 重點摘要</h3>
+                    <div class="alert alert-info">
+                        <div class="markdown-content">{{ document.key_points_summary|safe }}</div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- 🆕 快速測驗 -->
+                {% if document.quick_quiz %}
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">🎯 快速測驗</h3>
+                    <div class="alert alert-warning">
+                        <p class="mb-3"><strong>快速檢驗您對重點知識的掌握程度</strong></p>
+                        <div id="quick-quiz-container">
+                            <!-- JavaScript 將在這裡渲染測驗 -->
+                        </div>
+                        <div class="text-center mt-3">
+                            <button class="btn btn-success d-none" id="submit-quick-quiz">提交答案</button>
+                            <button class="btn btn-secondary d-none" id="reset-quick-quiz">重新開始</button>
+                        </div>
+                        <div id="quiz-result" class="mt-3 d-none"></div>
                     </div>
                 </div>
                 {% endif %}
@@ -70,6 +98,134 @@
 </div>
 
 <script>
+// 快速測驗功能
+{% if document.quick_quiz %}
+let quickQuizData = null;
+let userQuickAnswers = {};
+
+try {
+    quickQuizData = JSON.parse('{{ document.quick_quiz|safe }}');
+    renderQuickQuiz();
+} catch (e) {
+    console.error('解析快速測驗資料失敗:', e);
+}
+
+function renderQuickQuiz() {
+    if (!quickQuizData || !quickQuizData.length) return;
+    
+    const container = document.getElementById('quick-quiz-container');
+    container.innerHTML = '';
+    
+    quickQuizData.forEach((question, index) => {
+        const questionDiv = document.createElement('div');
+        questionDiv.className = 'mb-3 p-3 border rounded bg-white';
+        
+        let questionHTML = `
+            <h6 class="mb-2">${index + 1}. ${question.question}</h6>
+        `;
+        
+        if (question.type === 'multiple_choice' && question.options) {
+            questionHTML += '<div class="mt-2">';
+            question.options.forEach((option, optIndex) => {
+                const optionValue = option.split('.')[0].trim();
+                questionHTML += `
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="radio" name="qq${index}" value="${optionValue}" id="qq${index}_${optIndex}">
+                        <label class="form-check-label" for="qq${index}_${optIndex}">
+                            ${option}
+                        </label>
+                    </div>
+                `;
+            });
+            questionHTML += '</div>';
+        } else if (question.type === 'true_false') {
+            questionHTML += `
+                <div class="mt-2">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="qq${index}" value="true" id="qq${index}_true">
+                        <label class="form-check-label" for="qq${index}_true">是</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="qq${index}" value="false" id="qq${index}_false">
+                        <label class="form-check-label" for="qq${index}_false">否</label>
+                    </div>
+                </div>
+            `;
+        }
+        
+        questionDiv.innerHTML = questionHTML;
+        container.appendChild(questionDiv);
+    });
+    
+    document.getElementById('submit-quick-quiz').classList.remove('d-none');
+}
+
+document.getElementById('submit-quick-quiz').addEventListener('click', function() {
+    // 收集答案
+    quickQuizData.forEach((question, index) => {
+        const inputs = document.querySelectorAll(`[name="qq${index}"]`);
+        const selectedInput = Array.from(inputs).find(input => input.checked);
+        userQuickAnswers[index] = selectedInput ? selectedInput.value : null;
+    });
+    
+    // 顯示結果
+    showQuickQuizResults();
+});
+
+function showQuickQuizResults() {
+    let correctCount = 0;
+    const totalQuestions = quickQuizData.length;
+    
+    const resultDiv = document.getElementById('quiz-result');
+    resultDiv.innerHTML = '';
+    
+    quickQuizData.forEach((question, index) => {
+        const userAnswer = userQuickAnswers[index];
+        let isCorrect = false;
+        
+        if (question.type === 'true_false') {
+            isCorrect = (userAnswer === 'true') === question.correct_answer;
+        } else {
+            isCorrect = userAnswer === question.correct_answer;
+        }
+        
+        if (isCorrect) correctCount++;
+        
+        const questionResult = document.createElement('div');
+        questionResult.className = `mb-2 p-2 border rounded ${isCorrect ? 'border-success bg-light' : 'border-danger bg-light'}`;
+        questionResult.innerHTML = `
+            <small>
+                <strong>第${index + 1}題:</strong> ${isCorrect ? '✓ 正確' : '✗ 錯誤'}<br>
+                <strong>您的答案:</strong> ${userAnswer || '未作答'}<br>
+                <strong>正確答案:</strong> ${question.correct_answer}<br>
+                ${question.explanation ? `<strong>解析:</strong> ${question.explanation}` : ''}
+            </small>
+        `;
+        resultDiv.appendChild(questionResult);
+    });
+    
+    const scorePercentage = Math.round((correctCount / totalQuestions) * 100);
+    const scoreHeader = document.createElement('div');
+    scoreHeader.className = 'alert alert-primary mb-2';
+    scoreHeader.innerHTML = `<strong>測驗結果：答對 ${correctCount}/${totalQuestions} 題，得分 ${scorePercentage}%</strong>`;
+    resultDiv.insertBefore(scoreHeader, resultDiv.firstChild);
+    
+    resultDiv.classList.remove('d-none');
+    document.getElementById('submit-quick-quiz').classList.add('d-none');
+    document.getElementById('reset-quick-quiz').classList.remove('d-none');
+}
+
+document.getElementById('reset-quick-quiz').addEventListener('click', function() {
+    userQuickAnswers = {};
+    document.getElementById('quiz-result').classList.add('d-none');
+    document.getElementById('submit-quick-quiz').classList.remove('d-none');
+    document.getElementById('reset-quick-quiz').classList.add('d-none');
+    
+    // 清除所有選擇
+    document.querySelectorAll('input[type="radio"]').forEach(input => input.checked = false);
+});
+{% endif %}
+
 // 載入相關題目
 fetch(`/api/questions?document_id={{ document.id }}`)
     .then(response => response.json())
@@ -96,4 +252,24 @@ fetch(`/api/questions?document_id={{ document.id }}`)
         document.getElementById('questions-list').innerHTML = '<p class="text-danger">載入題目失敗</p>';
     });
 </script>
+
+<style>
+.form-check-input:checked {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.markdown-content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+#quick-quiz-container .border {
+    transition: all 0.3s ease;
+}
+
+#quick-quiz-container .border:hover {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.1);
+}
+</style>
 {% endblock %}
