@@ -303,14 +303,27 @@ def create_app(db_path: str = "./db.sqlite3"):
             q = db.get_question_by_id(q_id)
             if not q:
                 abort(404)
+
+            # Initialize Markdown converter with extensions for code highlighting
+            md_converter = markdown.Markdown(extensions=[
+                'codehilite',
+                'fenced_code',
+                'tables',
+                'toc'
+            ])
             
-            # 生成 Markdown 內容
+            # Generate Markdown content
             md_content = f"# {q['subject']} - 題目 #{q_id}\n\n"
             md_content += f"**來源文件:** {q.get('doc_title', '未知')}\n\n"
             md_content += f"**建立時間:** {q.get('created_at', '')}\n\n"
-            md_content += f"## 題目\n\n{q['question_text']}\n\n"
+            
+            # Convert question_text and answer_text to HTML using the Markdown converter
+            question_html = md_converter.convert(q['question_text'] or '')
+            answer_html = md_converter.convert(q['answer_text'] or '') if q['answer_text'] else ''
+
+            md_content += f"## 題目\n\n{question_html}\n\n" # Use HTML for code highlighting
             if q['answer_text']:
-                md_content += f"## 參考答案\n\n{q['answer_text']}\n\n"
+                md_content += f"## 參考答案\n\n{answer_html}\n\n" # Use HTML for code highlighting
             
             # 加入知識點
             if q.get('knowledge_points'):
@@ -318,6 +331,14 @@ def create_app(db_path: str = "./db.sqlite3"):
                 for kp in q['knowledge_points']:
                     md_content += f"- {kp['name']}\n"
                 md_content += "\n"
+
+            # Add mindmap data if available
+            doc_id = q.get('document_id')
+            if doc_id:
+                document = db.get_document_by_id(doc_id)
+                mindmap_data = document.get('mindmap') if document else None
+                if mindmap_data:
+                    md_content += f"## 心智圖\n\n```mermaid\n{mindmap_data}\n```\n\n"
             
             # 設定下載
             from flask import Response
@@ -372,6 +393,14 @@ def create_app(db_path: str = "./db.sqlite3"):
                 flash('請選擇要匯出的題目')
                 return redirect(url_for('questions'))
             
+            # Initialize Markdown converter with extensions for code highlighting
+            md_converter = markdown.Markdown(extensions=[
+                'codehilite',
+                'fenced_code',
+                'tables',
+                'toc'
+            ])
+
             # 生成批次 Markdown 內容
             md_content = "# 題庫匯出\n\n"
             md_content += f"匯出時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
@@ -382,15 +411,28 @@ def create_app(db_path: str = "./db.sqlite3"):
                     md_content += f"## 題目 {i} (ID: {q_id})\n\n"
                     md_content += f"**考科:** {q['subject']}\n\n"
                     md_content += f"**來源:** {q.get('doc_title', '未知')}\n\n"
-                    md_content += f"### 題目內容\n\n{q['question_text']}\n\n"
+                    
+                    # Convert question_text and answer_text to HTML using the Markdown converter
+                    question_html = md_converter.convert(q['question_text'] or '')
+                    answer_html = md_converter.convert(q['answer_text'] or '') if q['answer_text'] else ''
+
+                    md_content += f"### 題目內容\n\n{question_html}\n\n"
                     if q['answer_text']:
-                        md_content += f"### 參考答案\n\n{q['answer_text']}\n\n"
+                        md_content += f"### 參考答案\n\n{answer_html}\n\n"
                     
                     if q.get('knowledge_points'):
                         md_content += "### 相關知識點\n\n"
                         for kp in q['knowledge_points']:
                             md_content += f"- {kp['name']}\n"
                         md_content += "\n"
+
+                    # Add mindmap data if available
+                    doc_id = q.get('document_id')
+                    if doc_id:
+                        document = db.get_document_by_id(doc_id)
+                        mindmap_data = document.get('mindmap') if document else None
+                        if mindmap_data:
+                            md_content += f"### 心智圖\n\n```mermaid\n{mindmap_data}\n```\n\n"
                     
                     md_content += "---\n\n"
             

@@ -24,13 +24,7 @@ class ContentFlow:
         lines = [line for line in text.splitlines() if not pattern.match(line)]
         return "\n".join(lines).strip()
 
-    @staticmethod
-    def _convert_markdown_to_html_with_code_blocks(md_text: str) -> str:
-        """
-        Converts Markdown text to HTML, specifically handling fenced code blocks
-        to include Prism.js compatible classes.
-        """
-        return markdown.markdown(md_text, extensions=['fenced_code', 'nl2br', 'tables'])
+    
     
     def process_file(self, file_path: str, filename: str, suggested_subject: str = None) -> Dict[str, Any]:
         """處理檔案的統一入口點"""
