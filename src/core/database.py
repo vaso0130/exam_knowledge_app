@@ -472,3 +472,23 @@ class DatabaseManager:
                 subject_map[subject] = []
             subject_map[subject].append({"id": point_id, "name": name, "question_count": count})
         return subject_map
+
+    def get_all_knowledge_points(self) -> List[tuple]:
+        """取得所有知識點（簡單格式，用於相容性）"""
+        self.cursor.execute('''
+            SELECT id, name, subject, description
+            FROM knowledge_points
+            ORDER BY subject, name
+        ''')
+        return self.cursor.fetchall()
+
+    def get_questions_by_knowledge_point(self, knowledge_point_id: int) -> List[tuple]:
+        """取得某個知識點相關的所有題目"""
+        self.cursor.execute('''
+            SELECT q.id, q.subject, q.title, q.question_text, q.answer, q.explanation
+            FROM questions q
+            JOIN question_knowledge_links qkl ON q.id = qkl.question_id
+            WHERE qkl.knowledge_point_id = ?
+            ORDER BY q.id
+        ''', (knowledge_point_id,))
+        return self.cursor.fetchall()

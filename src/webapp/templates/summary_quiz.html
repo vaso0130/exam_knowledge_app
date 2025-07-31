@@ -1,0 +1,364 @@
+{% extends 'layout.html' %}
+{% block title %}學習摘要測驗 - 考題知識整理系統{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="text-center mb-5">
+            <h1 class="display-4 mb-4">📝 學習摘要測驗</h1>
+            <p class="lead text-muted">根據知識點生成個人化測驗，快速檢驗學習成果</p>
+        </div>
+
+        <!-- 測驗設定區域 -->
+        <div class="card mb-4" id="quiz-setup">
+            <div class="card-header">
+                <h3 class="card-title mb-0">📋 測驗設定</h3>
+            </div>
+            <div class="card-body">
+                <form id="quiz-form">
+                    <!-- 知識點選擇 -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">選擇知識點 <span class="text-danger">*</span></label>
+                        <div class="row">
+                            {% if knowledge_points %}
+                                {% for kp in knowledge_points %}
+                                <div class="col-md-6 col-lg-4 mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="{{ kp[0] }}" id="kp_{{ kp[0] }}" name="knowledge_points">
+                                        <label class="form-check-label" for="kp_{{ kp[0] }}">
+                                            <strong>{{ kp[1] }}</strong>
+                                            {% if kp[2] %}<small class="text-muted">({{ kp[2] }})</small>{% endif %}
+                                        </label>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="col-12">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle"></i>
+                                        目前沒有可用的知識點。請先<a href="/upload" class="alert-link">上傳學習資料</a>來建立知識點。
+                                    </div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- 測驗類型選擇 -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label for="quiz_type" class="form-label fw-bold">測驗類型</label>
+                            <select class="form-select" id="quiz_type" name="quiz_type">
+                                <option value="multiple_choice">選擇題</option>
+                                <option value="true_false">是非題</option>
+                                <option value="fill_blank">填空題</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="num_questions" class="form-label fw-bold">題目數量</label>
+                            <select class="form-select" id="num_questions" name="num_questions">
+                                <option value="3">3 題</option>
+                                <option value="5" selected>5 題</option>
+                                <option value="10">10 題</option>
+                                <option value="15">15 題</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 生成按鈕 -->
+                    <div class="text-center">
+                        <button type="submit" class="btn btn-warning btn-lg" id="generate-btn">
+                            <i class="fas fa-magic"></i> 生成測驗
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 載入中提示 -->
+        <div class="card d-none" id="loading-card">
+            <div class="card-body text-center py-5">
+                <div class="spinner-border text-warning mb-3" role="status">
+                    <span class="visually-hidden">載入中...</span>
+                </div>
+                <h4>🧠 AI 正在生成測驗題目...</h4>
+                <p class="text-muted">請稍候，這可能需要幾秒鐘的時間</p>
+            </div>
+        </div>
+
+        <!-- 測驗區域 -->
+        <div class="card d-none" id="quiz-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title mb-0">🎯 開始測驗</h3>
+                <button class="btn btn-outline-secondary btn-sm" id="restart-btn">
+                    <i class="fas fa-redo"></i> 重新設定
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="quiz-content">
+                    <!-- 測驗題目將在這裡顯示 -->
+                </div>
+                <div class="text-center mt-4">
+                    <button class="btn btn-success btn-lg d-none" id="submit-quiz-btn">
+                        <i class="fas fa-check"></i> 提交答案
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 結果區域 -->
+        <div class="card d-none" id="result-card">
+            <div class="card-header">
+                <h3 class="card-title mb-0">📊 測驗結果</h3>
+            </div>
+            <div class="card-body">
+                <div id="result-content">
+                    <!-- 結果將在這裡顯示 -->
+                </div>
+                <div class="text-center mt-4">
+                    <button class="btn btn-primary" id="new-quiz-btn">
+                        <i class="fas fa-plus"></i> 新測驗
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentQuiz = null;
+let userAnswers = {};
+
+document.getElementById('quiz-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    // 取得選擇的知識點
+    const selectedKnowledge = Array.from(document.querySelectorAll('input[name="knowledge_points"]:checked'))
+        .map(cb => parseInt(cb.value));
+    
+    if (selectedKnowledge.length === 0) {
+        alert('請至少選擇一個知識點！');
+        return;
+    }
+    
+    const quizType = document.getElementById('quiz_type').value;
+    const numQuestions = parseInt(document.getElementById('num_questions').value);
+    
+    // 顯示載入中
+    document.getElementById('quiz-setup').classList.add('d-none');
+    document.getElementById('loading-card').classList.remove('d-none');
+    
+    try {
+        const response = await fetch('/generate-quiz', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                knowledge_points: selectedKnowledge,
+                quiz_type: quizType,
+                num_questions: numQuestions
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        currentQuiz = data;
+        userAnswers = {};
+        
+        // 隱藏載入中，顯示測驗
+        document.getElementById('loading-card').classList.add('d-none');
+        document.getElementById('quiz-card').classList.remove('d-none');
+        
+        // 渲染測驗題目
+        renderQuiz(data);
+        
+    } catch (error) {
+        console.error('生成測驗失敗:', error);
+        alert('生成測驗失敗: ' + error.message);
+        
+        // 回到設定頁面
+        document.getElementById('loading-card').classList.add('d-none');
+        document.getElementById('quiz-setup').classList.remove('d-none');
+    }
+});
+
+function renderQuiz(quiz) {
+    const content = document.getElementById('quiz-content');
+    content.innerHTML = '';
+    
+    quiz.questions.forEach((question, index) => {
+        const questionDiv = document.createElement('div');
+        questionDiv.className = 'mb-4 p-3 border rounded';
+        
+        let questionHTML = `
+            <h5 class="mb-3">第 ${index + 1} 題</h5>
+            <p class="fw-bold">${question.question}</p>
+        `;
+        
+        if (quiz.quiz_type === 'multiple_choice') {
+            questionHTML += '<div class="mt-3">';
+            question.options.forEach((option, optIndex) => {
+                const optionValue = option.split('.')[0].trim();
+                questionHTML += `
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="radio" name="q${question.id}" value="${optionValue}" id="q${question.id}_${optIndex}">
+                        <label class="form-check-label" for="q${question.id}_${optIndex}">
+                            ${option}
+                        </label>
+                    </div>
+                `;
+            });
+            questionHTML += '</div>';
+        } else if (quiz.quiz_type === 'true_false') {
+            questionHTML += `
+                <div class="mt-3">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="q${question.id}" value="true" id="q${question.id}_true">
+                        <label class="form-check-label" for="q${question.id}_true">是</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="q${question.id}" value="false" id="q${question.id}_false">
+                        <label class="form-check-label" for="q${question.id}_false">否</label>
+                    </div>
+                </div>
+            `;
+        } else { // fill_blank
+            questionHTML += `
+                <div class="mt-3">
+                    <input type="text" class="form-control" name="q${question.id}" placeholder="請輸入答案">
+                </div>
+            `;
+        }
+        
+        questionDiv.innerHTML = questionHTML;
+        content.appendChild(questionDiv);
+    });
+    
+    document.getElementById('submit-quiz-btn').classList.remove('d-none');
+}
+
+document.getElementById('submit-quiz-btn').addEventListener('click', function() {
+    // 收集答案
+    currentQuiz.questions.forEach(question => {
+        const inputs = document.querySelectorAll(`[name="q${question.id}"]`);
+        
+        if (currentQuiz.quiz_type === 'fill_blank') {
+            userAnswers[question.id] = inputs[0].value.trim();
+        } else {
+            const selectedInput = Array.from(inputs).find(input => input.checked);
+            userAnswers[question.id] = selectedInput ? selectedInput.value : null;
+        }
+    });
+    
+    // 計算結果
+    showResults();
+});
+
+function showResults() {
+    let correctCount = 0;
+    const totalQuestions = currentQuiz.questions.length;
+    
+    // 隱藏測驗，顯示結果
+    document.getElementById('quiz-card').classList.add('d-none');
+    document.getElementById('result-card').classList.remove('d-none');
+    
+    const resultContent = document.getElementById('result-content');
+    resultContent.innerHTML = '';
+    
+    // 計算分數
+    currentQuiz.questions.forEach((question, index) => {
+        const userAnswer = userAnswers[question.id];
+        let isCorrect = false;
+        
+        if (currentQuiz.quiz_type === 'true_false') {
+            isCorrect = (userAnswer === 'true') === question.correct_answer;
+        } else if (currentQuiz.quiz_type === 'fill_blank') {
+            isCorrect = userAnswer && userAnswer.toLowerCase().includes(question.correct_answer.toLowerCase());
+        } else {
+            isCorrect = userAnswer === question.correct_answer;
+        }
+        
+        if (isCorrect) correctCount++;
+        
+        // 顯示每題結果
+        const resultDiv = document.createElement('div');
+        resultDiv.className = `mb-4 p-3 border rounded ${isCorrect ? 'border-success bg-light' : 'border-danger bg-light'}`;
+        
+        resultDiv.innerHTML = `
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h6 class="mb-0">第 ${index + 1} 題</h6>
+                <span class="badge ${isCorrect ? 'bg-success' : 'bg-danger'}">
+                    ${isCorrect ? '✓ 正確' : '✗ 錯誤'}
+                </span>
+            </div>
+            <p class="fw-bold">${question.question}</p>
+            <p><strong>您的答案：</strong>${userAnswer || '未作答'}</p>
+            <p><strong>正確答案：</strong>${question.correct_answer}</p>
+            <p><strong>解析：</strong>${question.explanation}</p>
+        `;
+        
+        resultContent.appendChild(resultDiv);
+    });
+    
+    // 顯示總分
+    const scorePercentage = Math.round((correctCount / totalQuestions) * 100);
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = 'alert alert-info text-center mb-4';
+    scoreDiv.innerHTML = `
+        <h4>🎯 測驗結果</h4>
+        <p class="mb-0">答對 ${correctCount} / ${totalQuestions} 題，得分：${scorePercentage}%</p>
+    `;
+    resultContent.insertBefore(scoreDiv, resultContent.firstChild);
+}
+
+// 重新開始按鈕
+document.getElementById('restart-btn').addEventListener('click', function() {
+    document.getElementById('quiz-card').classList.add('d-none');
+    document.getElementById('result-card').classList.add('d-none');
+    document.getElementById('quiz-setup').classList.remove('d-none');
+    
+    // 重設表單
+    document.getElementById('quiz-form').reset();
+    currentQuiz = null;
+    userAnswers = {};
+});
+
+document.getElementById('new-quiz-btn').addEventListener('click', function() {
+    document.getElementById('result-card').classList.add('d-none');
+    document.getElementById('quiz-setup').classList.remove('d-none');
+    
+    // 重設表單
+    document.getElementById('quiz-form').reset();
+    currentQuiz = null;
+    userAnswers = {};
+});
+</script>
+
+<style>
+.form-check-input:checked {
+    background-color: #ffc107;
+    border-color: #ffc107;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+#quiz-content .border {
+    transition: all 0.3s ease;
+}
+
+#quiz-content .border:hover {
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+</style>
+{% endblock %}

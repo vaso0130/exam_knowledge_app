@@ -1,0 +1,94 @@
+{% extends 'layout.html' %}
+{% block title %}知識圖譜 - 考題知識整理系統{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-12">
+        <div class="text-center mb-5">
+            <h1 class="display-4 mb-4">🕸️ 知識圖譜</h1>
+            <p class="lead text-muted">視覺化知識點之間的關聯與依賴關係</p>
+        </div>
+
+        <!-- 功能開發中提示 -->
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <div class="display-1 mb-4">🚧</div>
+                <h3 class="mb-3">功能開發中</h3>
+                <p class="text-muted mb-4">知識圖譜視覺化功能正在開發中，將使用 D3.js 或 Cytoscape.js 來實現互動式的知識網絡視覺化。</p>
+                
+                <div class="row mt-5">
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <div class="h2 mb-3">🌐</div>
+                                <h5>知識點關聯</h5>
+                                <p class="text-muted">顯示不同知識點之間的概念連結</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <div class="h2 mb-3">📈</div>
+                                <h5>學習路徑</h5>
+                                <p class="text-muted">建議的知識點學習順序與依賴關係</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <div class="h2 mb-3">🔍</div>
+                                <h5>互動探索</h5>
+                                <p class="text-muted">點擊節點查看詳細資訊和相關題目</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5">
+                    <h4>預計功能</h4>
+                    <ul class="list-unstyled mt-3">
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> 知識點節點視覺化</li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> 知識點關聯線條</li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> 互動式節點操作</li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> 動態篩選與搜尋</li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> 不同視圖模式切換</li>
+                    </ul>
+                </div>
+
+                <a href="/" class="btn btn-primary mt-4">
+                    <i class="fas fa-arrow-left"></i> 返回首頁
+                </a>
+            </div>
+        </div>
+
+        <!-- 當前知識點列表 -->
+        {% if knowledge_points %}
+        <div class="card mt-4">
+            <div class="card-header">
+                <h4 class="card-title mb-0">📚 當前知識點</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for kp in knowledge_points %}
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card border-0 bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">{{ kp[1] }}</h6>
+                                <p class="card-text text-muted small">
+                                    科目：{{ kp[2] if kp[2] else '未分類' }}
+                                </p>
+                                <a href="/knowledge/{{ kp[0] }}" class="btn btn-sm btn-outline-primary">
+                                    查看詳情
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

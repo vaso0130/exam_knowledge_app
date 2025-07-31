@@ -493,5 +493,61 @@ def create_app(db_path: str = "./db.sqlite3"):
                 } for q in questions
             ]
         })
+
+    @app.route('/summary-quiz')
+    def summary_quiz():
+        """學習摘要測驗頁面"""
+        # 取得所有知識點作為測驗選項
+        knowledge_points = db.get_all_knowledge_points()
+        return render_template('summary_quiz.html', knowledge_points=knowledge_points)
+
+    @app.route('/generate-quiz', methods=['POST'])
+    def generate_quiz():
+        """生成測驗題目"""
+        try:
+            # 取得選擇的知識點
+            selected_knowledge = request.json.get('knowledge_points', [])
+            quiz_type = request.json.get('quiz_type', 'multiple_choice')
+            num_questions = int(request.json.get('num_questions', 5))
+            
+            if not selected_knowledge:
+                return jsonify({'error': '請選擇至少一個知識點'}), 400
+            
+            # 從資料庫取得相關的題目和知識點內容
+            knowledge_content = []
+            for kp_id in selected_knowledge:
+                kp = db.get_knowledge_point_by_id(kp_id)
+                if kp:
+                    # 取得該知識點相關的題目
+                    related_questions = db.get_questions_by_knowledge_point(kp_id)
+                    knowledge_content.append({
+                        'name': kp[1],  # 假設 name 在索引 1
+                        'description': kp[2] if len(kp) > 2 else '',  # 假設 description 在索引 2
+                        'related_questions': related_questions
+                    })
+            
+            # 使用 Gemini AI 生成測驗題目
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                quiz_data = loop.run_until_complete(
+                    flow_manager.generate_quiz_from_knowledge(
+                        knowledge_content, quiz_type, num_questions
+                    )
+                )
+                return jsonify(quiz_data)
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            return jsonify({'error': f'生成測驗時發生錯誤: {str(e)}'}), 500
+
+    @app.route('/knowledge-graph')
+    def knowledge_graph():
+        """知識圖譜視覺化頁面"""
+        # 取得所有知識點和它們的關聯
+        knowledge_points = db.get_all_knowledge_points()
+        # 這裡後續需要實作知識點之間的關聯邏輯
+        return render_template('knowledge_graph.html', knowledge_points=knowledge_points)
         
     return app
