@@ -119,10 +119,18 @@ class ContentFlow:
             for i, question in enumerate(questions, 1):
                 try:
                     print(f"  處理第 {i}/{len(questions)} 題...")
-                    
+
                     question_text = question.get('stem', '')
                     answer_text = question.get('answer', '')
                     answer_sources = None
+
+                    # 移除題目內容中可能包含的解答文字
+                    if question_text:
+                        lines = []
+                        for line in question_text.splitlines():
+                            if not any(k in line for k in ['答案', '解答', '參考答案']):
+                                lines.append(line)
+                        question_text = '\n'.join(lines)
                     
                     # 格式化題目內容，識別程式碼區塊和表格
                     if question_text:
@@ -151,7 +159,9 @@ class ContentFlow:
                         question_text=question_text,
                         answer_text=answer_text,
                         subject=subject,
-                        answer_sources=answer_sources
+                        answer_sources=answer_sources,
+                        difficulty=question.get('difficulty'),
+                        guidance_level=question.get('guidance_level')
                     )
                     
                     # 處理知識點
@@ -272,7 +282,9 @@ class ContentFlow:
                             title=question.get('title', f'模擬題{i}'),
                             subject=subject,
                             question_text=question_text,
-                            answer_text=question.get('answer', '')
+                            answer_text=question.get('answer', ''),
+                            difficulty=question.get('difficulty'),
+                            guidance_level=question.get('guidance_level')
                         )
                         
                         # 關聯問題與知識點

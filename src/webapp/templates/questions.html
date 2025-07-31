@@ -69,6 +69,7 @@
                                 <th style="width: 5%;"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()"></th>
                                 <th class="col-id">標題</th>
                                 <th class="col-subject">科目</th>
+                                <th style="width:10%;">難度</th>
                                 <th class="col-question">題目預覽</th>
                                 <th class.col-source">來源文件</th>
                                 <th class="col-action">操作</th>
@@ -87,6 +88,9 @@
                                 </td>
                                 <td>
                                     <span class="badge bg-info">{{ q.subject }}</span>
+                                </td>
+                                <td>
+                                    {{ q.difficulty or '未知' }}
                                 </td>
                                 <td>
                                     <div class="text-truncate question-preview" title="{{ q.text }}">

@@ -86,7 +86,11 @@
                     <div class="row">
                         <div class="col-md-6">
                             <strong>科目:</strong> {{ question.subject or '未分類' }}<br>
-                            <strong>來源文件:</strong> 
+                            <strong>難度:</strong> {{ question.difficulty or '未知' }}
+                            {% if question.guidance_level %}
+                                ({{ question.guidance_level }}引導)
+                            {% endif %}<br>
+                            <strong>來源文件:</strong>
                             {% if question.document_id %}
                                 <a href="{{ url_for('document_detail', doc_id=question.document_id) }}" class="text-decoration-none">
                                     📄 {{ question.doc_title or '未知' }}

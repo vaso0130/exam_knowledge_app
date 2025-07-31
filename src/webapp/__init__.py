@@ -218,9 +218,17 @@ def create_app(db_path: str = "./db.sqlite3"):
             rows = db.get_all_questions_with_source()
         questions = [
             {
-                'id': r[0], 'subject': r[1], 'title': r[2], 'text': r[3],
-                'answer': r[4], 'doc_title': r[5], 'created_at': r[6]
-            } for r in rows
+                'id': r[0],
+                'subject': r[1],
+                'title': r[2],
+                'text': r[3],
+                'answer': r[4],
+                'difficulty': r[5],
+                'guidance_level': r[6],
+                'doc_title': r[7],
+                'created_at': r[8],
+            }
+            for r in rows
         ]
         return render_template('questions.html', questions=questions, subject=subject)
 

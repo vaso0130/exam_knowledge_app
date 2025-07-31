@@ -44,6 +44,8 @@ class DatabaseManager:
                 answer_text TEXT,
                 answer_sources TEXT,
                 subject TEXT,
+                difficulty TEXT,
+                guidance_level TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 mindmap_code TEXT,
                 FOREIGN KEY (document_id) REFERENCES documents (id)
@@ -93,13 +95,27 @@ class DatabaseManager:
         except sqlite3.OperationalError:
             # 欄位已存在，忽略錯誤
             pass
-        
+
         # 為現有表新增 mindmap_code 欄位（如果不存在）
         try:
             self.cursor.execute('ALTER TABLE questions ADD COLUMN mindmap_code TEXT')
             self.conn.commit()
         except sqlite3.OperationalError:
             # 欄位已存在，忽略錯誤
+            pass
+
+        # 為現有表新增 difficulty 欄位（如果不存在）
+        try:
+            self.cursor.execute('ALTER TABLE questions ADD COLUMN difficulty TEXT')
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
+        # 為現有表新增 guidance_level 欄位（如果不存在）
+        try:
+            self.cursor.execute('ALTER TABLE questions ADD COLUMN guidance_level TEXT')
+            self.conn.commit()
+        except sqlite3.OperationalError:
             pass
         
         # 為現有表新增 original_content 欄位（如果不存在）
@@ -145,12 +161,15 @@ class DatabaseManager:
         return self.cursor.lastrowid
     
     def insert_question(self, document_id: int, title: str, question_text: str, answer_text: str = None,
-                       subject: str = None, answer_sources: str = None) -> int:
+                       subject: str = None, answer_sources: str = None,
+                       difficulty: str = None, guidance_level: str = None) -> int:
         """插入題目記錄"""
         self.cursor.execute('''
-            INSERT INTO questions (document_id, title, question_text, answer_text, subject, answer_sources)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (document_id, title, question_text, answer_text, subject, answer_sources))
+            INSERT INTO questions (document_id, title, question_text, answer_text,
+                answer_sources, subject, difficulty, guidance_level)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (document_id, title, question_text, answer_text,
+              answer_sources, subject, difficulty, guidance_level))
         
         self.conn.commit()
         return self.cursor.lastrowid
@@ -169,9 +188,18 @@ class DatabaseManager:
         return self.cursor.lastrowid
     
     def add_question(self, document_id: int, question_text: str, answer_text: str = None,
-                    subject: str = None, answer_sources: str = None) -> int:
+                    subject: str = None, answer_sources: str = None,
+                    difficulty: str = None, guidance_level: str = None) -> int:
         """添加題目記錄"""
-        return self.insert_question(document_id, question_text, answer_text, subject, answer_sources)
+        return self.insert_question(
+            document_id,
+            question_text,
+            answer_text,
+            subject,
+            answer_sources,
+            difficulty,
+            guidance_level,
+        )
     
     def get_documents_by_subject(self, subject: str) -> List[Tuple]:
         """根據科目取得文件"""
@@ -185,7 +213,8 @@ class DatabaseManager:
     def get_questions_by_document(self, document_id: int) -> List[Tuple]:
         """根據文件ID取得題目"""
         self.cursor.execute('''
-            SELECT id, document_id, question_text, answer_text, subject, created_at 
+            SELECT id, document_id, question_text, answer_text,
+                   subject, difficulty, guidance_level, created_at
             FROM questions WHERE document_id = ? ORDER BY created_at DESC
         ''', (document_id,))
         
@@ -194,7 +223,8 @@ class DatabaseManager:
     def get_questions_by_document_id(self, document_id: int) -> List[Tuple]:
         """根據文件ID取得題目（包含標題）"""
         self.cursor.execute('''
-            SELECT id, subject, title, question_text, answer_text, created_at
+            SELECT id, subject, title, question_text, answer_text,
+                   difficulty, guidance_level, created_at
             FROM questions WHERE document_id = ? ORDER BY created_at DESC
         ''', (document_id,))
         
@@ -278,7 +308,8 @@ class DatabaseManager:
     def get_all_questions_with_source(self) -> List[Tuple]:
         """取得所有題目及其來源文件資訊"""
         self.cursor.execute('''
-            SELECT q.id, q.subject, q.title, q.question_text, q.answer_text, d.title, q.created_at
+            SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
+                   q.difficulty, q.guidance_level, d.title, q.created_at
             FROM questions q
             JOIN documents d ON q.document_id = d.id
             ORDER BY q.created_at DESC
@@ -289,7 +320,8 @@ class DatabaseManager:
     def get_questions_by_subject(self, subject: str) -> List[Tuple]:
         """根據科目取得所有題目"""
         self.cursor.execute('''
-            SELECT q.id, q.subject, q.title, q.question_text, q.answer_text, d.title, q.created_at
+            SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
+                   q.difficulty, q.guidance_level, d.title, q.created_at
             FROM questions q
             JOIN documents d ON q.document_id = d.id
             WHERE q.subject = ?
@@ -302,7 +334,8 @@ class DatabaseManager:
         """搜尋題目"""
         if subject:
             self.cursor.execute('''
-                SELECT q.id, q.subject, q.title, q.question_text, q.answer_text, d.title, q.created_at
+                SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
+                       q.difficulty, q.guidance_level, d.title, q.created_at
                 FROM questions q
                 JOIN documents d ON q.document_id = d.id
                 WHERE q.subject = ? AND (q.question_text LIKE ? OR q.answer_text LIKE ?)
@@ -310,7 +343,8 @@ class DatabaseManager:
             ''', (subject, f'%{query}%', f'%{query}%'))
         else:
             self.cursor.execute('''
-                SELECT q.id, q.subject, q.title, q.question_text, q.answer_text, d.title, q.created_at
+                SELECT q.id, q.subject, q.title, q.question_text, q.answer_text,
+                       q.difficulty, q.guidance_level, d.title, q.created_at
                 FROM questions q
                 JOIN documents d ON q.document_id = d.id
                 WHERE q.question_text LIKE ? OR q.answer_text LIKE ?
@@ -337,7 +371,9 @@ class DatabaseManager:
     def get_question_by_id(self, question_id: int) -> Optional[Dict[str, Any]]:
         """根據ID取得單一問題"""
         self.cursor.execute('''
-            SELECT q.id, q.document_id, q.title, q.question_text, q.answer_text, q.answer_sources, q.subject, q.created_at, q.mindmap_code, d.title
+            SELECT q.id, q.document_id, q.title, q.question_text, q.answer_text,
+                   q.answer_sources, q.subject, q.difficulty, q.guidance_level,
+                   q.created_at, q.mindmap_code, d.title
             FROM questions q
             LEFT JOIN documents d ON q.document_id = d.id
             WHERE q.id = ?
@@ -345,7 +381,20 @@ class DatabaseManager:
         
         row = self.cursor.fetchone()
         if row:
-            keys = ["id", "document_id", "title", "question_text", "answer_text", "answer_sources", "subject", "created_at", "mindmap_code", "doc_title"]
+            keys = [
+                "id",
+                "document_id",
+                "title",
+                "question_text",
+                "answer_text",
+                "answer_sources",
+                "subject",
+                "difficulty",
+                "guidance_level",
+                "created_at",
+                "mindmap_code",
+                "doc_title",
+            ]
             question_data = dict(zip(keys, row))
             
             # 獲取關聯的知識點

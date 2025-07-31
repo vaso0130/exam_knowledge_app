@@ -482,6 +482,17 @@ class GeminiClient:
         
         content_type = parsed_content.get('content_type', 'study_material')
         subject = parsed_content.get('subject', '其他')
+        # Normalize常見科目別稱，避免分類為「其他」
+        subject_aliases = {
+            '資訊安全': '資通網路與資訊安全',
+            '資安': '資通網路與資訊安全',
+            '資通安全': '資通網路與資訊安全',
+            '網路安全': '資通網路與資訊安全',
+        }
+        for key, normalized in subject_aliases.items():
+            if key in subject:
+                subject = normalized
+                break
         items = parsed_content.get('items', [])
         
         result = {
