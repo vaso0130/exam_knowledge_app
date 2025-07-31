@@ -5,7 +5,6 @@ import time
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 import os
-from asyncio_throttle import Throttler
 from ..utils.json_parser import extract_json_from_text
 
 class GeminiClient:
@@ -717,27 +716,26 @@ guidance_level: "低"
         請直接輸出 Mermaid 代碼，不要包含任何額外的解釋或 ```mermaid ... ``` 標記。
         """
         # 對於心智圖，我們期望純文字輸出，而不是 JSON
-        async with self.throttler:
-            try:
-                # 建立一個不要求 JSON 的生成設定
-                text_generation_config = genai.types.GenerationConfig(
-                    temperature=0.3,
-                    top_p=0.9,
-                    max_output_tokens=2048,
-                )
-                response = await asyncio.to_thread(
-                    self.model.generate_content,
-                    prompt,
-                    generation_config=text_generation_config
-                )
-                # 清理回應，確保是合法的 Mermaid 代碼
-                mermaid_code = response.text.strip()
-                if not mermaid_code.startswith("mindmap"):
-                    return "mindmap\n  root((生成失敗))\n    請檢查輸入內容或 API 連線"
-                return mermaid_code
-            except Exception as e:
-                print(f"生成心智圖時發生錯誤: {e}")
-                return "mindmap\n  root((錯誤))\n    無法生成心智圖"
+        try:
+            # 建立一個不要求 JSON 的生成設定
+            text_generation_config = genai.types.GenerationConfig(
+                temperature=0.3,
+                top_p=0.9,
+                max_output_tokens=2048,
+            )
+            response = await asyncio.to_thread(
+                self.model.generate_content,
+                prompt,
+                generation_config=text_generation_config
+            )
+            # 清理回應，確保是合法的 Mermaid 代碼
+            mermaid_code = response.text.strip()
+            if not mermaid_code.startswith("mindmap"):
+                return "mindmap\n  root((生成失敗))\n    請檢查輸入內容或 API 連線"
+            return mermaid_code
+        except Exception as e:
+            print(f"生成心智圖時發生錯誤: {e}")
+            return "mindmap\n  root((錯誤))\n    無法生成心智圖"
 
     async def split_exam_paper(self, exam_text: str) -> List[Dict[str, Any]]:
         """自動分割考卷內容為個別題目"""
@@ -979,13 +977,12 @@ guidance_level: "低"
                 # 不設定 response_mime_type，讓它返回純文字
             )
             
-            async with self.throttler:
-                response = await asyncio.to_thread(
-                    model.generate_content,
-                    prompt,
-                    generation_config=config
-                )
-                formatted_content = response.text if response.text else raw_question
+            response = await asyncio.to_thread(
+                model.generate_content,
+                prompt,
+                generation_config=config
+            )
+            formatted_content = response.text if response.text else raw_question
             
             # 清理可能的格式化問題
             if formatted_content.startswith('```markdown'):
@@ -1051,13 +1048,12 @@ guidance_level: "低"
                 max_output_tokens=8192
             )
             
-            async with self.throttler:
-                response = await asyncio.to_thread(
-                    self.model.generate_content,
-                    prompt,
-                    generation_config=text_generation_config
-                )
-            
+            response = await asyncio.to_thread(
+                self.model.generate_content,
+                prompt,
+                generation_config=text_generation_config
+            )
+
             cleaned_content = response.text if response.text else content
             
             # 清理可能的 markdown 代碼塊標記
@@ -1122,13 +1118,12 @@ guidance_level: "低"
                 max_output_tokens=4096
             )
             
-            async with self.throttler:
-                response = await asyncio.to_thread(
-                    self.model.generate_content,
-                    prompt,
-                    generation_config=text_generation_config
-                )
-            
+            response = await asyncio.to_thread(
+                self.model.generate_content,
+                prompt,
+                generation_config=text_generation_config
+            )
+
             summary_content = response.text if response.text else ""
             
             # 清理可能的 markdown 代碼塊標記

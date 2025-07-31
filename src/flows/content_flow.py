@@ -432,10 +432,10 @@ class ContentFlow:
                 
                 # 更新文檔記錄
                 self.db.cursor.execute('''
-                    UPDATE documents 
-                    SET key_points_summary = ?, quick_quiz = ?
+                    UPDATE documents
+                    SET content = ?, key_points_summary = ?, quick_quiz = ?
                     WHERE id = ?
-                ''', (complete_learning_content, quick_quiz_json, doc_id))
+                ''', (cleaned_main_content, knowledge_summary, quick_quiz_json, doc_id))
                 self.db.conn.commit()
                 
                 print(f"    ✅ 文檔 {doc_id} 記錄更新完成")
