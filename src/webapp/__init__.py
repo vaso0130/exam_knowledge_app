@@ -73,8 +73,6 @@ def create_app(db_path: str = "./db.sqlite3"):
                     if flow_type == 'smart' or flow_type == 'content':
                         # 使用智慧內容處理
                         result = flow_manager.content_flow.process_file(file_path, filename, suggested_subject)
-                    elif flow_type == 'info':
-                        result = flow_manager.info_flow.process_file(file_path, filename, suggested_subject)
                     elif flow_type == 'answer':
                         result = flow_manager.answer_flow.process_file(file_path, filename, suggested_subject)
                     elif flow_type == 'mindmap':
@@ -424,6 +422,7 @@ def create_app(db_path: str = "./db.sqlite3"):
         question_html = md.convert(q['question_text'] or '')
         answer_html = md.convert(q['answer_text'] or '') if q['answer_text'] else ''
         
+        print(f"DEBUG: mindmap_code for question {q_id}: {q.get('mindmap_code')}")
         return render_template('question_detail.html', 
                              question=q, 
                              question_html=question_html,

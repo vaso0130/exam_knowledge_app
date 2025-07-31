@@ -440,6 +440,15 @@ class DatabaseManager:
                 WHERE id = ?
             ''', (mindmap_data, document_id))
 
+    def update_document_summary_and_quiz(self, document_id: int, summary: str, quiz: str):
+        """更新文檔的摘要和測驗"""
+        with self._cursor() as cur:
+            cur.execute('''
+                UPDATE documents
+                SET key_points_summary = ?, quick_quiz = ?
+                WHERE id = ?
+            ''', (summary, quiz, document_id))
+
     # --- 新增知識點相關方法 ---
 
     def add_knowledge_point(self, name: str, subject: str, description: str = "") -> int:

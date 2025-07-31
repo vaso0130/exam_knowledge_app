@@ -526,8 +526,7 @@ class ContentValidator:
         cleaned_lines = []
         
         for line in lines:
-            line = line.strip()
-            if line:  # 只保留非空行
+            if line.strip():  # 只保留非空行
                 cleaned_lines.append(line)
         
         return '\n'.join(cleaned_lines)

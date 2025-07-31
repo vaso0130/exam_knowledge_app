@@ -1,11 +1,7 @@
-"""
-流程管理器
-"""
-from typing import Dict, Any
+from typing import Any, List, Dict
 
 from ..core.gemini_client import GeminiClient
 from ..core.database import DatabaseManager
-from .info_flow import InfoFlow
 from .answer_flow import AnswerFlow
 from .mindmap_flow import MindmapFlow
 from .content_flow import ContentFlow
@@ -27,10 +23,7 @@ class FlowManager:
         self.answer_flow = AnswerFlow(gemini_client, db_manager)
         self.mindmap_flow = MindmapFlow(gemini_client, db_manager)
         
-        # 2. 初始化依賴其他流程的類別 (InfoFlow 依賴 ContentFlow)
-        self.info_flow = InfoFlow(gemini_client, db_manager, self.content_processor)
-        
-        # 3. 為了向後相容，建立別名
+        # 2. 為了向後相容，建立別名
         self.content_flow = self.content_processor
 
     async def process_learning_material(self, raw_text: str, subject: str, source: str) -> Dict[str, Any]:
@@ -39,7 +32,7 @@ class FlowManager:
         """
         return await self.info_flow.process_learning_material(raw_text, subject, source)
 
-    async def process_single_question(self, question_text: str, subject: str, additional_info: Dict = None) -> Dict[str, Any]:
+    async def process_single_question(self, question_text: str, subject: str, additional_info: dict = None) -> Dict[str, Any]:
         """
         處理使用者輸入的單一問題。
         """
@@ -170,7 +163,7 @@ class FlowManager:
 """
             
             # 使用 Gemini 生成測驗
-            response = await self.gemini_client.chat_with_context(quiz_prompt, [])
+            response = await self.gemini_client._generate_with_json_parsing(quiz_prompt)
             
             # 解析回應
             import json
