@@ -301,7 +301,7 @@ class GeminiClient:
             
             # 確保知識點不含破壞格式的字元，並加上引號
             safe_kp = kp_str.replace('\\', '\\\\').replace('"', '\"').replace('\n', ' ').replace('\r', '')
-            nodes_text += f"      \"{safe_kp}\"\n"
+            nodes_text += f"""      "{safe_kp}"\n"""
 
         # 準備知識點字串列表用於顯示
         safe_knowledge_points = []
