@@ -741,6 +741,14 @@ guidance_level: "低"
             )
             # 清理回應，確保是合法的 Mermaid 代碼
             mermaid_code = response.text.strip()
+            # 去除可能的程式碼區塊標記
+            if mermaid_code.startswith('```'):
+                lines = mermaid_code.split('\n')
+                if lines[0].startswith('```'):
+                    lines = lines[1:]
+                if lines and lines[-1].startswith('```'):
+                    lines = lines[:-1]
+                mermaid_code = '\n'.join(lines).strip()
             if not mermaid_code.startswith("mindmap"):
                 return "mindmap\n  root((生成失敗))\n    請檢查輸入內容或 API 連線"
             return mermaid_code

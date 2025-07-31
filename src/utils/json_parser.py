@@ -34,5 +34,9 @@ def extract_json_from_text(text: str) -> Optional[Dict[str, Any]]:
         cleaned_str = ''.join(c for c in json_str if c.isprintable() or c in '\n\t')
         return json.loads(cleaned_str)
     except json.JSONDecodeError:
-        # 如果解析失敗，返回 None
-        return None
+        # 嘗試移除尾端逗號等常見格式問題後再解析
+        cleaned_str = re.sub(r',\s*([}\]])', r'\1', cleaned_str)
+        try:
+            return json.loads(cleaned_str)
+        except json.JSONDecodeError:
+            return None
