@@ -549,5 +549,26 @@ def create_app(db_path: str = "./db.sqlite3"):
         knowledge_points = db.get_all_knowledge_points()
         # 這裡後續需要實作知識點之間的關聯邏輯
         return render_template('knowledge_graph.html', knowledge_points=knowledge_points)
+
+    @app.route('/learning-summaries')
+    def learning_summaries():
+        """學習摘要與測驗列表頁面"""
+        # 取得所有包含摘要和測驗的文件
+        documents = db.get_documents_with_summaries()
+        return render_template('learning_summaries.html', documents=documents)
+
+    @app.route('/learning-summary/<int:doc_id>')
+    def learning_summary_detail(doc_id):
+        """單一文件的學習摘要與測驗頁面"""
+        document = db.get_document_by_id(doc_id)
+        if not document:
+            abort(404)
+        
+        # 確保文件有摘要或測驗內容
+        if not document.get('key_points_summary') and not document.get('quick_quiz'):
+            flash('此文件尚未生成學習摘要與測驗', 'warning')
+            return redirect(url_for('learning_summaries'))
+            
+        return render_template('learning_summary_detail.html', document=document)
         
     return app

@@ -510,3 +510,25 @@ class DatabaseManager:
             ORDER BY q.id
         ''', (knowledge_point_id,))
         return self.cursor.fetchall()
+
+    def get_documents_with_summaries(self) -> List[Dict[str, Any]]:
+        """取得所有包含學習摘要或快速測驗的文件"""
+        self.cursor.execute('''
+            SELECT id, title, subject, created_at, key_points_summary, quick_quiz
+            FROM documents 
+            WHERE (key_points_summary IS NOT NULL AND key_points_summary != '') 
+               OR (quick_quiz IS NOT NULL AND quick_quiz != '')
+            ORDER BY created_at DESC
+        ''')
+        
+        results = []
+        for row in self.cursor.fetchall():
+            results.append({
+                'id': row[0],
+                'title': row[1],
+                'subject': row[2] or '未分類',
+                'created_at': row[3],
+                'has_summary': bool(row[4]),
+                'has_quiz': bool(row[5])
+            })
+        return results

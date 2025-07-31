@@ -1,0 +1,60 @@
+{% extends 'layout.html' %}
+{% block title %}學習摘要與測驗 - 考題知識整理系統{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="text-center mb-5">
+            <h1 class="display-4 mb-4">📖 學習摘要與測驗</h1>
+            <p class="lead text-muted">查看所有學習資料的智能摘要與快速測驗</p>
+        </div>
+
+        {% if documents %}
+        <div class="row g-4">
+            {% for doc in documents %}
+            <div class="col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ doc.title }}</h5>
+                        <p class="card-text">
+                            <small class="text-muted">
+                                科目：{{ doc.subject }}<br>
+                                建立時間：{{ doc.created_at }}<br>
+                                <span class="badge bg-info">
+                                    {% if doc.has_summary %}📝 摘要{% endif %}
+                                    {% if doc.has_quiz %}🎯 測驗{% endif %}
+                                </span>
+                            </small>
+                        </p>
+                        <div class="mt-auto">
+                            <a href="/learning-summary/{{ doc.id }}" class="btn btn-primary btn-sm">
+                                <i class="fas fa-eye"></i> 查看摘要與測驗
+                            </a>
+                            <a href="/document/{{ doc.id }}" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-file-alt"></i> 完整文件
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <div class="display-1 mb-4">📚</div>
+            <h3 class="mb-3">尚未有學習摘要</h3>
+            <p class="text-muted mb-4">請先上傳學習資料來生成智能摘要與快速測驗</p>
+            <a href="/upload" class="btn btn-primary">
+                <i class="fas fa-upload"></i> 上傳學習資料
+            </a>
+        </div>
+        {% endif %}
+
+        <!-- 返回首頁 -->
+        <div class="text-center mt-5">
+            <a href="/" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> 返回首頁
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
