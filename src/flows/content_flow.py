@@ -272,7 +272,8 @@ class ContentFlow:
             
             # 步驟2: 生成申論模擬題（存入題庫）
             print("  📝 生成申論模擬題...")
-            generated_questions = await self.gemini.generate_questions_from_text(content, subject)
+            points_text = "\n".join(f"- {kp}" for kp in all_knowledge_point_names)
+            generated_questions = await self.gemini.generate_questions_from_text(points_text, subject)
             saved_questions = []
             
             # 檢查申論題生成結果
@@ -316,20 +317,37 @@ class ContentFlow:
                                     if kp['name'] == kp_name.strip():
                                         kp_id = kp['id']
                                         break
-                                
+
                                 if not kp_id:
                                     # 如果知識點不存在，創建新的
                                     kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
-                                
+
                                 self.db.link_question_to_knowledge_point(question_id, kp_id)
                                 actual_kps.append(kp_name.strip())
-                        
+
+                        # 為每個模擬題生成心智圖
+                        question_mindmap = None
+                        try:
+                            if actual_kps:
+                                question_mindmap = await self.gemini.generate_mindmap(
+                                    f"{question.get('title', f'模擬題{i}')} - {subject}",
+                                    actual_kps
+                                )
+                                if question_mindmap:
+                                    self.db.update_question_mindmap(question_id, question_mindmap)
+                                    print(f"      ✅ 模擬題 {i} 心智圖生成完成")
+                            else:
+                                print(f"      ⚠️ 模擬題 {i} 沒有知識點，跳過心智圖生成")
+                        except Exception as e:
+                            print(f"      ❌ 模擬題 {i} 心智圖生成失敗: {e}")
+
                         saved_questions.append({
                             'id': question_id,
                             'title': question.get('title', f'模擬題{i}'),
                             'question': question_text,
                             'answer': question.get('answer', ''),
-                            'knowledge_points': actual_kps
+                            'knowledge_points': actual_kps,
+                            'mindmap': question_mindmap
                         })
                         
                     except Exception as e:
