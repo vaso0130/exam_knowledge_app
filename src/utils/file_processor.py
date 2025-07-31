@@ -124,6 +124,20 @@ class FileProcessor:
     def __init__(self):
         """初始化檔案處理器"""
         self.ocr = GoogleVisionOCR()
+
+    @staticmethod
+    def preprocess_pseudocode(text: str) -> str:
+        """簡單清理可能的虛擬碼內容以利後續格式化"""
+        if not text:
+            return ""
+
+        cleaned_lines = []
+        for line in text.splitlines():
+            line = line.replace('\u3000', ' ').replace('\xa0', ' ')
+            line = line.replace('←', '<-').replace('→', '->')
+            cleaned_lines.append(line.rstrip())
+
+        return "\n".join(cleaned_lines)
     
     @staticmethod
     def read_text_file(file_path: str) -> str:
@@ -132,7 +146,8 @@ class FileProcessor:
         # 先嘗試以 UTF-8 讀取
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                return f.read()
+                content = f.read()
+                return FileProcessor.preprocess_pseudocode(content)
         except UnicodeDecodeError:
             pass
 
@@ -140,7 +155,7 @@ class FileProcessor:
         try:
             detected = from_path(file_path).best()
             if detected:
-                return str(detected)
+                return FileProcessor.preprocess_pseudocode(str(detected))
         except Exception:
             pass
 
@@ -149,7 +164,7 @@ class FileProcessor:
         for encoding in encodings:
             try:
                 with open(file_path, 'r', encoding=encoding, errors='ignore') as f:
-                    return f.read()
+                    return FileProcessor.preprocess_pseudocode(f.read())
             except Exception:
                 continue
 
@@ -191,12 +206,14 @@ class FileProcessor:
             except Exception as ocr_error:
                 raise ValueError(f"無法讀取PDF檔案 {file_path}: 直接提取失敗({e})，OCR也失敗({ocr_error})")
         
-        return text.strip()
+        text = text.strip()
+        return self.preprocess_pseudocode(text)
     
     def read_image_file(self, file_path: str) -> str:
         """讀取圖片檔案並進行 OCR"""
         try:
-            return self.ocr.extract_text_from_image(file_path)
+            text = self.ocr.extract_text_from_image(file_path)
+            return FileProcessor.preprocess_pseudocode(text)
         except Exception as e:
             raise ValueError(f"無法讀取圖片檔案 {file_path}: {e}")
     
@@ -211,7 +228,7 @@ class FileProcessor:
             text = []
             for paragraph in doc.paragraphs:
                 text.append(paragraph.text)
-            return '\n'.join(text)
+            return FileProcessor.preprocess_pseudocode('\n'.join(text))
         except Exception as e:
             raise ValueError(f"無法讀取Word檔案 {file_path}: {e}")
     
@@ -230,7 +247,8 @@ class FileProcessor:
             for script in soup(["script", "style"]):
                 script.decompose()
             
-            return soup.get_text(separator='\n').strip()
+            text = soup.get_text(separator='\n').strip()
+            return FileProcessor.preprocess_pseudocode(text)
         except Exception as e:
             raise ValueError(f"無法讀取HTML檔案 {file_path}: {e}")
     
@@ -311,7 +329,7 @@ class FileProcessor:
             if len(cleaned_text) > max_length:
                 cleaned_text = cleaned_text[:max_length] + "\n\n... (內容過長，已截斷)"
             
-            return cleaned_text
+            return FileProcessor.preprocess_pseudocode(cleaned_text)
             
         except ImportError:
             response_text = response.text
@@ -319,7 +337,7 @@ class FileProcessor:
             max_length = 100000
             if len(response_text) > max_length:
                 response_text = response_text[:max_length] + "\n\n... (內容過長，已截斷)"
-            return response_text
+            return FileProcessor.preprocess_pseudocode(response_text)
     
     @staticmethod
     async def _fetch_url_async(url: str) -> str:
@@ -370,7 +388,7 @@ class FileProcessor:
                     full_content = full_content[:max_length] + "\n\n... (內容過長，已截斷)"
                 
                 if len(full_content.strip()) > 50:  # 確保有足夠內容
-                    return full_content
+                    return FileProcessor.preprocess_pseudocode(full_content)
             
         except ImportError:
             pass  # Playwright 未安裝，回退到傳統方法
@@ -399,14 +417,14 @@ class FileProcessor:
             if len(text_content) > max_length:
                 text_content = text_content[:max_length] + "\n\n... (內容過長，已截斷)"
             
-            return text_content
+            return FileProcessor.preprocess_pseudocode(text_content)
         except ImportError:
             response_text = response.text
             # 同樣限制長度
             max_length = 100000
             if len(response_text) > max_length:
                 response_text = response_text[:max_length] + "\n\n... (內容過長，已截斷)"
-            return response_text
+            return FileProcessor.preprocess_pseudocode(response_text)
 
     # 已移除 base64 相關圖片處理，所有圖片只用原始連結
 

@@ -699,6 +699,7 @@ guidance_level: "低"
                 kp_str = str(kp)  # 確保是字串
             
             # 確保知識點不含破壞格式的字元，並加上引號
+            kp_str = kp_str.strip()
             safe_kp = kp_str.replace('"', "'")
             nodes_text += f'      "{safe_kp}"\n'
 
@@ -727,7 +728,7 @@ guidance_level: "低"
         Mermaid 心智圖範例格式：
         mindmap
           root(("{subject}"))
-            "{nodes_text}"
+{nodes_text}
         
         請直接輸出 Mermaid 代碼，不要包含任何額外的解釋或 ```mermaid ... ``` 標記。
         另外！！！請一定要輸出Mermaid格式可以接收的文字排版，要注意縮排與標點符號。
