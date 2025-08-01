@@ -13,10 +13,10 @@
             <div class="col-md-6">
                 <div class="card h-100">
                     <div class="card-body text-center">
-                        <div class="display-1 mb-3">📁</div>
-                        <h3 class="card-title">分析題目</h3>
+                        <div class="display-1 mb-3">🗂️</div>
+                        <h3 class="card-title">資料處理</h3>
                         <p class="card-text text-muted">自動解析考題與知識點，不限於檔案，也包含文字與url</p>
-                        <a href="/upload" class="btn btn-primary">開始上傳</a>
+                        <a href="/upload" class="btn" style="background: linear-gradient(135deg, #607D8B 0%, #90A4AE 100%); border: none; color: white;">開始上傳</a>
                     </div>
                 </div>
             </div>
@@ -28,7 +28,7 @@
                         <div class="display-1 mb-3">📚</div>
                         <h3 class="card-title">題庫瀏覽</h3>
                         <p class="card-text text-muted">瀏覽已處理的題目，支援 Markdown 渲染和程式碼高亮</p>
-                        <a href="/questions" class="btn btn-primary">瀏覽題庫</a>
+                        <a href="/questions" class="btn" style="background: linear-gradient(135deg, #A52A2A 0%, #CD5C5C 100%); border: none; color: white;">瀏覽題庫</a>
                     </div>
                 </div>
             </div>
@@ -40,19 +40,19 @@
                         <div class="display-1 mb-3">🧠</div>
                         <h3 class="card-title">知識庫</h3>
                         <p class="card-text text-muted">查看知識點分類與統計，了解學習進度</p>
-                        <a href="/knowledge" class="btn btn-primary">查看知識庫</a>
+                        <a href="/knowledge" class="btn" style="background: linear-gradient(135deg, #8A2BE2 0%, #DA70D6 100%); border: none; color: white;">查看知識庫</a>
                     </div>
                 </div>
             </div>
             
-            <!-- 原始文件 -->
+            <!-- 個人筆記 -->
             <div class="col-md-6">
                 <div class="card h-100">
                     <div class="card-body text-center">
-                        <div class="display-1 mb-3">📜</div>
-                        <h3 class="card-title">原始文件</h3>
-                        <p class="card-text text-muted">查看所有已上傳的原始文件內容，對照學習更有效</p>
-                        <a href="/documents" class="btn btn-success">檢視文件</a>
+                        <div class="display-1 mb-3">📝</div>
+                        <h3 class="card-title">個人筆記</h3>
+                        <p class="card-text text-muted">整理您的個人學習筆記，建立專屬知識庫</p>
+                        <a href="/personal_notes" class="btn" style="background: linear-gradient(135deg, #ADD8E6 0%, #87CEEB 100%); border: none; color: white;">前往筆記</a>
                     </div>
                 </div>
             </div>
@@ -64,7 +64,7 @@
                         <div class="display-1 mb-3">🕸️</div>
                         <h3 class="card-title">知識圖譜</h3>
                         <p class="card-text text-muted">視覺化知識點關聯，探索概念間的連結與依賴關係</p>
-                        <a href="/knowledge-graph" class="btn btn-info">查看圖譜</a>
+                        <a href="/knowledge-graph" class="btn" style="background: linear-gradient(135deg, #36454F 0%, #708090 100%); border: none; color: white;">查看圖譜</a>
                     </div>
                 </div>
             </div>
@@ -90,7 +90,13 @@
                 <div class="col-md-3 col-sm-6">
                     <div class="card">
                         <div class="card-body text-center">
-                            <h5 class="card-title">{{ s }}</h5>
+                            <h5 class="card-title">
+                                {% if s == '資通網路與資訊安全' %}
+                                    資安網路
+                                {% else %}
+                                    {{ s }}
+                                {% endif %}
+                            </h5>
                             <a href="/questions?subject={{s}}" class="btn btn-outline-primary btn-sm">查看題目</a>
                         </div>
                     </div>

@@ -258,17 +258,45 @@ def create_app():
             abort(404)
         return render_template('document_detail.html', document=document)
 
+    @app.route('/delete_document/<int:doc_id>', methods=['POST'])
+    def delete_document(doc_id):
+        try:
+            document = db.get_document_by_id(doc_id)
+            if not document:
+                flash('文件不存在', 'danger')
+                return redirect(url_for('documents_list'))
+
+            # If it's a file, try to delete the physical file
+            if document.get('file_path') and os.path.exists(document['file_path']):
+                os.unlink(document['file_path'])
+                app.logger.info(f"Deleted physical file: {document['file_path']}")
+
+            db.delete_document(doc_id)
+            flash('文件已成功刪除', 'success')
+        except Exception as e:
+            app.logger.error(f"Deleting document {doc_id} failed: {e}", exc_info=True)
+            flash(f'刪除文件失敗: {str(e)}', 'danger')
+        return redirect(url_for('documents_list'))
+
     @app.route('/original_document/<int:doc_id>')
     def original_document(doc_id):
         document = db.get_document_by_id(doc_id)
-        if not document or not document.get('file_path') or not os.path.exists(document['file_path']):
+        if not document:
             abort(404)
         
-        from ..utils.file_processor import FileProcessor
-        content, _ = FileProcessor().process_input(document['file_path'])
+        original_content = ""
+        if document.get('source') and (document['source'].startswith('http://') or document['source'].startswith('https://')):
+            # If it's a URL source, use the content directly from the database
+            original_content = document.get('content', '')
+        elif document.get('file_path') and os.path.exists(document['file_path']):
+            # If it's a local file, read its content
+            from ..utils.file_processor import FileProcessor
+            original_content, _ = FileProcessor().process_input(document['file_path'])
+        else:
+            abort(404) # No valid source or file not found
 
         md = markdown.Markdown(extensions=['codehilite', 'fenced_code', 'tables'])
-        original_html = md.convert(content)
+        original_html = md.convert(original_content)
         
         return render_template('original_document.html', 
                              document=document, 
@@ -301,6 +329,10 @@ def create_app():
         documents = db.get_documents_with_summaries()
         return render_template('learning_summaries.html', documents=documents)
 
+    @app.route('/personal_notes')
+    def personal_notes():
+        return render_template('personal_notes.html')
+
     @app.route('/learning-summary/<int:doc_id>')
     def learning_summary_detail(doc_id):
         document = db.get_document_by_id(doc_id)
@@ -315,6 +347,10 @@ def create_app():
         document['content'] = md.convert(document.get('content', ''))
         document['key_points_summary'] = md.convert(document.get('key_points_summary', ''))
         return render_template('learning_summary_detail.html', document=document)
+
+    @app.route('/knowledge-graph')
+    def knowledge_graph():
+        return render_template('knowledge_graph.html')
 
     # --- API Routes ---
     @app.route('/api/questions')
@@ -377,5 +413,12 @@ def create_app():
             mimetype='text/markdown',
             headers={'Content-Disposition': 'attachment; filename=questions_batch_export.md'}
         )
+
+    # # Print all registered routes for debugging
+    # with app.test_request_context():
+    #     print("\n--- Registered Routes ---")
+    #     for rule in app.url_map.iter_rules():
+    #         print(f"Endpoint: {rule.endpoint}, Methods: {rule.methods}, Rule: {rule.rule}")
+    #     print("-------------------------\n")
 
     return app

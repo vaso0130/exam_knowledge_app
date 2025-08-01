@@ -242,7 +242,7 @@ class DatabaseManager:
 
     def get_all_knowledge_points_with_stats(self) -> Dict[str, List[Dict[str, Any]]]:
         with self._session_scope() as session:
-            kps = session.query(KnowledgePoint).options(relationship("questions")).all()
+            kps = session.query(KnowledgePoint).options(joinedload(KnowledgePoint.questions)).all()
             subject_map = {}
             for kp in kps:
                 if kp.subject not in subject_map:
@@ -263,7 +263,7 @@ class DatabaseManager:
 
     def get_questions_for_knowledge_point(self, knowledge_point_id: int) -> List[Dict[str, Any]]:
         with self._session_scope() as session:
-            kp = session.query(KnowledgePoint).options(relationship('questions')).filter(KnowledgePoint.id == knowledge_point_id).first()
+            kp = session.query(KnowledgePoint).options(joinedload(KnowledgePoint.questions)).filter(KnowledgePoint.id == knowledge_point_id).first()
             if not kp:
                 return []
             
@@ -326,6 +326,12 @@ class DatabaseManager:
     def batch_delete_questions(self, question_ids: List[int]):
         with self._session_scope() as session:
             session.query(Question).filter(Question.id.in_(question_ids)).delete(synchronize_session=False)
+
+    def delete_document(self, doc_id: int):
+        with self._session_scope() as session:
+            doc = session.query(Document).filter(Document.id == doc_id).first()
+            if doc:
+                session.delete(doc)
 
     def edit_question(self, q_id: int, new_subject: str, new_question: str, new_answer: str):
         with self._session_scope() as session:

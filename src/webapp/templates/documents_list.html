@@ -28,11 +28,16 @@
                                 </a>
                             </h5>
                             <small class="text-muted">
-                                科目: {{ doc.subject or '未分類' }} | 
+                                科目: {{ doc.subject or '未分類' }} |
                                 類型: {{ doc.type or '資訊' }} |
                                 {{ doc.created_at }}
                             </small>
                         </div>
+                        <button type="button" class="btn btn-danger btn-sm" title="刪除文件"
+                                data-bs-toggle="modal" data-bs-target="#deleteConfirmModal"
+                                data-doc-id="{{ doc.id }}" data-doc-title="{{ doc.title }}">
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </div>
                     <div class="card-body">
                         <p class="card-text text-muted">{{ doc.content }}</p>
@@ -94,4 +99,46 @@
     color: #007bff !important;
 }
 </style>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteConfirmModalLabel">確認刪除文件</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                您確定要刪除文件 "<span id="modalDocTitle"></span>" 嗎？這將同時刪除所有相關的題目和知識點，此操作不可逆。
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <form id="deleteDocForm" method="post">
+                    <button type="submit" class="btn btn-danger">確認刪除</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    var deleteConfirmModal = document.getElementById('deleteConfirmModal');
+    deleteConfirmModal.addEventListener('show.bs.modal', function (event) {
+        // Button that triggered the modal
+        var button = event.relatedTarget;
+        // Extract info from data-bs-* attributes
+        var docId = button.getAttribute('data-doc-id');
+        var docTitle = button.getAttribute('data-doc-title');
+
+        // Update the modal's content.
+        var modalDocTitle = deleteConfirmModal.querySelector('#modalDocTitle');
+        var deleteDocForm = deleteConfirmModal.querySelector('#deleteDocForm');
+
+        modalDocTitle.textContent = docTitle;
+        deleteDocForm.action = "{{ url_for('delete_document', doc_id=0) }}".replace('0', docId);
+    });
+</script>
 {% endblock %}
