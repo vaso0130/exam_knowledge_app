@@ -1,10 +1,8 @@
 import os
 import requests
-from typing import Optional, Tuple
+from typing import Tuple
 from charset_normalizer import from_path
-from urllib.parse import urlparse
 import tempfile
-from pathlib import Path
 
 # Google Cloud Vision OCR
 try:
@@ -306,7 +304,6 @@ class FileProcessor:
     @staticmethod
     def _fetch_url_fallback(url: str) -> str:
         """傳統方法的 URL 抓取回退方案"""
-        import requests
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -406,7 +403,6 @@ class FileProcessor:
             print(f"Playwright 爬取失敗，回退到傳統方法: {e}")
         
         # 回退到傳統的 requests + BeautifulSoup 方法
-        import requests
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
@@ -487,7 +483,7 @@ class FileProcessor:
                 try:
                     content = cls.read_text_file(input_data)
                     return content, 'txt'
-                except:
+                except Exception:
                     raise ValueError(f"不支援的檔案格式: {file_ext}")
         
         # 當作純文字處理

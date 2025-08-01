@@ -1,8 +1,5 @@
 import sqlite3
-import json
-from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
-import os
 import threading
 from contextlib import contextmanager
 
@@ -176,15 +173,15 @@ class DatabaseManager:
     
     def insert_question(self, document_id: int, title: str, question_text: str, answer_text: str = None,
                        subject: str = None, answer_sources: str = None,
-                       difficulty: str = None, guidance_level: str = None) -> int:
+                       difficulty: str = None, guidance_level: str = None, mindmap_code: str = None) -> int:
         """插入題目記錄"""
         with self._cursor() as cur:
             cur.execute('''
                 INSERT INTO questions (document_id, title, question_text, answer_text,
-                    answer_sources, subject, difficulty, guidance_level)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    answer_sources, subject, difficulty, guidance_level, mindmap_code)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (document_id, title, question_text, answer_text,
-                  answer_sources, subject, difficulty, guidance_level))
+                  answer_sources, subject, difficulty, guidance_level, mindmap_code))
             return cur.lastrowid
     
     def add_document(self, title: str, content: str, subject: str = None, 
@@ -199,18 +196,20 @@ class DatabaseManager:
             ''', (title, content, original_content, "info", subject, file_path, tags, source, key_points_summary, quick_quiz))
             return cur.lastrowid
     
-    def add_question(self, document_id: int, question_text: str, answer_text: str = None,
+    def add_question(self, document_id: int, title: str, question_text: str, answer_text: str = None,
                     subject: str = None, answer_sources: str = None,
-                    difficulty: str = None, guidance_level: str = None) -> int:
+                    difficulty: str = None, guidance_level: str = None, mindmap_code: str = None) -> int:
         """添加題目記錄"""
         return self.insert_question(
             document_id,
+            title,
             question_text,
             answer_text,
             subject,
             answer_sources,
             difficulty,
             guidance_level,
+            mindmap_code
         )
     
     def get_documents_by_subject(self, subject: str) -> List[Tuple]:
@@ -430,6 +429,15 @@ class DatabaseManager:
                 SET mindmap_code = ?
                 WHERE id = ?
             ''', (mindmap_code, question_id))
+
+    def update_question_text(self, question_id: int, question_text: str):
+        """更新問題的文本內容"""
+        with self._cursor() as cur:
+            cur.execute('''
+                UPDATE questions
+                SET question_text = ?
+                WHERE id = ?
+            ''', (question_text, question_id))
 
     def update_document_mindmap(self, document_id: int, mindmap_data: str):
         """更新文檔的心智圖資料"""

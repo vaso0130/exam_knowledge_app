@@ -3,11 +3,9 @@ Playwright 網頁爬取器
 用於取代原有的 fetch_webpage 功能，提供更強大的網頁內容擷取能力
 """
 
-import asyncio
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 import re
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -188,12 +186,16 @@ class PlaywrightScraper:
             '[id*="ads-"]'
         ]
         
+        import json
         for selector in unwanted_selectors:
             try:
                 await page.evaluate(f'''
-                    document.querySelectorAll("{selector}").forEach(el => el.remove());
+                    (() => {{
+                        document.querySelectorAll({json.dumps(selector)}).forEach(el => el.remove());
+                    }})()
                 ''')
-            except:
+            except Exception as e:
+                logger.warning(f"移除元素失敗: {e}")
                 pass  # 忽略錯誤，繼續移除其他元素
     
     async def _extract_main_content(self, page) -> str:
@@ -214,32 +216,39 @@ class PlaywrightScraper:
             '.content-wrapper'
         ]
         
+        import json
         for selector in content_selectors:
             try:
                 content = await page.evaluate(f'''
-                    const element = document.querySelector("{selector}");
-                    return element ? element.innerHTML : null;
+                    (() => {{
+                        const element = document.querySelector({json.dumps(selector)});
+                        return element ? element.innerHTML : null;
+                    }})()
                 ''')
                 if content and len(content.strip()) > 100:  # 確保內容不為空
                     return content
-            except:
+            except Exception as e:
+                logger.warning(f"提取主要內容失敗: {e}")
                 continue
         
         # 如果沒有找到主要內容容器，提取 body 內容
         try:
             content = await page.evaluate('''
-                const body = document.querySelector("body");
-                return body ? body.innerHTML : "";
+                (() => {
+                    const body = document.querySelector("body");
+                    return body ? body.innerHTML : "";
+                })()
             ''')
             return content or ""
-        except:
+        except Exception as e:
+            logger.warning(f"提取 body 內容失敗: {e}")
             return ""
     
     async def _extract_text_content(self, page) -> str:
         """提取純文字內容"""
         try:
             # 提取所有可見文字
-            text_content = await page.evaluate('''
+            text_content = await page.evaluate("""
                 () => {
                     // 移除不需要的元素
                     const unwantedElements = document.querySelectorAll('script, style, noscript, .ad, .ads, .advertisement');
@@ -257,7 +266,7 @@ class PlaywrightScraper:
                     // 回退到 body
                     return document.body.innerText || document.body.textContent || "";
                 }
-            ''')
+            """)
             
             # 清理文字內容
             if text_content:

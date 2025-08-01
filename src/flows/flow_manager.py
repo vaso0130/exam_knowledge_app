@@ -1,4 +1,4 @@
-from typing import Any, List, Dict
+from typing import Any, Dict
 
 from ..core.gemini_client import GeminiClient
 from ..core.database import DatabaseManager

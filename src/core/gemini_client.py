@@ -1,7 +1,5 @@
 import google.generativeai as genai
 import asyncio
-import json
-import time
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 import os
@@ -153,7 +151,7 @@ class GeminiClient:
                 {{
                     "title": "簡潔標題（5-8個字）",
                     "question": "純粹的題目內容（只包含情境描述和問題要求，不包含答案或分析過程）",
-                    "answer": "簡潔的參考答案（包含核心要點）",
+                    "answer": "簡潔的參考答案（包含核心要點，**必須提供，不可為空或佔位符，絕對不能出現「This is not included in the prompt.」或類似的佔位符，例如：'This is not included in the prompt.' 或 'The answer is not provided.'**）",
                     "difficulty": "簡單|中等|困難",
                     "knowledge_points": ["相關知識點1", "相關知識點2", "相關知識點3"],
                     "guidance_level": "引導程度（高|中|低）"

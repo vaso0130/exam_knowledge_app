@@ -1,9 +1,8 @@
-from flask import Flask, render_template, request, abort, redirect, url_for, flash, jsonify, Response
+from flask import Flask, render_template, request, abort, redirect, url_for, flash, jsonify
 from werkzeug.utils import secure_filename
 from ..core.database import DatabaseManager
 from ..core.gemini_client import GeminiClient
 from ..flows.flow_manager import FlowManager
-from ..utils.file_processor import FileProcessor
 import markdown
 import os
 import tempfile
@@ -30,7 +29,8 @@ def create_app(db_path: str = "./db.sqlite3"):
         try:
             import json
             return json.loads(value)
-        except:
+        except json.JSONDecodeError as e:
+            app.logger.error(f"JSON 解析錯誤: {e}")
             return []
     
     # 設定上傳檔案的限制
@@ -68,7 +68,7 @@ def create_app(db_path: str = "./db.sqlite3"):
                 try:
                     # 智慧處理：讓 AI 自動判斷內容類型和考科
                     flow_type = request.form.get('flow_type', 'smart')  # 預設使用智慧模式
-                    suggested_subject = request.form.get('subject')  # 使用者建議的考科（可選）
+                    suggested_subject = request.form.get('subject')  # 允許空值
                     
                     if flow_type == 'smart' or flow_type == 'content':
                         # 使用智慧內容處理
@@ -91,7 +91,7 @@ def create_app(db_path: str = "./db.sqlite3"):
                         content_type = result.get('content_type', '內容')
                         confidence = result.get('confidence', 0)
                         
-                        message = f'檔案處理完成！'
+                        message = '檔案處理完成！'
                         message += f'\\n偵測到考科：{detected_subject}'
                         message += f'\\n內容類型：{content_type}'
                         message += f'\\n處理了 {questions_count} 個項目'
@@ -333,12 +333,8 @@ def create_app(db_path: str = "./db.sqlite3"):
                 md_content += "\n"
 
             # Add mindmap data if available
-            doc_id = q.get('document_id')
-            if doc_id:
-                document = db.get_document_by_id(doc_id)
-                mindmap_data = document.get('mindmap') if document else None
-                if mindmap_data:
-                    md_content += f"## 心智圖\n\n```mermaid\n{mindmap_data}\n```\n\n"
+            if q.get('mindmap_code'):
+                md_content += f"## 心智圖\n\n```mermaid\n{q['mindmap_code']}\n```\n\n"
             
             # 設定下載
             from flask import Response
@@ -427,12 +423,8 @@ def create_app(db_path: str = "./db.sqlite3"):
                         md_content += "\n"
 
                     # Add mindmap data if available
-                    doc_id = q.get('document_id')
-                    if doc_id:
-                        document = db.get_document_by_id(doc_id)
-                        mindmap_data = document.get('mindmap') if document else None
-                        if mindmap_data:
-                            md_content += f"### 心智圖\n\n```mermaid\n{mindmap_data}\n```\n\n"
+                    if q.get('mindmap_code'):
+                        md_content += f"### 心智圖\n\n```mermaid\n{q['mindmap_code']}\n```\n\n"
                     
                     md_content += "---\n\n"
             
@@ -440,7 +432,7 @@ def create_app(db_path: str = "./db.sqlite3"):
             return Response(
                 md_content,
                 mimetype='text/markdown',
-                headers={'Content-Disposition': f'attachment; filename=questions_batch_export.md'}
+                headers={'Content-Disposition': 'attachment; filename=questions_batch_export.md'}
             )
             
         except Exception as e:

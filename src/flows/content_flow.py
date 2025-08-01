@@ -1,10 +1,11 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 import asyncio
 import concurrent.futures
 from src.core.gemini_client import GeminiClient
 from src.core.database import DatabaseManager
 import json
-from ..utils.markdown_utils import format_code_blocks
+from ..utils.markdown_utils import format_code_blocks, format_summary_to_markdown
+from ..flows.mindmap_flow import MindmapFlow
 
 class ContentFlow:
     """內容處理流程管理器 - 統一管理所有內容分析、問題生成和知識點關聯"""
@@ -14,6 +15,7 @@ class ContentFlow:
         self.db = db_manager
         from ..utils.file_processor import FileProcessor
         self.file_processor = FileProcessor()
+        self.mindmap_flow = MindmapFlow(gemini_client, db_manager)
 
     @staticmethod
     def _sanitize_question_text(text: str) -> str:
@@ -61,13 +63,19 @@ class ContentFlow:
         """Recursively extracts the answer string from potentially nested answer_data."""
         if isinstance(answer_data, dict):
             if 'answer' in answer_data:
-                return self._extract_answer_string(answer_data['answer'])
+                extracted_answer = self._extract_answer_string(answer_data['answer'])
+                if not extracted_answer or "not included in the prompt" in extracted_answer.lower() or "answer is not provided" in extracted_answer.lower():
+                    return "（參考答案生成失敗或未提供，請檢查原始資料或稍後重試。）"
+                return extracted_answer
             else:
                 return json.dumps(answer_data, ensure_ascii=False)
         elif isinstance(answer_data, list):
             return json.dumps(answer_data, ensure_ascii=False)
         else:
-            return str(answer_data)
+            extracted_answer = str(answer_data)
+            if not extracted_answer or "not included in the prompt" in extracted_answer.lower() or "answer is not provided" in extracted_answer.lower():
+                return "（參考答案生成失敗或未提供，請檢查原始資料或稍後重試。）"
+            return extracted_answer
 
     async def _run_async_processing(self, content: str, filename: str, suggested_subject: str = None, source_url: str = None) -> Dict[str, Any]:
         """執行異步處理流程"""
@@ -96,16 +104,10 @@ class ContentFlow:
                 result = await self._process_study_material(content, detected_subject, doc_id, parsed_data)
             
             if result.get('success'):
-                print("🗺️ 正在生成心智圖...")
-                all_kps = result.get('knowledge_points', [])
-                if all_kps:
-                    mindmap_data = await self.gemini.generate_mindmap(detected_subject, all_kps)
-                    if mindmap_data:
-                        self.db.update_document_mindmap(doc_id, mindmap_data)
-                        print(f"✅ 心智圖已成功生成並儲存至文檔 {doc_id}")
-                        result['mindmap'] = mindmap_data
-            
-            return result
+                return result
+            else:
+                # If processing failed, return the result directly
+                return result
                 
         except Exception as e:
             print(f"異步處理時發生錯誤: {e}")
@@ -141,6 +143,14 @@ class ContentFlow:
                     guidance_level=question_data.get('guidance_level')
                 )
                 print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
+                
+                # 生成心智圖
+                mindmap_code = await self.mindmap_flow.generate_and_save_mindmap(question_id)
+                
+                # 將心智圖程式碼注入問題文本
+                if mindmap_code:
+                    updated_question_text = f"{format_code_blocks(question_text)}\n\n```mermaid\n{mindmap_code}\n```"
+                    self.db.update_question_text(question_id, updated_question_text)
                 
                 
                 
@@ -189,6 +199,13 @@ class ContentFlow:
                 subject=subject,
                 difficulty=q_data.get('difficulty'),
             )
+            # 生成心智圖
+            mindmap_code = await self.mindmap_flow.generate_and_save_mindmap(question_id)
+            
+            # 將心智圖程式碼儲存到 mindmap_code 欄位
+            if mindmap_code:
+                self.db.update_question_mindmap(question_id, mindmap_code)
+
             saved_questions.append({'id': question_id, **q_data})
             
             
@@ -201,11 +218,20 @@ class ContentFlow:
                 all_knowledge_points.add(kp_name.strip())
 
         # 生成摘要和測驗
-        summary_data = await self.gemini.generate_summary(content)
+        summary_raw_data = await self.gemini.generate_summary(content)
+        # 確保 summary_data 是字典，如果不是則嘗試解析
+        if isinstance(summary_raw_data, str):
+            try:
+                summary_data = json.loads(summary_raw_data)
+            except json.JSONDecodeError:
+                summary_data = {} # 解析失敗則設為空字典
+        else:
+            summary_data = summary_raw_data
+
         quiz_data = await self.gemini.generate_quick_quiz(content, subject)
 
         # 儲存摘要和測驗
-        summary_text = json.dumps(summary_data, ensure_ascii=False) if summary_data else None
+        summary_text = format_summary_to_markdown(summary_data) if summary_data else None
         quiz_text = json.dumps(quiz_data, ensure_ascii=False) if quiz_data else None
         self.db.update_document_summary_and_quiz(doc_id, summary_text, quiz_text)
 

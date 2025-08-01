@@ -1,10 +1,7 @@
 """
 處理單一問題的流程
 """
-import os
-import hashlib
 import asyncio
-from datetime import datetime
 from typing import Dict, Any, List
 from ..core.gemini_client import GeminiClient
 from ..core.database import DatabaseManager

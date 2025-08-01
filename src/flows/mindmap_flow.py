@@ -51,18 +51,12 @@ class MindmapFlow:
                 return {'success': False, 'error': '找不到指定的問題'}
 
             # 2. 組合文本
-            text_for_mindmap = f"主題: {question_data['subject']}\n"
-            text_for_mindmap += f"問題: {question_data['question_text']}\n"
-            text_for_mindmap += f"答案: {question_data['answer_text']}\n"
-            
-            # 加入知識點
-            if question_data.get('knowledge_points'):
-                kps = ", ".join([kp['name'] for kp in question_data['knowledge_points']])
-                text_for_mindmap += f"核心知識點: {kps}\n"
+            subject = question_data['subject']
+            knowledge_points = [kp['name'] for kp in question_data.get('knowledge_points', [])]
 
             # 3. 調用 Gemini API 生成心智圖程式碼
             print("正在生成心智圖...")
-            mindmap_code = await self.gemini.generate_mindmap(text_for_mindmap)
+            mindmap_code = await self.gemini.generate_mindmap(subject, knowledge_points)
             if not mindmap_code:
                 return {'success': False, 'error': '無法生成心智圖程式碼'}
 
@@ -70,11 +64,7 @@ class MindmapFlow:
             print("正在儲存心智圖...")
             self.db.update_question_mindmap(question_id, mindmap_code)
 
-            return {
-                'success': True,
-                'question_id': question_id,
-                'mindmap_code': mindmap_code
-            }
+            return mindmap_code
 
         except Exception as e:
             return {

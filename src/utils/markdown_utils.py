@@ -1,49 +1,29 @@
 import re
+from typing import Dict, Any
 
 def format_code_blocks(text: str) -> str:
     """
     Detects code blocks in the given text, attempts to identify the language,
     and ensures proper Markdown formatting with syntax highlighting.
     """
-    lines = text.splitlines()
-    formatted_lines = []
-    in_code_block = False
-    code_block_content = []
-    lang = ""
+    def replace_code_block(match):
+        
+        lang_specifier = match.group(1)
+        code_content = match.group(2)
 
-    for line in lines:
-        if line.strip().startswith("```"):
-            if in_code_block:
-                # End of a code block
-                if not lang:
-                    # Attempt to guess language if not specified
-                    lang = guess_programming_language("\n".join(code_block_content))
-                formatted_lines.append(f"```{lang}")
-                formatted_lines.extend(code_block_content)
-                formatted_lines.append("```")
-                code_block_content = []
-                lang = ""
-                in_code_block = False
-            else:
-                # Start of a code block
-                match = re.match(r"```(\w+)?", line.strip())
-                if match and match.group(1):
-                    lang = match.group(1)
-                in_code_block = True
-        elif in_code_block:
-            code_block_content.append(line)
+        if lang_specifier:
+            lang = lang_specifier
         else:
-            formatted_lines.append(line)
+            lang = guess_programming_language(code_content)
 
-    # Handle case where code block might not be properly closed (e.g., at EOF)
-    if in_code_block:
-        if not lang:
-            lang = guess_programming_language("\n".join(code_block_content))
-        formatted_lines.append(f"```{lang}")
-        formatted_lines.extend(code_block_content)
-        formatted_lines.append("```")
+        return f"""``` {lang}
+{code_content}```"""
 
-    return "\n".join(formatted_lines)
+    # Regex to find code blocks.
+    # It captures the language specifier (optional) and then all content until the closing ```
+    # The `re.DOTALL` flag allows '.' to match newlines.
+    # We make the newline after the language specifier part of the content capture.
+    return re.sub(r"```\s*(\w*)\s*(.*?)```", replace_code_block, text, flags=re.DOTALL)
 
 def guess_programming_language(code: str) -> str:
     """
@@ -56,49 +36,125 @@ def guess_programming_language(code: str) -> str:
         return ""
 
     # Python keywords
-    if re.search(r"def |import |print\(|self\.", code):
+    if re.search(r"def |import |print\(|self\.|elif |for |while |class |async |await ", code):
         return "python"
     # C/C++ keywords
-    if re.search(r"#include|<iostream>|int main\(|printf\(|std::cout", code):
+    if re.search(r"#include|<iostream>|int main\(|printf\(|std::cout|void |class |struct |new |delete |nullptr ", code):
         return "c"
     # Pseudocode indicators
-    if re.search(r"algorithm|begin|end|read|write|if then else|for each|while do", code):
+    if re.search(r"algorithm|begin|end|read|write|if then else|for each|while do|function |procedure |return ", code):
         return "pseudocode"
     # JavaScript keywords
-    if re.search(r"function |const |let |var |console.log\(|document.getelementbyid", code):
+    if re.search(r"function |const |let |var |console\.log\(|document\.getelementbyid|=> |async |await |import |export |class ", code):
         return "javascript"
     # Java keywords
-    if re.search(r"public class |static void main|system.out.println", code):
+    if re.search(r"public class |static void main|system\.out\.println|import |package |new |try |catch |finally ", code):
         return "java"
     # SQL keywords
-    if re.search(r"select |from |where |insert into |update |delete from", code):
+    if re.search(r"select |from |where |insert into |update |delete from|create table |alter table |join |group by |order by ", code):
         return "sql"
     # HTML indicators
-    if re.search(r"<html|<body|<div|<p|<a href", code):
+    if re.search(r"<html|<body|<div|<p|<a href|<script|<style|<head|<title ", code):
         return "html"
     # CSS indicators
-    if re.search(r"body \{|\.class \{|#id \{|color:|font-size:", code):
+    if re.search(r"body \{|\.class \{|#id \{|color:|font-size:|background-color:|display:|padding:|margin: ", code):
         return "css"
     # PHP indicators
-    if re.search(r"<?php|echo |$this->", code):
+    if re.search(r"<\?php|echo |\$this->|function |class |namespace |use |require |include ", code):
         return "php"
     # Ruby indicators
-    if re.search(r"def |end |puts |require ", code):
+    if re.search(r"def |end |puts |require |class |module |do |if |unless ", code):
         return "ruby"
     # Go indicators
-    if re.search(r"package main|func main|fmt.println", code):
+    if re.search(r"package main|func main|fmt\.println|import |var |const |type |struct |interface ", code):
         return "go"
     # Swift indicators
-    if re.search(r"import swift|func |var |let |print\(", code):
+    if re.search(r"import swift|func |var |let |print\(|class |struct |enum |protocol ", code):
         return "swift"
     # Kotlin indicators
-    if re.search(r"fun main|println\(|var |val |class ", code):
+    if re.search(r"fun main|println\(|var |val |class |object |interface |import |package ", code):
         return "kotlin"
     # Rust indicators
-    if re.search(r"fn main|println!|let mut|struct ", code):
+    if re.search(r"fn main|println!|let mut|struct |enum |impl |trait |mod |use ", code):
         return "rust"
     # Shell script indicators
-    if re.search(r"#!/bin/bash|echo |if \[|for i in", code):
+    if re.search(r"#!/bin/bash|echo |if \[|for i in|fi |esac |case |while |do |done ", code):
         return "bash"
+    # JSON indicators
+    if re.search(r"\{|\}|\[|\]|\"\\w+\": ", code):
+        return "json"
+    # XML indicators
+    if re.search(r"<\?xml|<root>|<element attribute=\"value\"> ", code):
+        return "xml"
+    # Markdown indicators (basic)
+    if re.search(r"^#+ |^- |^\* |^> |^``` ", code, re.MULTILINE):
+        return "markdown"
 
-    return "" # Default to no language if not recognized
+    return "text" # Default to text if not recognized
+
+def format_summary_to_markdown(summary_data: Dict[str, Any]) -> str:
+    """
+    將AI生成的摘要JSON數據轉換為結構化的Markdown格式。
+    """
+    markdown_output = []
+
+    if not summary_data:
+        return ""
+
+    # 總結 (summary)
+    if "summary" in summary_data and summary_data["summary"]:
+        markdown_output.append(f"## 總結\n\n{summary_data["summary"]}\n")
+
+    # 核心概念 (key_concepts)
+    if "key_concepts" in summary_data and isinstance(summary_data["key_concepts"], list):
+        if summary_data["key_concepts"]:
+            markdown_output.append("## 核心概念\n")
+            for concept in summary_data["key_concepts"]:
+                if isinstance(concept, dict) and "name" in concept and "description" in concept:
+                    markdown_output.append(f"- **{concept["name"]}**: {concept["description"]}")
+                elif isinstance(concept, str):
+                    markdown_output.append(f"- {concept}")
+            markdown_output.append("") # Add a newline for spacing
+
+    # 技術術語 (technical_terms)
+    if "technical_terms" in summary_data and isinstance(summary_data["technical_terms"], list):
+        if summary_data["technical_terms"]:
+            markdown_output.append("## 技術術語\n")
+            for term in summary_data["technical_terms"]:
+                if isinstance(term, dict) and "name" in term and "description" in term:
+                    markdown_output.append(f"- **{term["name"]}**: {term["description"]}")
+                elif isinstance(term, str):
+                    markdown_output.append(f"- {term}")
+            markdown_output.append("")
+
+    # 分類資訊 (classification_info)
+    if "classification_info" in summary_data and isinstance(summary_data["classification_info"], list):
+        if summary_data["classification_info"]:
+            markdown_output.append("## 分類資訊\n")
+            for info in summary_data["classification_info"]:
+                if isinstance(info, dict) and "name" in info and "description" in info:
+                    markdown_output.append(f"- **{info["name"]}**: {info["description"]}")
+                elif isinstance(info, str):
+                    markdown_output.append(f"- {info}")
+            markdown_output.append("")
+
+    # 實務應用 (practical_applications)
+    if "practical_applications" in summary_data and isinstance(summary_data["practical_applications"], list):
+        if summary_data["practical_applications"]:
+            markdown_output.append("## 實務應用\n")
+            for app in summary_data["practical_applications"]:
+                if isinstance(app, dict) and "name" in app and "description" in app:
+                    markdown_output.append(f"- **{app["name"]}**: {app["description"]}")
+                elif isinstance(app, str):
+                    markdown_output.append(f"- {app}")
+            markdown_output.append("")
+
+    # 條列式重點 (bullets)
+    if "bullets" in summary_data and isinstance(summary_data["bullets"], list):
+        if summary_data["bullets"]:
+            markdown_output.append("## 條列式重點\n")
+            for bullet in summary_data["bullets"]:
+                markdown_output.append(f"- {bullet}")
+            markdown_output.append("")
+
+    return "\n".join(markdown_output).strip()
