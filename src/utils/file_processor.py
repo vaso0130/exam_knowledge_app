@@ -129,21 +129,17 @@ class FileProcessor:
         if not text:
             return ""
 
-        import unicodedata
+        
 
         cleaned_lines = []
         for line in text.splitlines():
-            line = line.replace('\u3000', '  ').replace('\xa0', ' ')
-            line = line.replace('←', '<-').replace('→', '->')
+            line = line.replace('\u3000', '  ').replace('\xa0', ' ') # Replace common non-breaking spaces
+            line = line.replace('←', '<-').replace('→', '->') # Replace common pseudocode arrows
 
-            # 移除私用區與控制字元，避免截斷或異常符號
-            filtered = []
-            for ch in line:
-                cat = unicodedata.category(ch)
-                if cat.startswith('C') and ch not in ('\n', '\t'):
-                    continue
-                filtered.append(ch)
-            cleaned_lines.append(''.join(filtered).rstrip())
+            # Remove only null characters, which can cause issues
+            line = line.replace('\x00', '')
+
+            cleaned_lines.append(line) # Do not rstrip, as trailing spaces might be part of indentation
 
         return "\n".join(cleaned_lines)
     

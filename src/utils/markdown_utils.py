@@ -15,16 +15,47 @@ def detect_and_fence_indented_code(text: str) -> str:
     def flush_buffer():
         nonlocal buffer
         if buffer:
+            # Determine if the buffer content is likely a code block
+            # Criteria: at least two lines, and either all lines are indented,
+            # or it contains common programming keywords.
+            is_code_block = False
             if len(buffer) >= 2:
                 block_text = "\n".join(buffer)
-                indent_only = all(re.match(r"^(\t| {2,})", ln) for ln in buffer)
-                if indent_only or re.search(r"\b(for|if|while|BEGIN)\b", block_text, re.IGNORECASE):
-                    result.append("```pseudocode")
-                    result.extend(buffer)
-                    result.append("```")
-                    buffer = []
-                    return
-            result.extend(buffer)
+
+                # Criteria 1: Explicitly indented lines (at least 2 spaces or 1 tab)
+                indent_check = all(re.match(r"^( |\t){2,}", line) for line in buffer if line.strip())
+
+                # Criteria 2: Contains common programming keywords, even if not perfectly indented
+                keyword_check = re.search(
+                    r"\b(for|if|while|BEGIN|END|PRINT|READ|FUNCTION|PROCEDURE|RETURN|DECLARE|SET|GET|CALL|LOOP|UNTIL|DO|THEN|ELSE|ELIF|CASE|SWITCH|BREAK|CONTINUE|EXIT|INPUT|OUTPUT)\b",
+                    block_text,
+                    re.IGNORECASE
+                )
+
+                # Criteria 3: Single line that looks like code (e.g., "n←n−1")
+                single_line_code_check = len(buffer) == 1 and re.search(r"[a-zA-Z0-9]+\s*[\+\-\*\/=<>!←→]+\s*[a-zA-Z0-9]+", block_text)
+
+                if indent_check or keyword_check or single_line_code_check:
+                    is_code_block = True
+
+            if is_code_block:
+                result.append("```pseudocode")
+                # Re-indent the code if it's a single line or poorly indented
+                if len(buffer) == 1 or not indent_check:
+                    # Attempt to re-indent to a standard 4-space indentation
+                    re_indented_buffer = []
+                    for line in buffer:
+                        stripped_line = line.lstrip()
+                        if stripped_line: # Only indent non-empty lines
+                            re_indented_buffer.append("    " + stripped_line)
+                        else:
+                            re_indented_buffer.append("") # Preserve empty lines
+                    result.extend(re_indented_buffer)
+                else:
+                    result.extend(buffer)  # Preserve original indentation if already well-indented
+                result.append("```")
+            else:
+                result.extend(buffer)
             buffer = []
 
     for line in lines:
@@ -57,7 +88,10 @@ def format_code_blocks(text: str) -> str:
         else:
             lang = guess_programming_language(code_content)
 
-        return f"""```{lang}\n{code_content}```"""
+        return f"""```{
+lang}
+{
+code_content}```"""
 
     # Regex to find code blocks.
     # It captures the language specifier (optional) and then all content until the closing ```
@@ -84,7 +118,7 @@ def format_answer_text(text: str) -> str:
         pass
 
     if not cleaned.startswith('###'):
-        cleaned = f"### 參考答案\n\n{cleaned}"
+        cleaned = f"###\n\n{cleaned}"
 
     return cleaned
 
@@ -108,10 +142,10 @@ def guess_programming_language(code: str) -> str:
     if re.search(r"algorithm|begin|end|read|write|if then else|for each|while do|function |procedure |return ", code):
         return "pseudocode"
     # JavaScript keywords
-    if re.search(r"function |const |let |var |console\.log\(|document\.getelementbyid|=> |async |await |import |export |class ", code):
+    if re.search(r"function |const |let |var |console\\.log\(|document\\.getelementbyid|=> |async |await |import |export |class ", code):
         return "javascript"
     # Java keywords
-    if re.search(r"public class |static void main|system\.out\.println|import |package |new |try |catch |finally ", code):
+    if re.search(r"public class |static void main|system\\.out\\.println|import |package |new |try |catch |finally ", code):
         return "java"
     # SQL keywords
     if re.search(r"select |from |where |insert into |update |delete from|create table |alter table |join |group by |order by ", code):
@@ -120,16 +154,16 @@ def guess_programming_language(code: str) -> str:
     if re.search(r"<html|<body|<div|<p|<a href|<script|<style|<head|<title ", code):
         return "html"
     # CSS indicators
-    if re.search(r"body \{|\.class \{|#id \{|color:|font-size:|background-color:|display:|padding:|margin: ", code):
+    if re.search(r"body \{|\\.class \{|#id \{|color:|font-size:|background-color:|display:|padding:|margin: ", code):
         return "css"
     # PHP indicators
-    if re.search(r"<\?php|echo |\$this->|function |class |namespace |use |require |include ", code):
+    if re.search(r"<\?php|echo |\\\\$this->|function |class |namespace |use |require |include ", code):
         return "php"
     # Ruby indicators
     if re.search(r"def |end |puts |require |class |module |do |if |unless ", code):
         return "ruby"
     # Go indicators
-    if re.search(r"package main|func main|fmt\.println|import |var |const |type |struct |interface ", code):
+    if re.search(r"package main|func main|fmt\\.println|import |var |const |type |struct |interface ", code):
         return "go"
     # Swift indicators
     if re.search(r"import swift|func |var |let |print\(|class |struct |enum |protocol ", code):
@@ -144,10 +178,10 @@ def guess_programming_language(code: str) -> str:
     if re.search(r"#!/bin/bash|echo |if \[|for i in|fi |esac |case |while |do |done ", code):
         return "bash"
     # JSON indicators
-    if re.search(r"\{|\}|\[|\]|\"\\w+\": ", code):
+    if re.search(r"\{|\}|\[|\]|\"\w+\": ", code):
         return "json"
     # XML indicators
-    if re.search(r"<\?xml|<root>|<element attribute=\"value\"> ", code):
+    if re.search(r"<\?xml|<root>|<element attribute=\\\"value\\\"> ", code):
         return "xml"
     # Markdown indicators (basic)
     if re.search(r"^#+ |^- |^\* |^> |^``` ", code, re.MULTILINE):

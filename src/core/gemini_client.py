@@ -66,7 +66,7 @@ class GeminiClient:
         - 只有明確的題號分隔（如「第一題」、「1.」、「題目二」）才分割
         - 同一題目內的不同部分（如「(10分)」、「請分析」、「請說明」）應合併為一題
         - 程式碼和相關問題應該保持在同一題中
-        - **程式碼/虛擬碼格式**：如果題目包含程式碼或虛擬碼，請務必使用 Markdown 的 fenced code blocks (```) 包裹起來，並指定語言（如 ````python` 或 ````pseudocode`）。
+        - **程式碼/虛擬碼格式**：如果題目包含程式碼或虛擬碼，請務必使用 Markdown 的 fenced code blocks (```) 包裹起來，並指定語言（如 ````python` 或 ````pseudocode`）。**特別注意：請務必保留原始程式碼/虛擬碼的縮排和換行，如果原始格式有誤（例如縮排丟失或單行顯示），請根據程式語言的慣例進行正確的排版和縮排，使其易於閱讀。
         - **關聯題目處理**：如果題目提到「承上題」、「接上題」、「延續上題」、「根據上題」、「基於前題」等字樣，應將相關聯的題目合併為同一題
         - **連續性題目**：如果某題的解答需要依賴前一題的結果或內容，應考慮將它們視為同一題的不同部分
         - **合併方式**：合併題目時，使用較前面的題號，標題可以概括兩題內容，stem 包含兩題的完整文字
@@ -96,6 +96,43 @@ class GeminiClient:
         2. 檢查每個題目是否包含關聯性關鍵字（承上題、接上題、延續上題、根據上題、基於前題等）
         3. 如果發現關聯性關鍵字，將該題與前一題合併為一個項目
         4. 對每個最終的題目項目進行難度分級
+        5. 有關包含程式碼題目說明，假設碰上這種問題：「根據下列的虛擬碼,若n=21則傳回的答案為何?請說明。其中 floor() 為數學上的地板函數(floor function)。(20分) function splitSum(n: integer) returns integer if n <= 1 then return 1 a<- floor(n/2) b<- floor(n/3) return splitSum(a) + splitSum(b)」，其中包含了虛擬碼，應該是因為前面處理檔案時沒有處理好，導致虛擬碼/程式碼變成一整排，切記一定把它變成程式碼/虛擬碼區塊，並且一定要把排版/縮排整理到正常樣子，如以下樣子：
+        
+        根據下列的虛擬碼,若n=21則傳回的答案為何?請說明。其中 floor() 為數學上的地板函數(floor function)。(20分)
+        ```
+        function splitSum(n: integer) returns integer
+            if n <= 1 then 
+                return 1
+            a<- floor(n/2)
+            b<- floor(n/3)
+                return splitSum(a) + splitSum(b)
+        ```
+
+        像這樣正確的虛擬碼程式碼縮排，讀者才知道題目在問什麼，才方便閱讀。
+        
+        6. 有關包含程式碼題目說明，假設碰上這種問題：根據下列的虛擬碼，若n=10則傳回的答案為何?請說明。其中 floor() 為數學上的地板函數(floor function)。
+        ```
+        function splitSum(n: integer) returns integer
+        if n <= 0 then 
+        return 0
+        a<- floor(n/4)
+        b<- floor(n/5)
+        return splitSum(a) + splitSum(b)
+        ```
+        其中包含了程式碼，應該是因為前面處理檔案時沒有處理好，導致縮排消失，請試著把他縮排/排版整理到以下樣子：
+
+        根據下列的虛擬碼，若n=10則傳回的答案為何?請說明。其中 floor() 為數學上的地板函數(floor function)。
+        ```
+        function splitSum(n: integer) returns integer
+            if n <= 0 then 
+                return 0
+            a<- floor(n/4)
+            b<- floor(n/5)
+                return splitSum(a) + splitSum(b)
+        ```
+        像這樣正確的虛擬碼程式碼縮排，讀者才知道題目在問什麼，才方便閱讀。
+
+        以上第五、六點是針對虛擬碼/程式碼的特殊處理，請務必注意，不是只有示範題目才需要整理，任何題目如果有虛擬碼/程式碼，都需要這樣處理。
 
         請以JSON格式回應：
         {{
@@ -173,7 +210,7 @@ class GeminiClient:
             一個包含答案的字典，例如：{'answer': '這是詳細的回答...'}
         """
         prompt = f"""
-        你是一位頂尖的領域專家，請針對以下問題，提供一個專業、深入、且結構化的詳盡回答。
+        你是一位頂尖的領域專家，也是一個台灣國考補習班老師，請針對以下問題，提供一個專業、深入、且結構化的詳盡回答且符合台灣國考常用作答方式。
 
         **問題：**
         ```
@@ -186,7 +223,8 @@ class GeminiClient:
         3.  **專業準確**：確保所有資訊都是最新且準確的。
         4.  **程式碼/虛擬碼格式**：如果答案包含程式碼或虛擬碼，請務必使用 Markdown 的 fenced code blocks (```) 包裹起來，並指定語言（如 ````python` 或 ````pseudocode`）。
         5.  **答案內容必須是純文字字串**：即使答案內容包含多個部分或結構化資訊，最終的 `answer` 欄位值也必須是一個單一的、格式化好的 Markdown 字串，而不是巢狀的 JSON 物件。
-        6.  **列出參考來源**：若有可靠的網路資源，請提供 1-3 筆來源資料，包含 `url`、`title` 與簡短 `snippet`。
+        6.  **表格（可選）**：如果適合在作答中加入表格，請加入表格，但是不能整個答案都只有表格。
+        7.  **列出參考來源**：若有可靠的網路資源，請提供 1-3 筆來源資料，包含 `url`、`title` 與簡短 `snippet`。
 
         **請以嚴格的JSON格式回應：**
         ```json
@@ -196,7 +234,7 @@ class GeminiClient:
         }}
         ```
         """
-        return await self._generate_with_json_parsing(prompt)
+        return await self._generate_with_json_parsing(prompt) or {'answer': '', 'sources': []}
 
     async def generate_summary(self, text: str) -> Dict[str, Any]:
         """
