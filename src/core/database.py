@@ -86,6 +86,14 @@ class QuestionKnowledgeLink(Base):
     knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
 
 
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(255), unique=True, index=True)
+    password_hash = Column(String(255))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # --- Database Manager ---
 
 class DatabaseManager:
@@ -340,3 +348,22 @@ class DatabaseManager:
                 "question_text": new_question,
                 "answer_text": new_answer
             })
+
+    # --- User Management ---
+    def add_user(self, username: str, password_hash: str) -> int:
+        with self._session_scope() as session:
+            new_user = User(username=username, password_hash=password_hash)
+            session.add(new_user)
+            session.flush()
+            return new_user.id
+
+    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        with self._session_scope() as session:
+            user = session.query(User).filter(User.username == username).first()
+            if not user:
+                return None
+            return {
+                "id": user.id,
+                "username": user.username,
+                "password_hash": user.password_hash
+            }

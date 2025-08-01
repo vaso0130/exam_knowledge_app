@@ -50,6 +50,8 @@ pip install -r requirements.txt
 創建 `.env` 檔案：
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
+# 可選：指定資料庫連線字串
+DATABASE_URL=sqlite:///./db.sqlite3
 ```
 
 將 Google Cloud Vision API 金鑰檔案命名為 `google_credentials.json` 並放在專案根目錄。
@@ -57,18 +59,26 @@ GEMINI_API_KEY=your_gemini_api_key_here
 ### 3. 啟動應用
 
 ```bash
-# 啟動 Web 應用
-python web_app.py
+# 使用 Waitress 透過 WSGI 啟動 Web 應用
+python wsgi.py
 ```
 
 瀏覽器開啟：<http://localhost:5000>
+
+啟動後會先看到登入畫面，輸入帳號密碼才能使用網站內容。帳號可透過 `user_admin.py`
+ 啟動的本地管理介面新增：
+
+```bash
+python user_admin.py  # 在 http://localhost:8002 提供簡易帳號建立頁面
+```
 
 ## 📁 專案架構
 
 ```text
 exam_knowledge_app/
 ├── 🚀 啟動檔案
-│   └── web_app.py                 # Flask Web 應用程式
+│   ├── wsgi.py                    # Waitress 啟動腳本
+│   └── web_app.py                 # Flask 應用入口
 ├── 🗄️ 資料儲存
 │   ├── db.sqlite3                 # SQLite 主資料庫
 │   ├── data/                      # Markdown 檔案儲存
@@ -102,7 +112,8 @@ exam_knowledge_app/
 
 | 檔案 | 說明 |
 |------|------|
-| `web_app.py` | 啟動 Flask Web 應用 |
+| `wsgi.py` | 透過 Waitress 執行的啟動腳本 |
+| `web_app.py` | 建立 Flask 應用物件 |
 | `src/core/gemini_client.py` | Gemini API 封裝與提示組裝 |
 | `src/core/database.py` | SQLite 資料存取層 |
 | `src/flows/content_flow.py` | 學習資料與考題處理流程 |
@@ -113,6 +124,7 @@ exam_knowledge_app/
 | `src/utils/json_parser.py` | 文字中擷取 JSON 結構 |
 | `src/utils/markdown_utils.py` | Markdown 與程式碼格式化工具 |
 | `src/webapp/__init__.py` | Flask 路由與模板配置 |
+| `user_admin.py` | 本地帳號建立介面 |
 
 ## 🎯 主要功能
 
