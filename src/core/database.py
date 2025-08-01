@@ -118,6 +118,13 @@ class DatabaseManager:
             # 欄位已存在，忽略錯誤
             pass
 
+        # 為現有表新增 answer_sources 欄位（如果不存在）
+        try:
+            cur.execute('ALTER TABLE questions ADD COLUMN answer_sources TEXT')
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
         # 為現有表新增 difficulty 欄位（如果不存在）
         try:
             cur.execute('ALTER TABLE questions ADD COLUMN difficulty TEXT')
@@ -138,6 +145,13 @@ class DatabaseManager:
             self.conn.commit()
         except sqlite3.OperationalError:
             # 欄位已存在，忽略錯誤
+            pass
+
+        # 為現有表新增 source 欄位（如果不存在）
+        try:
+            cur.execute('ALTER TABLE documents ADD COLUMN source TEXT')
+            self.conn.commit()
+        except sqlite3.OperationalError:
             pass
         
         # 為現有表新增 key_points_summary 欄位（如果不存在）

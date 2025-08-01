@@ -187,11 +187,14 @@ class GeminiClient:
         4.  **程式碼/虛擬碼格式**：如果答案包含程式碼或虛擬碼，請務必使用 Markdown 的 fenced code blocks (```) 包裹起來，並指定語言（如 ````python` 或 ````pseudocode`）。
         5.  **答案內容必須是純文字字串**：即使答案內容包含多個部分或結構化資訊，最終的 `answer` 欄位值也必須是一個單一的、格式化好的 Markdown 字串，而不是巢狀的 JSON 物件。
 
-        **請以嚴格的JSON格式回應：**
+        **請以嚴格的JSON格式回應，並在可能的情況下附上 2-3 筆參考來源：**
         ```json
-        {{
-            "answer": "（在這裡填寫你詳細、結構化的專業回答）"
-        }}
+        {
+            "answer": "（在這裡填寫你詳細、結構化的專業回答）",
+            "sources": [
+                {"title": "來源標題", "url": "https://example.com", "snippet": "簡短摘錄"}
+            ]
+        }
         ```
         """
         return await self._generate_with_json_parsing(prompt)

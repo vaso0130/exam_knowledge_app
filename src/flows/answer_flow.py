@@ -19,19 +19,29 @@ class AnswerFlow:
 
     @staticmethod
     def _sanitize_question_text(text: str) -> str:
-        """移除包含解答或說明標題的行"""
+        """移除包含解答或說明標題的行，同時保留並偵測程式碼區塊"""
         if not text:
             return text
 
         import re
+        from ..utils.markdown_utils import detect_and_fence_indented_code
 
         pattern = re.compile(r"^\s*(答案|解答|參考答案|建議|說明|解析)[\s:：]", re.I)
-        lines = []
-        for line in text.splitlines():
-            if pattern.match(line):
-                continue
-            lines.append(line)
-        return "\n".join(lines).strip()
+        lines = text.splitlines()
+        sanitized_lines = []
+        in_code_block = False
+
+        for line in lines:
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+                sanitized_lines.append(line)
+            elif in_code_block:
+                sanitized_lines.append(line)
+            elif not pattern.match(line):
+                sanitized_lines.append(line)
+
+        cleaned = "\n".join(sanitized_lines).strip()
+        return detect_and_fence_indented_code(cleaned)
 
     def process_file(self, file_path: str, filename: str, subject: str) -> Dict[str, Any]:
         """處理檔案的同步包裝方法"""
