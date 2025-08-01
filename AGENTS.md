@@ -30,10 +30,11 @@
 
 | 類別 | 檔案 / 模組 | 主要修改點 |
 |------|-------------|-----------|
-| **Utils** | `markdown_utils.py` | `detect_and_fence_indented_code()` ＋ 調整 `format_code_blocks()` |
-| **Utils** | `file_processor.py` | 行首全形空格處理、停用 `lstrip()` |
+| **core** | `gemini_client.py` | 檢查或調整 `parse_exam_paper()` ＋ 檢查或調整確認提供資料來源 `generate_answer()` |
+| **Utils** | `markdown_utils.py` | 確認圖片/PDF/文字有關題幹程式碼/虛擬碼處理 |
+| **Utils** | `file_processor.py` | 確認圖片/PDF/文字有關題幹程式碼/虛擬碼處理 |
 | **DB** | `database.py` / migration | 新增或確保 `sources` 欄位／關聯表 |
-| **html** | question_detail.html | 顯示 `### 參考來源` ＋連結列表 |
+| **html** | `question_detail.html` | 確認參數傳遞，讓頁面能夠正常顯示 `📚 參考來源` ＋連結列表  |
 
 ---
 
