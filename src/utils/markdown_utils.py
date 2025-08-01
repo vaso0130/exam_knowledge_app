@@ -7,7 +7,6 @@ def format_code_blocks(text: str) -> str:
     and ensures proper Markdown formatting with syntax highlighting.
     """
     def replace_code_block(match):
-        
         lang_specifier = match.group(1)
         code_content = match.group(2)
 
@@ -16,14 +15,36 @@ def format_code_blocks(text: str) -> str:
         else:
             lang = guess_programming_language(code_content)
 
-        return f"""``` {lang}
-{code_content}```"""
+        return f"""```{lang}\n{code_content}```"""
 
     # Regex to find code blocks.
     # It captures the language specifier (optional) and then all content until the closing ```
     # The `re.DOTALL` flag allows '.' to match newlines.
     # We make the newline after the language specifier part of the content capture.
-    return re.sub(r"```\s*(\w*)\s*(.*?)```", replace_code_block, text, flags=re.DOTALL)
+    pattern = r"```\s*(\w+)?\n([\s\S]*?)```"
+    return re.sub(pattern, replace_code_block, text, flags=re.DOTALL)
+
+def format_answer_text(text: str) -> str:
+    """Clean and wrap answer content in a consistent Markdown block."""
+    if not text:
+        return ""
+
+    cleaned = text.strip()
+
+    # 嘗試解析 JSON 並取出 answer 欄位
+    try:
+        if cleaned.startswith('{'):
+            import json
+            obj = json.loads(cleaned)
+            if isinstance(obj, dict) and 'answer' in obj:
+                cleaned = str(obj['answer']).strip()
+    except Exception:
+        pass
+
+    if not cleaned.startswith('###'):
+        cleaned = f"### 參考答案\n\n{cleaned}"
+
+    return cleaned
 
 def guess_programming_language(code: str) -> str:
     """

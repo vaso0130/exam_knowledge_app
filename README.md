@@ -98,6 +98,22 @@ exam_knowledge_app/
     └── .vscode/settings.json       # VS Code 設定
 ```
 
+## 📂 主要程式檔案用途
+
+| 檔案 | 說明 |
+|------|------|
+| `web_app.py` | 啟動 Flask Web 應用 |
+| `src/core/gemini_client.py` | Gemini API 封裝與提示組裝 |
+| `src/core/database.py` | SQLite 資料存取層 |
+| `src/flows/content_flow.py` | 學習資料與考題處理流程 |
+| `src/flows/answer_flow.py` | 單一問題解析與知識點提取 |
+| `src/flows/mindmap_flow.py` | 依知識點產生心智圖 |
+| `src/flows/flow_manager.py` | 對外統一流程介面 |
+| `src/utils/file_processor.py` | 檔案/網址讀取與預處理 |
+| `src/utils/json_parser.py` | 文字中擷取 JSON 結構 |
+| `src/utils/markdown_utils.py` | Markdown 與程式碼格式化工具 |
+| `src/webapp/__init__.py` | Flask 路由與模板配置 |
+
 ## 🎯 主要功能
 
 ### 📤 內容上傳與分析
@@ -156,6 +172,18 @@ exam_knowledge_app/
 - **Google Gemini Pro**：文字分析與生成
 - **Google Cloud Vision**：圖片文字識別
 - **自然語言處理**：智慧內容理解
+
+## 📦 主要相依套件
+
+以下列出專案執行時最重要的套件，完整清單請見 `requirements.txt`。
+
+- `google-generativeai` – 與 Gemini API 溝通
+- `Flask` – 建立 Web 服務
+- `python-dotenv` – 載入環境設定
+- `google-cloud-vision` – 影像文字擷取
+- `pdf2image` – PDF 轉圖片供 OCR 使用
+- `playwright` – 進階網頁擷取
+- `markdown` – Markdown 內容處理
 
 ## 🎨 使用範例
 

@@ -6,6 +6,7 @@ from typing import Dict, Any, List
 from ..core.gemini_client import GeminiClient
 from ..core.database import DatabaseManager
 from ..utils.file_processor import FileProcessor
+from ..utils.markdown_utils import format_code_blocks, format_answer_text
 
 class AnswerFlow:
     """
@@ -138,8 +139,8 @@ class AnswerFlow:
         # 儲存問題
         question_id = self.db.add_question(
             document_id=doc_id,
-            question_text=question_text,
-            answer_text=answer_text,
+            question_text=format_code_blocks(question_text),
+            answer_text=format_code_blocks(format_answer_text(answer_text)),
             subject=subject
         )
 
