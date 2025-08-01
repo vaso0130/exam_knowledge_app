@@ -9,7 +9,8 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 from werkzeug.utils import secure_filename
-from flask import Flask, render_template, request, abort, redirect, url_for, flash, jsonify, Response
+from werkzeug.security import check_password_hash
+from flask import Flask, render_template, request, abort, redirect, url_for, flash, jsonify, Response, session
 
 from ..core.database import DatabaseManager
 from ..core.gemini_client import GeminiClient
@@ -37,6 +38,14 @@ def create_app():
     def allowed_file(filename):
         return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+    @app.before_request
+    def require_login():
+        allowed = {'login', 'static'}
+        if request.endpoint in allowed or request.endpoint is None:
+            return
+        if not session.get('user_id'):
+            return redirect(url_for('login'))
+
     # --- Custom Template Filters ---
     @app.template_filter('fromjson')
     def fromjson_filter(value):
@@ -49,6 +58,24 @@ def create_app():
             return []
 
     # --- Routes ---
+
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        if request.method == 'POST':
+            username = request.form.get('username')
+            password = request.form.get('password')
+            user = db.get_user_by_username(username)
+            if user and check_password_hash(user['password_hash'], password):
+                session['user_id'] = user['id']
+                return redirect(url_for('index'))
+            else:
+                flash('帳號或密碼錯誤')
+        return render_template('login.html')
+
+    @app.route('/logout')
+    def logout():
+        session.pop('user_id', None)
+        return redirect(url_for('login'))
 
     @app.route('/')
     def index():
