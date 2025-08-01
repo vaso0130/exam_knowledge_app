@@ -16,12 +16,9 @@
 
 ---
 
-## 1️⃣ 題幹程式碼縮排仍消失
-
-| 可能原因 | 修正策略 | 影響檔案／函式 |
-|-----------|----------|---------------|
-| (A) Gemini 回傳 `stem` 會去除縮排；`markdown_utils.format_code_blocks()` 只能修「已被 \`\`\` fence」的區塊 | • 在 `format_code_blocks()` **前** 新增 `detect_and_fence_indented_code()`：<br> 1. 尋找連續 ≥2 行且有 ≥4 個空白 / `\t` 起頭<br> 2. 偵測關鍵字 (`for ` / `if ` / `BEGIN`)<br> → 自動包成 “```pseudocode” fence | `markdown_utils.format_code_blocks`<br>`content_flow._sanitize_question_text` |
-| (B) `preprocess_pseudocode()` 將行首全形空格縮成 1 空格 → 深度不夠 | • 全形空格成對換成 **兩** 個半形空格；<br>• 停用 `lstrip()` 行首 | `file_processor.preprocess_pseudocode` |
+## 1️⃣ 題幹如果有程式碼/虛擬碼
+應該要有程式碼區塊，同時注意縮排/排版問題
+看看是否可以交由AI來處理格式化
 
 ---
 
