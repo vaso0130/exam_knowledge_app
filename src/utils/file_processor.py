@@ -133,7 +133,7 @@ class FileProcessor:
 
         cleaned_lines = []
         for line in text.splitlines():
-            line = line.replace('\u3000', ' ').replace('\xa0', ' ')
+            line = line.replace('\u3000', '  ').replace('\xa0', ' ')
             line = line.replace('←', '<-').replace('→', '->')
 
             # 移除私用區與控制字元，避免截斷或異常符號

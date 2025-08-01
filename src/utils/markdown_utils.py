@@ -1,11 +1,52 @@
 import re
 from typing import Dict, Any
 
+
+def detect_and_fence_indented_code(text: str) -> str:
+    """Wrap likely pseudo-code blocks with ```pseudocode fences."""
+    if not text:
+        return text
+
+    lines = text.splitlines()
+    result = []
+    buffer: list[str] = []
+    in_fence = False
+
+    def flush_buffer():
+        nonlocal buffer
+        if buffer:
+            if len(buffer) >= 2:
+                block_text = "\n".join(buffer)
+                if re.search(r"\b(for|if|BEGIN)\b", block_text, re.IGNORECASE):
+                    result.append("```pseudocode")
+                    result.extend(buffer)
+                    result.append("```")
+                    buffer = []
+                    return
+            result.extend(buffer)
+            buffer = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            flush_buffer()
+            in_fence = not in_fence
+            result.append(line)
+            continue
+
+        if not in_fence and re.match(r"^(\t| {4,})", line):
+            buffer.append(line)
+        else:
+            flush_buffer()
+            result.append(line)
+
+    flush_buffer()
+    return "\n".join(result)
+
 def format_code_blocks(text: str) -> str:
-    """
-    Detects code blocks in the given text, attempts to identify the language,
-    and ensures proper Markdown formatting with syntax highlighting.
-    """
+    """Format fenced code blocks and detect indented pseudo-code."""
+    text = detect_and_fence_indented_code(text)
+
     def replace_code_block(match):
         lang_specifier = match.group(1)
         code_content = match.group(2)

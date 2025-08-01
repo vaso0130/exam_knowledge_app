@@ -88,6 +88,7 @@ class AnswerFlow:
             result = self._store_question_data(
                 question_text=question_text,
                 answer_text=answer_data['answer'],
+                answer_sources=answer_data.get('sources', []),
                 subject=subject,
                 knowledge_points=knowledge_points
             )
@@ -121,7 +122,7 @@ class AnswerFlow:
                 'type': 'question'
             }
 
-    def _store_question_data(self, question_text: str, answer_text: str, subject: str, knowledge_points: List[str]) -> Dict[str, Any]:
+    def _store_question_data(self, question_text: str, answer_text: str, answer_sources: list, subject: str, knowledge_points: List[str]) -> Dict[str, Any]:
         """
         儲存單一問題及其關聯的知識點
         """
@@ -137,10 +138,13 @@ class AnswerFlow:
         )
 
         # 儲存問題
+        import json
+
         question_id = self.db.add_question(
             document_id=doc_id,
             question_text=format_code_blocks(question_text),
             answer_text=format_code_blocks(format_answer_text(answer_text)),
+            answer_sources=json.dumps(answer_sources, ensure_ascii=False),
             subject=subject
         )
 

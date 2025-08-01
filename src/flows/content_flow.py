@@ -4,7 +4,12 @@ import concurrent.futures
 from src.core.gemini_client import GeminiClient
 from src.core.database import DatabaseManager
 import json
-from ..utils.markdown_utils import format_code_blocks, format_summary_to_markdown, format_answer_text
+from ..utils.markdown_utils import (
+    format_code_blocks,
+    format_summary_to_markdown,
+    format_answer_text,
+    detect_and_fence_indented_code,
+)
 from ..flows.mindmap_flow import MindmapFlow
 
 class ContentFlow:
@@ -36,7 +41,9 @@ class ContentFlow:
                 sanitized_lines.append(line)
             elif not pattern.match(line):
                 sanitized_lines.append(line)
-        return "\n".join(sanitized_lines).strip()
+
+        cleaned = "\n".join(sanitized_lines).strip()
+        return detect_and_fence_indented_code(cleaned)
 
     
     
@@ -132,12 +139,14 @@ class ContentFlow:
                 print(f"DEBUG: answer_data type: {type(answer_data)}, value: {answer_data}")
                 answer_text = format_answer_text(self._extract_answer_string(answer_data))
                 print(f"DEBUG: answer_text type: {type(answer_text)}, value: {answer_text}")
+                sources_json = json.dumps(answer_data.get('sources', []), ensure_ascii=False)
                 
                 question_id = self.db.insert_question(
                     document_id=doc_id,
                     title=question_data.get('title', f'題目 {i}'),
                     question_text=format_code_blocks(question_text),
                     answer_text=format_code_blocks(answer_text),
+                    answer_sources=sources_json,
                     subject=subject,
                     difficulty=question_data.get('difficulty'),
                     guidance_level=question_data.get('guidance_level')
@@ -160,6 +169,7 @@ class ContentFlow:
                     'id': question_id,
                     'stem': question_text,
                     'answer': answer_text,
+                    'sources': answer_data.get('sources', []),
                     'knowledge_points': knowledge_points
                 })
             except Exception as e:
@@ -186,11 +196,19 @@ class ContentFlow:
         all_knowledge_points = set()
 
         for q_data in generated_questions:
+            q_text = self._sanitize_question_text(q_data.get('question', ''))
+            answer_data = await self.gemini.generate_answer(q_text)
+            answer_text = format_code_blocks(
+                format_answer_text(self._extract_answer_string(answer_data))
+            )
+            sources_json = json.dumps(answer_data.get('sources', []), ensure_ascii=False)
+
             question_id = self.db.insert_question(
                 document_id=doc_id,
                 title=q_data.get('title', '模擬題'),
-                question_text=format_code_blocks(q_data.get('question', '')),
-                answer_text=format_code_blocks(format_answer_text(self._extract_answer_string(q_data.get('answer', '')))),
+                question_text=format_code_blocks(q_text),
+                answer_text=answer_text,
+                answer_sources=sources_json,
                 subject=subject,
                 difficulty=q_data.get('difficulty'),
             )
@@ -201,6 +219,9 @@ class ContentFlow:
             if mindmap_code:
                 self.db.update_question_mindmap(question_id, mindmap_code)
 
+            q_data['answer'] = answer_text
+            q_data['sources'] = answer_data.get('sources', [])
+            q_data['question'] = q_text
             saved_questions.append({'id': question_id, **q_data})
             
             
