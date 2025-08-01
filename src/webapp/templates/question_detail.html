@@ -68,12 +68,12 @@
                 {% endif %}
                 
                 <!-- 專屬心智圖 -->
-                {% if question.mindmap_code %}
+                {% if mindmap_code %}
                 <div class="mb-4">
                     <h3 class="border-bottom pb-2 mb-3">🧠 題目專屬心智圖</h3>
                     <div class="mindmap-container">
                         <div class="mermaid">
-                            {{ question.mindmap_code|safe }}
+                            {{ mindmap_code|safe }}
                         </div>
                     </div>
                     <small class="text-muted">💡 這是針對此題目生成的知識關聯圖，幫助您思考相關概念！</small>
@@ -105,7 +105,7 @@
                         </div>
                         <div class="col-md-6">
                             <strong>建立時間:</strong> {{ question.created_at or '未知' }}<br>
-                            <strong>題目 ID:</strong> {{ question.id }}
+                            <strong>ID:</strong> {{ question.id }}
                         </div>
                     </div>
                 </div>

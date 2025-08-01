@@ -50,28 +50,29 @@ class ContentFlow:
     def process_file(self, file_path: str, filename: str, suggested_subject: str = None) -> Dict[str, Any]:
         """處理檔案的統一入口點"""
         try:
+            # content is the extracted text from the file
             content, _ = self.file_processor.process_input(file_path)
-            
+
             # ======================================================================
             # ▼▼▼ DEBUG CHECKPOINT 1: 檢查 FileProcessor 的輸出 ▼▼▼
-            # print("\n" + "="*20 + " DEBUG CHECKPOINT 1: AFTER FileProcessor " + "="*20)
-            # print("--- Raw content extracted from file ---")
-            # print(content)
-            # print("="*67 + "\n")
+            print("\n" + "="*20 + " DEBUG CHECKPOINT 1: AFTER FileProcessor " + "="*20)
+            print("--- Raw content extracted from file ---")
+            print(content)
+            print("="*67 + "\n")
             # ▲▲▲ DEBUG CHECKPOINT 1 ▲▲▲
             # ======================================================================
 
-            return self.complete_ai_processing(content, filename, suggested_subject)
+            # Pass the file_path along with the extracted content
+            return self.complete_ai_processing(content, filename, suggested_subject, file_path=file_path)
         except Exception as e:
             print(f"處理檔案時發生錯誤: {e}")
             return {'success': False, 'error': str(e), 'message': f'檔案處理失敗: {str(e)}'}
     
-    def complete_ai_processing(self, content: str, filename: str, suggested_subject: str = None, source_url: str = None) -> Dict[str, Any]:
+    def complete_ai_processing(self, content: str, filename: str, suggested_subject: str = None, source_url: str = None, file_path: str = None) -> Dict[str, Any]:
         """完整 AI 處理流程"""
         try:
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                # 注意：這裡的 content 是 Checkpoint 1 的輸出
-                future = executor.submit(asyncio.run, self._run_async_processing(content, filename, suggested_subject, source_url))
+                future = executor.submit(asyncio.run, self._run_async_processing(content, filename, suggested_subject, source_url, file_path))
                 return future.result()
         except Exception as e:
             print(f"完整 AI 處理時發生錯誤: {e}")
@@ -95,7 +96,7 @@ class ContentFlow:
                 return "（參考答案生成失敗或未提供，請檢查原始資料或稍後重試。）"
             return extracted_answer
 
-    async def _run_async_processing(self, content: str, filename: str, suggested_subject: str = None, source_url: str = None) -> Dict[str, Any]:
+    async def _run_async_processing(self, content: str, filename: str, suggested_subject: str = None, source_url: str = None, file_path: str = None) -> Dict[str, Any]:
         """執行異步處理流程"""
         try:
             print("🤖 AI 正在分析內容類型...")
@@ -103,16 +104,16 @@ class ContentFlow:
 
             # ======================================================================
             # ▼▼▼ DEBUG CHECKPOINT 2 (已修正) ▼▼▼
-            # print("\n" + "="*20 + " DEBUG CHECKPOINT 2: AFTER parse_exam_paper " + "="*20)
-            # print("--- Full parsed_data from AI ---")
-            # print(json.dumps(parsed_data, indent=2, ensure_ascii=False))
-            # # 修正：迭代 questions 列表來印出每個 stem
-            # if parsed_data.get('questions'):
-            #     for i, q_data in enumerate(parsed_data['questions']):
-            #         stem_text = q_data.get('stem', 'STEM NOT FOUND')
-            #         print(f"\n--- Extracted 'stem' from Question {i+1} ---")
-            #         print(stem_text)
-            # print("="*70 + "\n")
+            print("\n" + "="*20 + " DEBUG CHECKPOINT 2: AFTER parse_exam_paper " + "="*20)
+            print("--- Full parsed_data from AI ---")
+            print(json.dumps(parsed_data, indent=2, ensure_ascii=False))
+            # 修正：迭代 questions 列表來印出每個 stem
+            if parsed_data.get('questions'):
+                for i, q_data in enumerate(parsed_data['questions']):
+                    stem_text = q_data.get('stem', 'STEM NOT FOUND')
+                    print(f"\n--- Extracted 'stem' from Question {i+1} ---")
+                    print(stem_text)
+            print("="*70 + "\n")
             # ▲▲▲ DEBUG CHECKPOINT 2 (已修正) ▲▲▲
             # ======================================================================
             
@@ -123,10 +124,10 @@ class ContentFlow:
             
             doc_id = self.db.add_document(
                 title=filename, 
-                content=content, 
+                content=content, # Extracted text
                 subject=detected_subject, 
-                original_content=content,
-                source=source_url
+                source=source_url,
+                file_path=file_path # The actual file path
             )
             
             if content_type == 'exam_paper':
@@ -167,18 +168,18 @@ class ContentFlow:
 
                 # ======================================================================
                 # ▼▼▼ DEBUG CHECKPOINT 3: 檢查進入第二次 AI 呼叫前的最終資料 ▼▼▼
-                # print("\n" + "="*20 + " DEBUG CHECKPOINT 3: BEFORE generate_answer " + "="*20)
-                # print("--- Final question_text passed to generate the answer ---")
-                # print(question_text)
-                # print("="*73 + "\n")
+                print("\n" + "="*20 + " DEBUG CHECKPOINT 3: BEFORE generate_answer " + "="*20)
+                print("--- Final question_text passed to generate the answer ---")
+                print(question_text)
+                print("="*73 + "\n")
                 # ▲▲▲ DEBUG CHECKPOINT 3 ▲▲▲
                 # ======================================================================
 
                 # 直接使用純淨的題幹生成答案
                 answer_data = await self.gemini.generate_answer(question_text)
-                # print(f"DEBUG: answer_data type: {type(answer_data)}, value: {answer_data}")
+                print(f"DEBUG: answer_data type: {type(answer_data)}, value: {answer_data}")
                 answer_text = format_answer_text(self._extract_answer_string(answer_data))
-                # print(f"DEBUG: answer_text type: {type(answer_text)}, value: {answer_text}")
+                print(f"DEBUG: answer_text type: {type(answer_text)}, value: {answer_text}")
                 sources_json = json.dumps(answer_data.get('sources', []), ensure_ascii=False)
                 
                 question_id = self.db.insert_question(
@@ -191,13 +192,13 @@ class ContentFlow:
                     difficulty=question_data.get('difficulty'),
                     guidance_level=question_data.get('guidance_level')
                 )
-                # print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
+                print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
                 
                 await self.mindmap_flow.generate_and_save_mindmap(question_id)
                 
                 knowledge_points = question_data.get('knowledge_points', [])
                 for kp_name in knowledge_points:
-                    kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
+                    kp_id = self.db.add_or_get_knowledge_point(kp_name.strip(), subject)
                     self.db.link_question_to_knowledge_point(question_id, kp_id)
                     all_knowledge_points.add(kp_name.strip())
                 
@@ -265,7 +266,7 @@ class ContentFlow:
             
 
             for kp_name in q_data.get('knowledge_points', []):
-                kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
+                kp_id = self.db.add_or_get_knowledge_point(kp_name.strip(), subject)
                 self.db.link_question_to_knowledge_point(question_id, kp_id)
                 all_knowledge_points.add(kp_name.strip())
 

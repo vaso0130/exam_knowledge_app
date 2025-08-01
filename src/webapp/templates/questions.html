@@ -71,7 +71,7 @@
                                 <th class="col-subject">科目</th>
                                 <th style="width:10%;">難度</th>
                                 <th class="col-question">題目預覽</th>
-                                <th class.col-source">來源文件</th>
+                                <th class="col-source">來源文件</th>
                                 <th class="col-action">操作</th>
                             </tr>
                         </thead>
@@ -93,9 +93,9 @@
                                     {{ q.difficulty or '未知' }}
                                 </td>
                                 <td>
-                                    <div class="text-truncate question-preview" title="{{ q.text }}">
+                                    <div class="text-truncate question-preview" title="{{ q.question_text }}">
                                         <a href="/question/{{ q.id }}" class="text-decoration-none text-dark">
-                                            {{ q.text[:100] }}{% if q.text|length > 100 %}...{% endif %}
+                                            {{ q.question_text[:100] }}{% if q.question_text|length > 100 %}...{% endif %}
                                         </a>
                                     </div>
                                 </td>
