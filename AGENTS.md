@@ -7,8 +7,8 @@
 
 3.完成後更新README.md，說明新增連接DB、改用wsgi、與新增帳號認證
 
-以下改版計畫先忽視
-Please disregard the following revision plan for now.
+#以下改版計畫先忽視
+#Please disregard the following revision plan for now.
 
 # Development Guide for AI Agents
 
