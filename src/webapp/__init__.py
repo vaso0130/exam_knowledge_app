@@ -456,7 +456,7 @@ def create_app(db_path: str = "./db.sqlite3"):
         question_html = md.convert(q['question_text'] or '')
         answer_html = md.convert(q['answer_text'] or '') if q['answer_text'] else ''
         
-        print(f"DEBUG: mindmap_code for question {q_id}: {q.get('mindmap_code')}")
+        # print(f"DEBUG: mindmap_code for question {q_id}: {q.get('mindmap_code')}")
         return render_template('question_detail.html', 
                              question=q, 
                              question_html=question_html,

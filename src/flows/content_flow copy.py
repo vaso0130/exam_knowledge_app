@@ -136,9 +136,9 @@ class ContentFlow:
 
                 # 直接使用純淨的題幹生成答案
                 answer_data = await self.gemini.generate_answer(question_text)
-                print(f"DEBUG: answer_data type: {type(answer_data)}, value: {answer_data}")
+                # print(f"DEBUG: answer_data type: {type(answer_data)}, value: {answer_data}")
                 answer_text = format_answer_text(self._extract_answer_string(answer_data))
-                print(f"DEBUG: answer_text type: {type(answer_text)}, value: {answer_text}")
+                # print(f"DEBUG: answer_text type: {type(answer_text)}, value: {answer_text}")
                 sources_json = json.dumps(answer_data.get('sources', []), ensure_ascii=False)
                 
                 question_id = self.db.insert_question(
@@ -151,7 +151,7 @@ class ContentFlow:
                     difficulty=question_data.get('difficulty'),
                     guidance_level=question_data.get('guidance_level')
                 )
-                print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
+                # print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
                 
                 # 生成心智圖並由 mindmap_flow 直接儲存至資料庫
                 await self.mindmap_flow.generate_and_save_mindmap(question_id)

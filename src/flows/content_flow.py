@@ -54,10 +54,10 @@ class ContentFlow:
             
             # ======================================================================
             # ▼▼▼ DEBUG CHECKPOINT 1: 檢查 FileProcessor 的輸出 ▼▼▼
-            print("\n" + "="*20 + " DEBUG CHECKPOINT 1: AFTER FileProcessor " + "="*20)
-            print("--- Raw content extracted from file ---")
-            print(content)
-            print("="*67 + "\n")
+            # print("\n" + "="*20 + " DEBUG CHECKPOINT 1: AFTER FileProcessor " + "="*20)
+            # print("--- Raw content extracted from file ---")
+            # print(content)
+            # print("="*67 + "\n")
             # ▲▲▲ DEBUG CHECKPOINT 1 ▲▲▲
             # ======================================================================
 
@@ -103,16 +103,16 @@ class ContentFlow:
 
             # ======================================================================
             # ▼▼▼ DEBUG CHECKPOINT 2 (已修正) ▼▼▼
-            print("\n" + "="*20 + " DEBUG CHECKPOINT 2: AFTER parse_exam_paper " + "="*20)
-            print("--- Full parsed_data from AI ---")
-            print(json.dumps(parsed_data, indent=2, ensure_ascii=False))
-            # 修正：迭代 questions 列表來印出每個 stem
-            if parsed_data.get('questions'):
-                for i, q_data in enumerate(parsed_data['questions']):
-                    stem_text = q_data.get('stem', 'STEM NOT FOUND')
-                    print(f"\n--- Extracted 'stem' from Question {i+1} ---")
-                    print(stem_text)
-            print("="*70 + "\n")
+            # print("\n" + "="*20 + " DEBUG CHECKPOINT 2: AFTER parse_exam_paper " + "="*20)
+            # print("--- Full parsed_data from AI ---")
+            # print(json.dumps(parsed_data, indent=2, ensure_ascii=False))
+            # # 修正：迭代 questions 列表來印出每個 stem
+            # if parsed_data.get('questions'):
+            #     for i, q_data in enumerate(parsed_data['questions']):
+            #         stem_text = q_data.get('stem', 'STEM NOT FOUND')
+            #         print(f"\n--- Extracted 'stem' from Question {i+1} ---")
+            #         print(stem_text)
+            # print("="*70 + "\n")
             # ▲▲▲ DEBUG CHECKPOINT 2 (已修正) ▲▲▲
             # ======================================================================
             
@@ -167,18 +167,18 @@ class ContentFlow:
 
                 # ======================================================================
                 # ▼▼▼ DEBUG CHECKPOINT 3: 檢查進入第二次 AI 呼叫前的最終資料 ▼▼▼
-                print("\n" + "="*20 + " DEBUG CHECKPOINT 3: BEFORE generate_answer " + "="*20)
-                print("--- Final question_text passed to generate the answer ---")
-                print(question_text)
-                print("="*73 + "\n")
+                # print("\n" + "="*20 + " DEBUG CHECKPOINT 3: BEFORE generate_answer " + "="*20)
+                # print("--- Final question_text passed to generate the answer ---")
+                # print(question_text)
+                # print("="*73 + "\n")
                 # ▲▲▲ DEBUG CHECKPOINT 3 ▲▲▲
                 # ======================================================================
 
                 # 直接使用純淨的題幹生成答案
                 answer_data = await self.gemini.generate_answer(question_text)
-                print(f"DEBUG: answer_data type: {type(answer_data)}, value: {answer_data}")
+                # print(f"DEBUG: answer_data type: {type(answer_data)}, value: {answer_data}")
                 answer_text = format_answer_text(self._extract_answer_string(answer_data))
-                print(f"DEBUG: answer_text type: {type(answer_text)}, value: {answer_text}")
+                # print(f"DEBUG: answer_text type: {type(answer_text)}, value: {answer_text}")
                 sources_json = json.dumps(answer_data.get('sources', []), ensure_ascii=False)
                 
                 question_id = self.db.insert_question(
@@ -191,7 +191,7 @@ class ContentFlow:
                     difficulty=question_data.get('difficulty'),
                     guidance_level=question_data.get('guidance_level')
                 )
-                print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
+                # print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
                 
                 await self.mindmap_flow.generate_and_save_mindmap(question_id)
                 
