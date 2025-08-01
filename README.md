@@ -63,6 +63,17 @@ python web_app.py
 
 瀏覽器開啟：<http://localhost:5000>
 
+## 📦 主要相依套件
+
+此專案依賴下列重要 Python 套件（詳見 `requirements.txt`）：
+
+- **Flask**：Web 應用框架
+- **google-generativeai**：串接 Gemini 大語言模型
+- **python-docx**、**PyPDF2**：處理 Word 與 PDF
+- **playwright**：網頁爬取
+- **markdown**：Markdown 轉換與渲染
+- **google-cloud-vision**：OCR 文字擷取
+
 ## 📁 專案架構
 
 ```text

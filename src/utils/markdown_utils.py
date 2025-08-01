@@ -7,7 +7,6 @@ def format_code_blocks(text: str) -> str:
     and ensures proper Markdown formatting with syntax highlighting.
     """
     def replace_code_block(match):
-        
         lang_specifier = match.group(1)
         code_content = match.group(2)
 
@@ -16,14 +15,19 @@ def format_code_blocks(text: str) -> str:
         else:
             lang = guess_programming_language(code_content)
 
-        return f"""``` {lang}
-{code_content}```"""
+        # Preserve original indentation and always place the closing
+        # backticks on a new line for correct rendering.
+        return f"```{lang or ''}\n{code_content}\n```"
 
     # Regex to find code blocks.
     # It captures the language specifier (optional) and then all content until the closing ```
     # The `re.DOTALL` flag allows '.' to match newlines.
     # We make the newline after the language specifier part of the content capture.
-    return re.sub(r"```\s*(\w*)\s*(.*?)```", replace_code_block, text, flags=re.DOTALL)
+    # Only treat a language specifier as valid when it is on the same line as
+    # the opening backticks. This avoids mistaking the first line of code for a
+    # language when the block starts with a newline.
+    pattern = r"```(\w+)?\n(.*?)```"
+    return re.sub(pattern, replace_code_block, text, flags=re.DOTALL)
 
 def guess_programming_language(code: str) -> str:
     """
@@ -91,6 +95,15 @@ def guess_programming_language(code: str) -> str:
         return "markdown"
 
     return "text" # Default to text if not recognized
+
+def beautify_answer_text(answer: str) -> str:
+    """Clean up answer text and normalise code blocks."""
+    if not answer:
+        return ""
+
+    cleaned = answer.strip()
+    cleaned = format_code_blocks(cleaned)
+    return cleaned
 
 def format_summary_to_markdown(summary_data: Dict[str, Any]) -> str:
     """
