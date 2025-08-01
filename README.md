@@ -182,6 +182,7 @@ exam_knowledge_app/
 - `python-dotenv` – 載入環境設定
 - `google-cloud-vision` – 影像文字擷取
 - `pdf2image` – PDF 轉圖片供 OCR 使用
+- `pdfplumber` – 精準解析 PDF 版面內容
 - `playwright` – 進階網頁擷取
 - `markdown` – Markdown 內容處理
 
@@ -220,6 +221,10 @@ result = content_flow.complete_ai_processing(
 - ✅ **完整學習流程**：8步驟處理管線
 - ✅ **三部分學習結構**：主文 + 摘要 + 測驗
 - ✅ **品質測試框架**：自動化品質驗證
+
+### v2.1 - OCR 改進 (2025/08/02)
+- 🔄 **PDF 解析升級**：以 `pdfplumber` 取代 `PyPDF2`，改善版面還原
+- 🔄 **影像 OCR 強化**：切換 `document_text_detection`，提高圖片與 PDF 解析度
 
 ### v1.0 - 基礎版本
 - ✅ 基本檔案處理功能
