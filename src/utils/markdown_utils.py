@@ -17,7 +17,8 @@ def detect_and_fence_indented_code(text: str) -> str:
         if buffer:
             if len(buffer) >= 2:
                 block_text = "\n".join(buffer)
-                if re.search(r"\b(for|if|BEGIN)\b", block_text, re.IGNORECASE):
+                indent_only = all(re.match(r"^(\t| {2,})", ln) for ln in buffer)
+                if indent_only or re.search(r"\b(for|if|while|BEGIN)\b", block_text, re.IGNORECASE):
                     result.append("```pseudocode")
                     result.extend(buffer)
                     result.append("```")
