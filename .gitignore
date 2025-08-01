@@ -120,3 +120,4 @@ dmypy.json
 google_credentials.json
 AGENTS.md
 log.txt
+ruff.txt

@@ -186,11 +186,25 @@ class ContentFlow:
         all_knowledge_points = set()
 
         for q_data in generated_questions:
+            question_text = q_data.get('question', '')
+            if not question_text:
+                continue
+
+            # 再次呼叫 generate_answer 取得精美答案和來源
+            detailed_answer_data = await self.gemini.generate_answer(question_text)
+            print(f"DEBUG: detailed_answer_data: {detailed_answer_data}")
+            
+            # 提取答案和來源
+            answer_content = self._extract_answer_string(detailed_answer_data.get('answer', ''))
+            answer_sources = json.dumps(detailed_answer_data.get('sources', [])) # 將 sources 轉換為 JSON 字串儲存
+            print(f"DEBUG: answer_sources before saving: {answer_sources}")
+
             question_id = self.db.insert_question(
                 document_id=doc_id,
                 title=q_data.get('title', '模擬題'),
-                question_text=format_code_blocks(q_data.get('question', '')),
-                answer_text=format_code_blocks(format_answer_text(self._extract_answer_string(q_data.get('answer', '')))),
+                question_text=format_code_blocks(question_text),
+                answer_text=format_code_blocks(format_answer_text(answer_content)),
+                answer_sources=answer_sources, # 儲存來源
                 subject=subject,
                 difficulty=q_data.get('difficulty'),
             )
@@ -203,10 +217,6 @@ class ContentFlow:
 
             saved_questions.append({'id': question_id, **q_data})
             
-            
-
-            
-
             for kp_name in q_data.get('knowledge_points', []):
                 kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
                 self.db.link_question_to_knowledge_point(question_id, kp_id)

@@ -103,7 +103,7 @@ class GoogleVisionOCR:
                 try:
                     # OCR 處理
                     page_text = self.extract_text_from_image(temp_image_path)
-                    if page_text.strip():
+                    if page_text:
                         extracted_text.append(f"--- 第 {i+1} 頁 ---\n{page_text}")
                 finally:
                     # 清理臨時檔案
@@ -133,7 +133,8 @@ class FileProcessor:
 
         cleaned_lines = []
         for line in text.splitlines():
-            line = line.replace('\u3000', ' ').replace('\xa0', ' ')
+            # 全形空格成對換成兩個半形空格
+            line = line.replace('\u3000', '  ').replace('\xa0', '  ')
             line = line.replace('←', '<-').replace('→', '->')
 
             # 移除私用區與控制字元，避免截斷或異常符號
@@ -143,7 +144,8 @@ class FileProcessor:
                 if cat.startswith('C') and ch not in ('\n', '\t'):
                     continue
                 filtered.append(ch)
-            cleaned_lines.append(''.join(filtered).rstrip())
+            # 停用 rstrip() 以保留行尾空白，間接保留縮排
+            cleaned_lines.append(''.join(filtered))
 
         return "\n".join(cleaned_lines)
     
@@ -194,8 +196,7 @@ class FileProcessor:
                         text += page_text + "\n"
             
             # 檢查提取的文字是否足夠（判斷是否為掃描檔）
-            text = text.strip()
-            if len(text) < 50:  # 如果文字太少，可能是掃描檔
+            if len(text.strip()) < 50:  # 如果文字太少，可能是掃描檔
                 print("檢測到可能的掃描檔 PDF，啟動 OCR 處理...")
                 try:
                     ocr_text = self.ocr.extract_text_from_pdf_pages(file_path)
@@ -255,7 +256,7 @@ class FileProcessor:
             for script in soup(["script", "style"]):
                 script.decompose()
             
-            text = soup.get_text(separator='\n').strip()
+            text = soup.get_text(separator='\n')
             return FileProcessor.preprocess_pseudocode(text)
         except Exception as e:
             raise ValueError(f"無法讀取HTML檔案 {file_path}: {e}")
@@ -323,12 +324,12 @@ class FileProcessor:
             # 嘗試找到主要內容
             main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
             if main_content:
-                text = main_content.get_text(separator='\n').strip()
+                text = main_content.get_text(separator='\n')
             else:
-                text = soup.get_text(separator='\n').strip()
+                text = soup.get_text(separator='')
             
             # 清理文字
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
+            lines = [line for line in text.split('\n')]
             cleaned_text = '\n'.join(lines)
             
             # 限制內容長度，避免巨量文字消耗配額
@@ -350,7 +351,7 @@ class FileProcessor:
     async def _fetch_url_async(url: str) -> str:
         """異步獲取 URL 內容的內部方法"""
         try:
-            from .playwright_scraper import scrape_single_page
+            from playwright_scraper import scrape_single_page
             
             # 執行異步爬取
             result = await scrape_single_page(url, headless=True)
@@ -394,7 +395,7 @@ class FileProcessor:
                 if len(full_content) > max_length:
                     full_content = full_content[:max_length] + "\n\n... (內容過長，已截斷)"
                 
-                if len(full_content.strip()) > 50:  # 確保有足夠內容
+                if len(full_content) > 50:  # 確保有足夠內容
                     return FileProcessor.preprocess_pseudocode(full_content)
             
         except ImportError:
@@ -522,8 +523,7 @@ class ContentValidator:
         cleaned_lines = []
         
         for line in lines:
-            if line.strip():  # 只保留非空行
-                cleaned_lines.append(line)
+            cleaned_lines.append(line)
         
         return '\n'.join(cleaned_lines)
     

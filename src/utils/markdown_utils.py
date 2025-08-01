@@ -1,11 +1,76 @@
 import re
 from typing import Dict, Any
 
+def detect_and_fence_indented_code(text: str) -> str:
+    """
+    Detects indented code blocks (e.g., pseudocode) and wraps them in ```pseudocode fences.
+    Looks for lines with >= 4 spaces or 1 tab indentation, and common pseudocode keywords.
+    If the input is a single line, it attempts to infer newlines based on pseudocode structure.
+    """
+    original_lines = text.splitlines()
+    
+    # If it's a single line, try to infer newlines
+    if len(original_lines) == 1 and original_lines[0].strip():
+        single_line_text = original_lines[0].strip()
+        # Simple heuristic to insert newlines for pseudocode
+        # This is a basic attempt and might need refinement based on more examples
+        single_line_text = re.sub(r'(function\s+.*?(?:returns\s+\w+)?)\s*', r'\1\n', single_line_text, flags=re.IGNORECASE)
+        single_line_text = re.sub(r'(if\s+.*?then)\s*', r'\1\n', single_line_text, flags=re.IGNORECASE)
+        single_line_text = re.sub(r'((\b(?:return|[a-z])\s*<-\s*.*?)|(\b(?:return)\s+.*?))\s*', r'\1\n', single_line_text, flags=re.IGNORECASE)
+        
+        # Remove any multiple newlines that might have been introduced
+        single_line_text = re.sub(r'\n+', '\n', single_line_text).strip()
+        lines = single_line_text.splitlines()
+    else:
+        lines = original_lines
+
+    fenced_lines = []
+    in_indented_block = False
+    indent_level = 0
+
+    for i, line in enumerate(lines):
+        current_indent = len(re.match(r"^[ \t]*", line).group(0))
+        stripped_line = line.strip()
+
+        # Check for start of an indented block
+        if not in_indented_block and current_indent >= 4 and stripped_line:
+            # Look for common pseudocode keywords or if the previous line was also indented
+            # or if it's the start of a new block after a blank line
+            if (re.search(r"^(for|if|while|begin|function|procedure)\b", stripped_line, re.IGNORECASE) or
+                (i > 0 and (len(re.match(r"^[ \t]*", lines[i-1]).group(0)) > 0 or not lines[i-1].strip()))):
+                
+                in_indented_block = True
+                indent_level = current_indent
+                fenced_lines.append("```pseudocode")
+                fenced_lines.append(line)
+            else:
+                fenced_lines.append(line)
+        # Continue indented block
+        elif in_indented_block:
+            if stripped_line and current_indent >= indent_level:
+                fenced_lines.append(line)
+            else:
+                # End of indented block
+                fenced_lines.append("```")
+                in_indented_block = False
+                indent_level = 0
+                fenced_lines.append(line)
+        else:
+            fenced_lines.append(line)
+    
+    # Close any open indented block at the end of the text
+    if in_indented_block:
+        fenced_lines.append("```")
+
+    return "\n".join(fenced_lines)
+
 def format_code_blocks(text: str) -> str:
+
     """
     Detects code blocks in the given text, attempts to identify the language,
     and ensures proper Markdown formatting with syntax highlighting.
     """
+    text = detect_and_fence_indented_code(text)
     def replace_code_block(match):
         lang_specifier = match.group(1)
         code_content = match.group(2)
@@ -15,7 +80,8 @@ def format_code_blocks(text: str) -> str:
         else:
             lang = guess_programming_language(code_content)
 
-        return f"""```{lang}\n{code_content}```"""
+        return f"""```{lang}
+{code_content}```"""
 
     # Regex to find code blocks.
     # It captures the language specifier (optional) and then all content until the closing ```
