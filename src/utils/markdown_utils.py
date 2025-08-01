@@ -16,14 +16,14 @@ def format_code_blocks(text: str) -> str:
         else:
             lang = guess_programming_language(code_content)
 
-        return f"""``` {lang}
-{code_content}```"""
+        # Keep original indentation and ensure newline before closing fence
+        return f"```{lang}\n{code_content}\n```"
 
     # Regex to find code blocks.
     # It captures the language specifier (optional) and then all content until the closing ```
     # The `re.DOTALL` flag allows '.' to match newlines.
     # We make the newline after the language specifier part of the content capture.
-    return re.sub(r"```\s*(\w*)\s*(.*?)```", replace_code_block, text, flags=re.DOTALL)
+    return re.sub(r"```\s*(\w*)\n?(.*?)```", replace_code_block, text, flags=re.DOTALL)
 
 def guess_programming_language(code: str) -> str:
     """
@@ -91,6 +91,22 @@ def guess_programming_language(code: str) -> str:
         return "markdown"
 
     return "text" # Default to text if not recognized
+
+def format_answer_text(text: str) -> str:
+    """Clean and format answer text for display."""
+    if not text:
+        return ""
+
+    # Remove JSON code blocks that sometimes appear in answers
+    text = re.sub(r"```json[\s\S]*?```", "", text)
+
+    # If the whole text looks like a JSON object with an 'answer' field, extract it
+    json_match = re.search(r"\{\s*\"answer\"\s*:\s*\"([\s\S]*?)\"\s*\}", text)
+    if json_match:
+        text = json_match.group(1)
+
+    text = text.strip()
+    return format_code_blocks(text)
 
 def format_summary_to_markdown(summary_data: Dict[str, Any]) -> str:
     """

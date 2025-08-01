@@ -4,7 +4,11 @@ import concurrent.futures
 from src.core.gemini_client import GeminiClient
 from src.core.database import DatabaseManager
 import json
-from ..utils.markdown_utils import format_code_blocks, format_summary_to_markdown
+from ..utils.markdown_utils import (
+    format_code_blocks,
+    format_summary_to_markdown,
+    format_answer_text,
+)
 from ..flows.mindmap_flow import MindmapFlow
 
 class ContentFlow:
@@ -137,20 +141,15 @@ class ContentFlow:
                     document_id=doc_id,
                     title=question_data.get('title', f'題目 {i}'),
                     question_text=format_code_blocks(question_text),
-                    answer_text=format_code_blocks(answer_text),
+                    answer_text=format_answer_text(answer_text),
                     subject=subject,
                     difficulty=question_data.get('difficulty'),
                     guidance_level=question_data.get('guidance_level')
                 )
                 print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
                 
-                # 生成心智圖
-                mindmap_code = await self.mindmap_flow.generate_and_save_mindmap(question_id)
-                
-                # 將心智圖程式碼注入問題文本
-                if mindmap_code:
-                    updated_question_text = f"{format_code_blocks(question_text)}\n\n```mermaid\n{mindmap_code}\n```"
-                    self.db.update_question_text(question_id, updated_question_text)
+                # 生成心智圖並儲存
+                await self.mindmap_flow.generate_and_save_mindmap(question_id)
                 
                 
                 
@@ -195,16 +194,13 @@ class ContentFlow:
                 document_id=doc_id,
                 title=q_data.get('title', '模擬題'),
                 question_text=format_code_blocks(q_data.get('question', '')),
-                answer_text=format_code_blocks(self._extract_answer_string(q_data.get('answer', ''))),
+                answer_text=format_answer_text(self._extract_answer_string(q_data.get('answer', ''))),
                 subject=subject,
                 difficulty=q_data.get('difficulty'),
             )
-            # 生成心智圖
-            mindmap_code = await self.mindmap_flow.generate_and_save_mindmap(question_id)
-            
-            # 將心智圖程式碼儲存到 mindmap_code 欄位
-            if mindmap_code:
-                self.db.update_question_mindmap(question_id, mindmap_code)
+
+            # 生成心智圖並儲存
+            await self.mindmap_flow.generate_and_save_mindmap(question_id)
 
             saved_questions.append({'id': question_id, **q_data})
             

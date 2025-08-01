@@ -157,6 +157,28 @@ exam_knowledge_app/
 - **Google Cloud Vision**：圖片文字識別
 - **自然語言處理**：智慧內容理解
 
+## 📦 主要相依套件
+
+- google-generativeai
+- Flask
+- python-dotenv
+- PyPDF2 / python-docx
+- markdown
+- google-cloud-vision
+
+## 📚 檔案用途簡述
+
+| 路徑 | 功能簡述 |
+|------|---------|
+| `web_app.py` | 啟動 Flask Web 應用 |
+| `src/core/database.py` | SQLite 資料庫存取層 |
+| `src/core/gemini_client.py` | 與 Google Gemini API 互動 |
+| `src/flows/content_flow.py` | 內容與考題處理流程 |
+| `src/flows/answer_flow.py` | 單一問題處理流程 |
+| `src/flows/mindmap_flow.py` | 心智圖生成流程 |
+| `src/utils/file_processor.py` | 各類檔案解析與 OCR |
+| `src/utils/markdown_utils.py` | Markdown 與程式碼格式化 |
+
 ## 🎨 使用範例
 
 ### 學習資料處理範例
