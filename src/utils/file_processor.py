@@ -20,9 +20,9 @@ except ImportError:
 
 # 文件處理相關
 try:
-    import PyPDF2
+    import pdfplumber
 except ImportError:
-    PyPDF2 = None
+    pdfplumber = None
 
 try:
     from docx import Document
@@ -48,7 +48,6 @@ class GoogleVisionOCR:
             return
         
         try:
-            # 設定 Google Cloud 憑證
             if os.path.exists(credentials_path):
                 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
                 credentials = service_account.Credentials.from_service_account_file(credentials_path)
@@ -59,25 +58,35 @@ class GoogleVisionOCR:
             print(f"警告：初始化 Google Vision OCR 失敗: {e}")
     
     def extract_text_from_image(self, image_path: str) -> str:
-        """從圖片中提取文字"""
+        """從圖片中提取文字，並返回帶有幾何座標的詞彙列表"""
         if self.client is None:
             raise ValueError("Google Vision OCR 客戶端未初始化")
-        
+
         try:
             with open(image_path, 'rb') as image_file:
                 content = image_file.read()
-            
+
             image = vision.Image(content=content)
-            response = self.client.text_detection(image=image)
-            
+            response = self.client.document_text_detection(image=image)
+
             if response.error.message:
                 raise Exception(f'Google Vision API 錯誤: {response.error.message}')
-            
-            texts = response.text_annotations
-            if texts:
-                return texts[0].description  # 第一個元素包含完整的文字
-            return ""
-            
+
+            words_with_coords = []
+            if response.full_text_annotation:
+                for page in response.full_text_annotation.pages:
+                    for block in page.blocks:
+                        for paragraph in block.paragraphs:
+                            for word in paragraph.words:
+                                word_text = ''.join([symbol.text for symbol in word.symbols])
+                                vertices = word.bounding_box.vertices
+                                words_with_coords.append({
+                                    'text': word_text,
+                                    'x0': vertices[0].x,
+                                    'top': vertices[0].y,
+                                })
+            return FileProcessor._reconstruct_text_from_words(words_with_coords)
+
         except Exception as e:
             raise ValueError(f"OCR 處理失敗: {e}")
     
@@ -90,23 +99,19 @@ class GoogleVisionOCR:
             raise ValueError("Google Vision OCR 客戶端未初始化")
         
         try:
-            # 將 PDF 轉換為圖片
-            pages = convert_from_path(pdf_path, dpi=300)  # 高 DPI 提高 OCR 準確性
+            pages = convert_from_path(pdf_path, dpi=300)
             extracted_text = []
             
-            for i, page in enumerate(pages):
-                # 將圖片保存為臨時檔案
+            for page in pages:
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
                     page.save(temp_file.name, 'PNG')
                     temp_image_path = temp_file.name
                 
                 try:
-                    # OCR 處理
                     page_text = self.extract_text_from_image(temp_image_path)
                     if page_text.strip():
-                        extracted_text.append(f"--- 第 {i+1} 頁 ---\n{page_text}")
+                        extracted_text.append(page_text)
                 finally:
-                    # 清理臨時檔案
                     if os.path.exists(temp_image_path):
                         os.unlink(temp_image_path)
             
@@ -124,100 +129,116 @@ class FileProcessor:
         self.ocr = GoogleVisionOCR()
 
     @staticmethod
-    def preprocess_pseudocode(text: str) -> str:
-        """簡單清理可能的虛擬碼內容以利後續格式化"""
-        if not text:
+    def _reconstruct_text_from_words(words: list) -> str:
+        """
+        [共用函式] 根據帶座標的詞彙列表，重建包含縮排的完整文字。
+        此函式可同時被 pdfplumber 和 Google Vision OCR 的結果使用。
+        """
+        if not words:
             return ""
 
+        words.sort(key=lambda w: (w['top'], w['x0']))
         
+        lines = []
+        if not words:
+            return ""
+        current_line = [words[0]]
+        line_tolerance = 2
+        for i in range(1, len(words)):
+            last_word_in_line = sorted(current_line, key=lambda w: w['x0'])[-1]
+            current_word = words[i]
+            
+            if abs(current_word['top'] - last_word_in_line['top']) <= line_tolerance:
+                current_line.append(current_word)
+            else:
+                lines.append(sorted(current_line, key=lambda w: w['x0']))
+                current_line = [current_word]
+        lines.append(sorted(current_line, key=lambda w: w['x0']))
 
+        if not lines:
+            return ""
+
+        base_indent = min(line[0]['x0'] for line in lines if line)
+        full_text_content = []
+        
+        for line_words in lines:
+            if not line_words: continue
+            
+            first_word_indent = line_words[0]['x0']
+            indent_pixels = first_word_indent - base_indent
+            char_width = 5 
+            num_spaces = int(round(indent_pixels / char_width))
+            
+            line_text = ' '.join(w['text'] for w in line_words)
+            reconstructed_line = ' ' * num_spaces + line_text
+            full_text_content.append(reconstructed_line)
+            
+        return "\n".join(full_text_content)
+
+    @staticmethod
+    def preprocess_pseudocode(text: str) -> str:
+        if not text:
+            return ""
         cleaned_lines = []
         for line in text.splitlines():
-            line = line.replace('\u3000', '  ').replace('\xa0', ' ') # Replace common non-breaking spaces
-            line = line.replace('←', '<-').replace('→', '->') # Replace common pseudocode arrows
-
-            # Remove only null characters, which can cause issues
+            line = line.replace('\u3000', '  ').replace('\xa0', ' ')
+            line = line.replace('←', '->').replace('→', '->')
             line = line.replace('\x00', '')
-
-            cleaned_lines.append(line) # Do not rstrip, as trailing spaces might be part of indentation
-
+            cleaned_lines.append(line)
         return "\n".join(cleaned_lines)
     
     @staticmethod
     def read_text_file(file_path: str) -> str:
-        """讀取純文字檔案，盡可能自動偵測編碼並支援 Unicode/emoji"""
-
-        # 先嘗試以 UTF-8 讀取
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                return FileProcessor.preprocess_pseudocode(content)
+                return FileProcessor.preprocess_pseudocode(f.read())
         except UnicodeDecodeError:
             pass
-
-        # 使用 charset-normalizer 自動偵測編碼
         try:
             detected = from_path(file_path).best()
-            if detected:
-                return FileProcessor.preprocess_pseudocode(str(detected))
+            if detected: return FileProcessor.preprocess_pseudocode(str(detected))
         except Exception:
             pass
-
-        # 最後嘗試常見的其他編碼，忽略錯誤以保留可解析的部分
         encodings = ['big5', 'gbk', 'cp1252', 'latin1']
         for encoding in encodings:
             try:
                 with open(file_path, 'r', encoding=encoding, errors='ignore') as f:
                     return FileProcessor.preprocess_pseudocode(f.read())
-            except Exception:
-                continue
-
+            except Exception: continue
         raise ValueError(f"無法讀取檔案 {file_path}，編碼格式不支援")
-    
+
     def read_pdf_file(self, file_path: str) -> str:
-        """讀取PDF檔案，支援智慧型 OCR"""
-        if PyPDF2 is None:
-            raise ImportError("請安裝 PyPDF2 套件：pip install PyPDF2")
-        
+        """
+        讀取PDF檔案，優先使用幾何分析，若失敗則回退到 OCR。
+        """
+        if pdfplumber is None:
+            raise ImportError("請安裝 pdfplumber 套件：pip install pdfplumber")
+
         text = ""
         try:
-            # 首先嘗試直接提取文字
-            with open(file_path, 'rb') as f:
-                pdf_reader = PyPDF2.PdfReader(f)
-                for page in pdf_reader.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
-            
-            # 檢查提取的文字是否足夠（判斷是否為掃描檔）
-            text = text.strip()
-            if len(text) < 50:  # 如果文字太少，可能是掃描檔
-                print("檢測到可能的掃描檔 PDF，啟動 OCR 處理...")
-                try:
-                    ocr_text = self.ocr.extract_text_from_pdf_pages(file_path)
-                    if ocr_text.strip():
-                        text = ocr_text
-                    else:
-                        print("OCR 未能提取到文字內容")
-                except Exception as e:
-                    print(f"OCR 處理失敗，將使用原始提取的文字: {e}")
-            
+            with pdfplumber.open(file_path) as pdf:
+                all_words = []
+                for page in pdf.pages:
+                    all_words.extend(page.extract_words(use_text_flow=True, x_tolerance=2))
+                text = self._reconstruct_text_from_words(all_words)
         except Exception as e:
-            # 如果直接提取失敗，嘗試 OCR
-            print(f"PDF 直接提取失敗 ({e})，嘗試 OCR 處理...")
+            print(f"使用 pdfplumber 進行幾何分析失敗: {e}。嘗試後備方案。")
+            text = ""
+
+        if len(text.strip()) < 50:
+            print("幾何分析未提取到足夠文字，啟動 OCR 掃描備用方案...")
             try:
                 text = self.ocr.extract_text_from_pdf_pages(file_path)
             except Exception as ocr_error:
-                raise ValueError(f"無法讀取PDF檔案 {file_path}: 直接提取失敗({e})，OCR也失敗({ocr_error})")
-        
-        text = text.strip()
+                raise ValueError(f"PDF 檔案讀取失敗：主要方法和 OCR 備用方案均失敗。({ocr_error})")
+
         return self.preprocess_pseudocode(text)
     
     def read_image_file(self, file_path: str) -> str:
-        """讀取圖片檔案並進行 OCR"""
+        """讀取圖片檔案並進行 OCR，使用幾何分析重建排版"""
         try:
             text = self.ocr.extract_text_from_image(file_path)
-            return FileProcessor.preprocess_pseudocode(text)
+            return self.preprocess_pseudocode(text)
         except Exception as e:
             raise ValueError(f"無法讀取圖片檔案 {file_path}: {e}")
     

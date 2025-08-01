@@ -51,16 +51,6 @@ class ContentFlow:
         """處理檔案的統一入口點"""
         try:
             content, _ = self.file_processor.process_input(file_path)
-            
-            # ======================================================================
-            # ▼▼▼ DEBUG CHECKPOINT 1: 檢查 FileProcessor 的輸出 ▼▼▼
-            print("\n" + "="*20 + " DEBUG CHECKPOINT 1: AFTER FileProcessor " + "="*20)
-            print("--- Raw content extracted from file ---")
-            print(content)
-            print("="*67 + "\n")
-            # ▲▲▲ DEBUG CHECKPOINT 1 ▲▲▲
-            # ======================================================================
-
             return self.complete_ai_processing(content, filename, suggested_subject)
         except Exception as e:
             print(f"處理檔案時發生錯誤: {e}")
@@ -70,7 +60,6 @@ class ContentFlow:
         """完整 AI 處理流程"""
         try:
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                # 注意：這裡的 content 是 Checkpoint 1 的輸出
                 future = executor.submit(asyncio.run, self._run_async_processing(content, filename, suggested_subject, source_url))
                 return future.result()
         except Exception as e:
@@ -100,21 +89,6 @@ class ContentFlow:
         try:
             print("🤖 AI 正在分析內容類型...")
             parsed_data = await self.gemini.parse_exam_paper(content)
-
-            # ======================================================================
-            # ▼▼▼ DEBUG CHECKPOINT 2 (已修正) ▼▼▼
-            print("\n" + "="*20 + " DEBUG CHECKPOINT 2: AFTER parse_exam_paper " + "="*20)
-            print("--- Full parsed_data from AI ---")
-            print(json.dumps(parsed_data, indent=2, ensure_ascii=False))
-            # 修正：迭代 questions 列表來印出每個 stem
-            if parsed_data.get('questions'):
-                for i, q_data in enumerate(parsed_data['questions']):
-                    stem_text = q_data.get('stem', 'STEM NOT FOUND')
-                    print(f"\n--- Extracted 'stem' from Question {i+1} ---")
-                    print(stem_text)
-            print("="*70 + "\n")
-            # ▲▲▲ DEBUG CHECKPOINT 2 (已修正) ▲▲▲
-            # ======================================================================
             
             content_type = parsed_data.get('content_type', 'study_material')
             detected_subject = parsed_data.get('subject', suggested_subject or '其他')
@@ -139,6 +113,7 @@ class ContentFlow:
             if result.get('success'):
                 return result
             else:
+                # If processing failed, return the result directly
                 return result
                 
         except Exception as e:
@@ -155,24 +130,9 @@ class ContentFlow:
         
         for i, question_data in enumerate(questions, 1):
             try:
-                # ======================================================================
-                # ▼▼▼ 這是解決排版問題的最終修正！ ▼▼▼
-                # 我們不再呼叫 _sanitize_question_text，因為 stem 的格式已經是完美的了。
-                question_text = question_data.get('stem', '')
-                # ▲▲▲ 這是解決排版問題的最終修正！ ▲▲▲
-                # ======================================================================
-                
+                question_text = self._sanitize_question_text(question_data.get('stem', ''))
                 if not question_text:
                     continue
-
-                # ======================================================================
-                # ▼▼▼ DEBUG CHECKPOINT 3: 檢查進入第二次 AI 呼叫前的最終資料 ▼▼▼
-                print("\n" + "="*20 + " DEBUG CHECKPOINT 3: BEFORE generate_answer " + "="*20)
-                print("--- Final question_text passed to generate the answer ---")
-                print(question_text)
-                print("="*73 + "\n")
-                # ▲▲▲ DEBUG CHECKPOINT 3 ▲▲▲
-                # ======================================================================
 
                 # 直接使用純淨的題幹生成答案
                 answer_data = await self.gemini.generate_answer(question_text)
@@ -193,8 +153,12 @@ class ContentFlow:
                 )
                 print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
                 
+                # 生成心智圖並由 mindmap_flow 直接儲存至資料庫
                 await self.mindmap_flow.generate_and_save_mindmap(question_id)
                 
+                
+                
+                knowledge_points = question_data.get('knowledge_points', [])
                 knowledge_points = question_data.get('knowledge_points', [])
                 for kp_name in knowledge_points:
                     kp_id = self.db.add_knowledge_point(kp_name.strip(), subject)
