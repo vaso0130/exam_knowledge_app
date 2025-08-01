@@ -7,14 +7,11 @@ def format_code_blocks(text: str) -> str:
     and ensures proper Markdown formatting with syntax highlighting.
     """
     def replace_code_block(match):
-        
+
         lang_specifier = match.group(1)
         code_content = match.group(2)
 
-        if lang_specifier:
-            lang = lang_specifier
-        else:
-            lang = guess_programming_language(code_content)
+        lang = lang_specifier if lang_specifier else guess_programming_language(code_content)
 
         return f"""``` {lang}
 {code_content}```"""
@@ -23,7 +20,10 @@ def format_code_blocks(text: str) -> str:
     # It captures the language specifier (optional) and then all content until the closing ```
     # The `re.DOTALL` flag allows '.' to match newlines.
     # We make the newline after the language specifier part of the content capture.
-    return re.sub(r"```\s*(\w*)\s*(.*?)```", replace_code_block, text, flags=re.DOTALL)
+    # Require a newline after the optional language specifier to avoid
+    # incorrectly treating the first line of code as the language.
+    pattern = r"```\s*(\w+)?\n([\s\S]*?)```"
+    return re.sub(pattern, replace_code_block, text)
 
 def guess_programming_language(code: str) -> str:
     """

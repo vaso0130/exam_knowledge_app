@@ -63,6 +63,17 @@ python web_app.py
 
 瀏覽器開啟：<http://localhost:5000>
 
+## 📦 主要相依套件
+
+| 套件 | 作用 |
+|------|------|
+| Flask | Web 應用框架 |
+| google-generativeai | 與 Gemini API 溝通 |
+| python-dotenv | 讀取 .env 設定 |
+| PyPDF2 / pdf2image | PDF 文字與影像處理 |
+| python-docx | Word 讀取 |
+| markdown | Markdown 轉換與語法高亮 |
+
 ## 📁 專案架構
 
 ```text
@@ -124,6 +135,23 @@ exam_knowledge_app/
 - **科目分類**：自動分類與統計
 - **搜尋功能**：快速定位相關內容
 - **進度追蹤**：學習成效分析
+
+## 🗂️ 主要程式檔案
+
+| 路徑 | 說明 |
+|------|------|
+| `web_app.py` | 啟動 Flask 伺服器的入口 |
+| `src/webapp/__init__.py` | 定義所有 Web 路由與頁面 |
+| `src/core/gemini_client.py` | 與 Google Gemini API 互動的客戶端 |
+| `src/core/database.py` | SQLite 資料庫操作封裝 |
+| `src/flows/content_flow.py` | 處理檔案、生成題目與摘要的主要流程 |
+| `src/flows/answer_flow.py` | 單題答案產生流程 |
+| `src/flows/mindmap_flow.py` | 生成並儲存心智圖 |
+| `src/flows/flow_manager.py` | 整合各流程的統一介面 |
+| `src/utils/file_processor.py` | 檔案讀取與網頁擷取工具 |
+| `src/utils/markdown_utils.py` | Markdown 與程式碼區塊格式化 |
+| `src/utils/json_parser.py` | 從文字解析 JSON 結構 |
+| `src/utils/playwright_scraper.py` | 使用 Playwright 進行網頁爬取 |
 
 ## 🗃️ 資料庫結構
 

@@ -77,6 +77,15 @@ class ContentFlow:
                 return "（參考答案生成失敗或未提供，請檢查原始資料或稍後重試。）"
             return extracted_answer
 
+    def _beautify_answer(self, text: str) -> str:
+        """Add a clear heading to the reference answer and ensure clean formatting."""
+        if not text:
+            return ""
+        text = text.strip()
+        if not text.startswith("### 參考答案"):
+            text = f"### 參考答案\n\n{text}"
+        return text
+
     async def _run_async_processing(self, content: str, filename: str, suggested_subject: str = None, source_url: str = None) -> Dict[str, Any]:
         """執行異步處理流程"""
         try:
@@ -130,7 +139,9 @@ class ContentFlow:
                 # 直接使用純淨的題幹生成答案
                 answer_data = await self.gemini.generate_answer(question_text)
                 print(f"DEBUG: answer_data type: {type(answer_data)}, value: {answer_data}")
-                answer_text = self._extract_answer_string(answer_data)
+                answer_text = self._beautify_answer(
+                    self._extract_answer_string(answer_data)
+                )
                 print(f"DEBUG: answer_text type: {type(answer_text)}, value: {answer_text}")
                 
                 question_id = self.db.insert_question(
@@ -144,13 +155,10 @@ class ContentFlow:
                 )
                 print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
                 
-                # 生成心智圖
+                # 生成心智圖並儲存至資料庫的 mindmap_code 欄位
                 mindmap_code = await self.mindmap_flow.generate_and_save_mindmap(question_id)
-                
-                # 將心智圖程式碼注入問題文本
                 if mindmap_code:
-                    updated_question_text = f"{format_code_blocks(question_text)}\n\n```mermaid\n{mindmap_code}\n```"
-                    self.db.update_question_text(question_id, updated_question_text)
+                    self.db.update_question_mindmap(question_id, mindmap_code)
                 
                 
                 
@@ -195,7 +203,11 @@ class ContentFlow:
                 document_id=doc_id,
                 title=q_data.get('title', '模擬題'),
                 question_text=format_code_blocks(q_data.get('question', '')),
-                answer_text=format_code_blocks(self._extract_answer_string(q_data.get('answer', ''))),
+                answer_text=format_code_blocks(
+                    self._beautify_answer(
+                        self._extract_answer_string(q_data.get('answer', ''))
+                    )
+                ),
                 subject=subject,
                 difficulty=q_data.get('difficulty'),
             )
