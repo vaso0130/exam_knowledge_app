@@ -29,6 +29,6 @@
 ## 忽視以下檔案
 
 - `REFACTORING_PLAN` 未來更新計畫，你不用管  
-- `GEMINI.md` GEMINI agent檔案，你不用管  
+- `AGENTS.md` chatgpt agent檔案，你不用管  
 
 ---
