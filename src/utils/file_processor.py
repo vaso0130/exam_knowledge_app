@@ -303,7 +303,11 @@ class FileProcessor:
             # 在獨立線程中運行異步代碼
             thread = threading.Thread(target=run_async)
             thread.start()
-            thread.join(timeout=60)  # 60秒超時
+            thread.join(timeout=90)  # 增加到90秒超時，應對 Cloudflare 檢查
+            
+            if thread.is_alive():
+                # 如果線程還在運行，表示超時了
+                result_container['error'] = Exception("網路擷取超時，請稍後再試")
             
             if result_container['error']:
                 raise result_container['error']

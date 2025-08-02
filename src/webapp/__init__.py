@@ -204,30 +204,19 @@ def create_app():
             if not (url_content.startswith('http://') or url_content.startswith('https://')):
                 url_content = 'https://' + url_content
             
-            from ..utils.file_processor import FileProcessor
-            web_content = FileProcessor.fetch_url_content_sync(url_content)
-
-            if not web_content or len(web_content.strip()) < 10:
-                return jsonify({'error': '無法從該網址獲取有效內容'}), 400
-
+            # 使用異步處理器來處理網路擷取
             title = url_content.split('//')[-1].split('/')[0]
-
-            result = flow_manager.content_flow.complete_ai_processing(
-                web_content, title, suggested_subject, source_url=url_content
-            )
+            job_id = async_processor.start_url_processing_job(url_content, title, suggested_subject)
             
-            if result.get('success'):
-                return jsonify({
-                    'success': True,
-                    'message': result.get('message', '處理完成！'),
-                    'questions_count': len(result.get("questions", []))
-                })
-            else:
-                return jsonify({'error': f'處理失敗: {result.get("error", "未知錯誤")}'}), 500
+            return jsonify({
+                'success': True,
+                'job_id': job_id,
+                'message': '網路擷取工作已開始，請稍候...'
+            })
                 
         except Exception as e:
             app.logger.error(f"URL processing failed: {e}", exc_info=True)
-            return jsonify({'error': f'系統錯誤: {str(e)}'}), 500
+            return jsonify({'error': f'啟動網路擷取失敗: {str(e)}'}), 500
 
     @app.route('/questions')
     def questions():
@@ -276,8 +265,13 @@ def create_app():
                 new_subject = request.form.get('subject')
                 new_question = request.form.get('question_text')
                 new_answer = request.form.get('answer_text')
+                new_mindmap = request.form.get('mindmap_code')
                 
-                db.edit_question(q_id, new_subject, new_question, new_answer)
+                # 處理知識點標籤
+                knowledge_points_str = request.form.get('knowledge_points', '')
+                new_knowledge_points = [kp.strip() for kp in knowledge_points_str.split(',') if kp.strip()]
+                
+                db.edit_question(q_id, new_subject, new_question, new_answer, new_mindmap, new_knowledge_points)
                 flash('題目已更新')
                 return redirect(url_for('question_detail', q_id=q_id))
             except Exception as e:
@@ -298,10 +292,13 @@ def create_app():
             abort(404)
         
         md = markdown.Markdown(extensions=['sane_lists', 'codehilite', 'fenced_code', 'tables'])
-        question_text = fix_markdown_numbering(q.get('question_text', ''))
+        
+        # 直接從資料庫獲取完美格式的文字並渲染
+        question_text = q.get('question_text', '')
         question_html = md.convert(question_text)
 
-        answer_text = fix_markdown_numbering(q.get('answer_text', ''))
+        # 同樣，直接渲染答案
+        answer_text = q.get('answer_text', '')
         md.reset()
         answer_html = md.convert(answer_text)
         
@@ -309,7 +306,9 @@ def create_app():
                              question=q, 
                              question_html=question_html,
                              answer_html=answer_html,
-                             mindmap_code=q.get('mindmap_code'))
+                             mindmap_code=q.get('mindmap_code'),
+                             question_summary=q.get('question_summary'),
+                             solving_tips=q.get('solving_tips'))
 
     # === 非同步處理相關路由 ===
     
@@ -405,7 +404,19 @@ def create_app():
         else:
             abort(404) # No valid source or file not found
 
-        md = markdown.Markdown(extensions=['sane_lists', 'codehilite', 'fenced_code', 'tables'])
+        # 設定 markdown 配置使其輸出 Prism.js 相容的 class
+        extension_configs = {
+            'codehilite': {
+                'guess_lang': False,
+                'css_class': 'language-pseudocode',
+                'use_pygments': False
+            }
+        }
+        
+        md = markdown.Markdown(
+            extensions=['sane_lists', 'codehilite', 'fenced_code', 'tables'],
+            extension_configs=extension_configs
+        )
         original_content = fix_markdown_numbering(original_content)
         original_html = md.convert(original_content)
         
@@ -440,6 +451,196 @@ def create_app():
         documents = db.get_documents_with_summaries()
         return render_template('learning_summaries.html', documents=documents)
 
+    @app.route('/edit_mindmap/<q_id>')
+    def edit_mindmap(q_id):
+        """編輯心智圖頁面"""
+        question = db.get_question_by_id(q_id)
+        if not question:
+            flash('找不到指定的題目')
+            return redirect(url_for('questions_list'))
+        
+        return render_template('edit_mindmap.html', question=question)
+
+    @app.route('/update_mindmap/<q_id>', methods=['POST'])
+    def update_mindmap(q_id):
+        """更新心智圖"""
+        try:
+            mindmap_code = request.form.get('mindmap_code', '').strip()
+            
+            if not mindmap_code:
+                return jsonify({'success': False, 'error': '心智圖原始碼不能為空'})
+            
+            # 簡單驗證 mindmap 格式
+            if not mindmap_code.startswith('mindmap'):
+                return jsonify({'success': False, 'error': '心智圖必須以 "mindmap" 開頭'})
+            
+            # 更新資料庫 - 使用現有的 edit_question 方法
+            question = db.get_question_by_id(q_id)
+            if not question:
+                return jsonify({'success': False, 'error': '找不到指定的題目'})
+            
+            db.edit_question(q_id, question['subject'], question['question_text'], 
+                           question['answer_text'], mindmap_code, None)
+            
+            return jsonify({'success': True, 'message': '心智圖已成功更新'})
+            
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'更新失敗: {str(e)}'})
+
+    @app.route('/regenerate_mindmap/<q_id>', methods=['POST'])
+    def regenerate_mindmap(q_id):
+        """重新生成心智圖"""
+        try:
+            # 使用 MindmapFlow 重新生成心智圖
+            from ..flows.mindmap_flow import MindmapFlow
+            mindmap_flow = MindmapFlow(gemini_client, db)
+            
+            # 使用 asyncio 執行異步任務
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                result = loop.run_until_complete(mindmap_flow.generate_and_save_mindmap(q_id))
+                
+                if isinstance(result, str):
+                    # 成功生成心智圖
+                    return jsonify({
+                        'success': True, 
+                        'message': '心智圖已重新生成', 
+                        'mindmap_code': result
+                    })
+                elif isinstance(result, dict) and not result.get('success', True):
+                    # 生成失敗
+                    return jsonify({
+                        'success': False, 
+                        'error': result.get('error', '未知錯誤')
+                    })
+                else:
+                    return jsonify({'success': False, 'error': '未知的返回格式'})
+                    
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            app.logger.error(f"重新生成心智圖失敗: {e}", exc_info=True)
+            return jsonify({'success': False, 'error': f'重新生成失敗: {str(e)}'})
+
+    @app.route('/regenerate_answer/<q_id>', methods=['POST'])
+    def regenerate_answer(q_id):
+        """重新生成題目答案"""
+        try:
+            # 獲取題目信息
+            question_data = db.get_question_by_id(q_id)
+            if not question_data:
+                return jsonify({'success': False, 'error': '找不到指定的題目'})
+            
+            question_text = question_data.get('question_text', '')
+            if not question_text:
+                return jsonify({'success': False, 'error': '題目內容為空'})
+            
+            # 使用 asyncio 執行異步任務
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                # 調用 Gemini 重新生成答案
+                answer_result = loop.run_until_complete(gemini_client.generate_answer(question_text))
+                
+                if answer_result and answer_result.get('answer'):
+                    answer_text = answer_result['answer']
+                    sources = answer_result.get('sources', [])
+                    
+                    # 更新資料庫中的答案
+                    subject = question_data.get('subject', '')
+                    db.edit_question(q_id, subject, question_text, answer_text, None, None)
+                    
+                    # 保存答案來源
+                    import json
+                    if sources:
+                        try:
+                            # 更新答案來源
+                            with db._session_scope() as session:
+                                from src.core.database import Question
+                                session.query(Question).filter(Question.id == q_id).update({
+                                    'answer_sources': json.dumps(sources, ensure_ascii=False)
+                                })
+                        except Exception as e:
+                            print(f"保存答案來源失敗: {e}")
+                    
+                    return jsonify({
+                        'success': True, 
+                        'message': '答案已重新生成',
+                        'answer': answer_text,
+                        'sources': sources
+                    })
+                else:
+                    return jsonify({'success': False, 'error': '答案生成失敗，請稍後重試'})
+                    
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            app.logger.error(f"重新生成答案失敗: {e}", exc_info=True)
+            return jsonify({'success': False, 'error': f'重新生成失敗: {str(e)}'})
+
+    @app.route('/generate_solving_tips/<q_id>', methods=['POST'])
+    def generate_solving_tips(q_id):
+        """生成題目解題技巧"""
+        try:
+            # 獲取題目信息
+            question_data = db.get_question_by_id(q_id)
+            if not question_data:
+                return jsonify({'success': False, 'error': '找不到指定的題目'})
+            
+            question_text = question_data.get('question_text', '')
+            question_title = question_data.get('title', '')
+            
+            if not question_text:
+                return jsonify({'success': False, 'error': '題目內容為空'})
+            
+            # 使用 asyncio 執行異步任務
+            import asyncio
+            # 檢查是否已有運行中的事件循環
+            try:
+                loop = asyncio.get_running_loop()
+                # 如果有運行中的循環，直接使用 run_until_complete 可能會出錯
+                # 所以我們使用 asyncio.run 在新的線程中執行
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        gemini_client.generate_question_summary(question_text, question_title)
+                    )
+                    summary_result = future.result()
+            except RuntimeError:
+                # 如果沒有運行中的循環，直接使用 asyncio.run
+                summary_result = asyncio.run(
+                    gemini_client.generate_question_summary(question_text, question_title)
+                )
+            
+            if summary_result and 'summary' in summary_result and 'solving_tips' in summary_result:
+                # 儲存解題技巧到資料庫
+                db.update_question_solving_tips(
+                    q_id, 
+                    summary_result['summary'], 
+                    summary_result['solving_tips']
+                )
+                
+                return jsonify({
+                    'success': True, 
+                    'message': '解題技巧已生成並儲存',
+                    'summary': summary_result['summary'],
+                    'solving_tips': summary_result['solving_tips']
+                })
+            else:
+                return jsonify({'success': False, 'error': '解題技巧生成失敗，請稍後重試'})
+                    
+        except Exception as e:
+            app.logger.error(f"生成解題技巧失敗: {e}", exc_info=True)
+            return jsonify({'success': False, 'error': f'生成失敗: {str(e)}'})
+
     @app.route('/personal_notes')
     def personal_notes():
         return render_template('personal_notes.html')
@@ -454,7 +655,19 @@ def create_app():
             flash('此文件尚未生成學習摘要與測驗', 'warning')
             return redirect(url_for('learning_summaries'))
             
-        md = markdown.Markdown(extensions=['sane_lists', 'codehilite', 'fenced_code', 'tables'])
+        # 設定 markdown 配置使其輸出 Prism.js 相容的 class
+        extension_configs = {
+            'codehilite': {
+                'guess_lang': False,
+                'css_class': 'language-pseudocode',
+                'use_pygments': False
+            }
+        }
+        
+        md = markdown.Markdown(
+            extensions=['sane_lists', 'codehilite', 'fenced_code', 'tables'],
+            extension_configs=extension_configs
+        )
         document['content'] = md.convert(
             fix_markdown_numbering(document.get('content', ''))
         )

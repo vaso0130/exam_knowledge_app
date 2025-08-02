@@ -51,6 +51,15 @@ class AsyncProcessor:
         
         return job_id
     
+    def start_url_processing_job(self, url: str, title: str, subject: str = "") -> str:
+        """啟動網路擷取處理工作"""
+        return self.submit_job(
+            job_type='url_processing',
+            url=url,
+            title=title,
+            subject=subject
+        )
+    
     def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
         """取得工作狀態"""
         if job_id in self.jobs:
@@ -68,6 +77,8 @@ class AsyncProcessor:
                 result = self._process_content(job_id, **kwargs)
             elif job_type == 'question_processing':
                 result = self._process_question(job_id, **kwargs)
+            elif job_type == 'url_processing':
+                result = self._process_url(job_id, **kwargs)
             else:
                 raise ValueError(f"未知的工作類型: {job_type}")
             
@@ -137,6 +148,48 @@ class AsyncProcessor:
             
         except Exception as e:
             raise Exception(f"考題處理失敗: {str(e)}")
+    
+    def _process_url(self, job_id: str, url: str, title: str, subject: str) -> Dict[str, Any]:
+        """處理網路擷取"""
+        self._update_job_status(job_id, 'running', 20, '連接網站，擷取內容...')
+        
+        from ..utils.file_processor import FileProcessor
+        
+        try:
+            # 使用 FileProcessor 獲取網路內容
+            web_content = FileProcessor.fetch_url_content_sync(url)
+            
+            if not web_content or len(web_content.strip()) < 10:
+                raise Exception("無法從該網址獲取有效內容，請檢查網址是否正確")
+            
+            self._update_job_status(job_id, 'running', 40, '內容擷取完成，開始分析...')
+            
+            # 使用 content_flow 處理
+            result = self.flow_manager.content_flow.complete_ai_processing(
+                content=web_content,
+                filename=title,
+                suggested_subject=subject,
+                source_url=url
+            )
+            
+            # 模擬進度更新
+            steps = [
+                (50, '分析內容類型...'),
+                (60, '提取知識點...'),
+                (70, '生成申論題...'),
+                (80, '生成摘要...'),
+                (90, '創建選擇題...'),
+                (95, '儲存到資料庫...')
+            ]
+            
+            for progress, message in steps:
+                self._update_job_status(job_id, 'running', progress, message)
+                time.sleep(0.5)  # 模擬處理時間
+            
+            return result
+            
+        except Exception as e:
+            raise Exception(f"網路擷取處理失敗: {str(e)}")
     
     def _update_job_status(self, job_id: str, status: str, progress: int, 
                           message: str, result: Any = None, error: str = None):

@@ -70,9 +70,20 @@ class MindmapFlow:
             # 過濾掉空值
             knowledge_points = [kp for kp in knowledge_points if kp.strip()]
 
-            # 3. 調用 Gemini API 生成心智圖程式碼
-            print("正在生成心智圖...")
-            mindmap_code = await self.gemini.generate_mindmap(subject, knowledge_points)
+            # 檢查是否有有效的知識點
+            if not knowledge_points:
+                print("警告：沒有發現有效的知識點，將生成提示性心智圖")
+                mindmap_code = f"""mindmap
+  root(("{subject}"))
+    提示("請先添加知識點")
+      方法1("編輯題目時添加知識點標籤")
+      方法2("或上傳相關學習資料")
+      方法3("系統會自動提取知識點")"""
+            else:
+                # 3. 調用 Gemini API 生成心智圖程式碼，加入題目文本
+                print(f"正在為 {len(knowledge_points)} 個知識點生成心智圖...")
+                question_text = question_data.get('title', '') + '\n\n' + question_data.get('question_text', '')
+                mindmap_code = await self.gemini.generate_mindmap(subject, knowledge_points, question_text)
             if not mindmap_code:
                 return {'success': False, 'error': '無法生成心智圖程式碼'}
 
@@ -80,7 +91,11 @@ class MindmapFlow:
             print("正在儲存心智圖...")
             self.db.update_question_mindmap(question_id, mindmap_code)
 
-            return mindmap_code
+            return {
+                'success': True,
+                'mindmap_code': mindmap_code,
+                'knowledge_points_count': len(knowledge_points)
+            }
 
         except Exception as e:
             return {

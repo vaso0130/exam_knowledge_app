@@ -102,20 +102,20 @@ class ContentFlow:
             print("🤖 AI 正在分析內容類型...")
             parsed_data = await self.gemini.parse_exam_paper(content)
 
-            # ======================================================================
-            # ▼▼▼ DEBUG CHECKPOINT 2 (已修正) ▼▼▼
-            print("\n" + "="*20 + " DEBUG CHECKPOINT 2: AFTER parse_exam_paper " + "="*20)
-            print("--- Full parsed_data from AI ---")
-            print(json.dumps(parsed_data, indent=2, ensure_ascii=False))
-            # 修正：迭代 questions 列表來印出每個 stem
-            if parsed_data.get('questions'):
-                for i, q_data in enumerate(parsed_data['questions']):
-                    stem_text = q_data.get('stem', 'STEM NOT FOUND')
-                    print(f"\n--- Extracted 'stem' from Question {i+1} ---")
-                    print(stem_text)
-            print("="*70 + "\n")
-            # ▲▲▲ DEBUG CHECKPOINT 2 (已修正) ▲▲▲
-            # ======================================================================
+            # # ======================================================================
+            # # ▼▼▼ DEBUG CHECKPOINT 2 (已修正) ▼▼▼
+            # print("\n" + "="*20 + " DEBUG CHECKPOINT 2: AFTER parse_exam_paper " + "="*20)
+            # print("--- Full parsed_data from AI ---")
+            # print(json.dumps(parsed_data, indent=2, ensure_ascii=False))
+            # # 修正：迭代 questions 列表來印出每個 stem
+            # if parsed_data.get('questions'):
+            #     for i, q_data in enumerate(parsed_data['questions']):
+            #         stem_text = q_data.get('stem', 'STEM NOT FOUND')
+            #         print(f"\n--- Extracted 'stem' from Question {i+1} ---")
+            #         print(stem_text)
+            # print("="*70 + "\n")
+            # # ▲▲▲ DEBUG CHECKPOINT 2 (已修正) ▲▲▲
+            # # ======================================================================
             
             content_type = parsed_data.get('content_type', 'study_material')
             detected_subject = parsed_data.get('subject', suggested_subject or '其他')
@@ -147,128 +147,140 @@ class ContentFlow:
             raise e
     
     async def _process_exam_content(self, content: str, subject: str, doc_id: int, parsed_data: Dict) -> Dict[str, Any]:
-        """考題處理流程"""
-        questions = parsed_data.get('questions', [])
-        saved_questions = []
-        all_knowledge_points = set()
-        
-        print(f"📝 開始處理 {len(questions)} 道考題...")
-        
-        for i, question_data in enumerate(questions, 1):
-            try:
-                # ======================================================================
-                # ▼▼▼ 這是解決排版問題的最終修正！ ▼▼▼
-                # 我們不再呼叫 _sanitize_question_text，因為 stem 的格式已經是完美的了。
-                question_text = question_data.get('stem', '')
-                # ▲▲▲ 這是解決排版問題的最終修正！ ▲▲▲
-                # ======================================================================
-                
-                if not question_text:
+            """考題處理流程"""
+            questions = parsed_data.get('questions', [])
+            saved_questions = []
+            all_knowledge_points = set()
+            
+            print(f"📝 開始處理 {len(questions)} 道考題...")
+            
+            for i, question_data in enumerate(questions, 1):
+                try:
+                    # 步驟 1: 直接使用 AI 產生的、已完美格式化的題目 (stem)
+                    question_text = question_data.get('stem', '')
+                    
+                    if not question_text:
+                        continue
+
+                    # 步驟 2: 讓 AI 針對這個完美的題目生成格式完美的答案
+                    answer_data = await self.gemini.generate_answer(question_text)
+                    answer_text = format_answer_text(self._extract_answer_string(answer_data)) # format_answer_text 是安全的
+                    sources_json = json.dumps(answer_data.get('sources', []), ensure_ascii=False)
+                    
+                    # 步驟 3: 將完美格式的題目和答案直接存入資料庫，移除所有 format_code_blocks()
+                    question_id = self.db.insert_question(
+                        document_id=doc_id,
+                        title=question_data.get('title', f'題目 {i}'),
+                        question_text=question_text,        # <--- 已修正
+                        answer_text=answer_text,            # <--- 已修正
+                        answer_sources=sources_json,
+                        subject=subject,
+                        difficulty=question_data.get('difficulty'),
+                        guidance_level=question_data.get('guidance_level')
+                    )
+                    
+                    await self.mindmap_flow.generate_and_save_mindmap(question_id)
+                    
+                    knowledge_points = question_data.get('knowledge_points', [])
+                    for kp_name in knowledge_points:
+                        kp_id = self.db.add_or_get_knowledge_point(kp_name.strip(), subject)
+                        self.db.link_question_to_knowledge_point(question_id, kp_id)
+                        all_knowledge_points.add(kp_name.strip())
+                    
+                    saved_questions.append({
+                        'id': question_id,
+                        'stem': question_text,
+                        'answer': answer_text,
+                        'sources': answer_data.get('sources', []),
+                        'knowledge_points': knowledge_points
+                    })
+                except Exception as e:
+                    print(f"    處理第 {i} 題時發生錯誤: {e}")
                     continue
-
-                # ======================================================================
-                # ▼▼▼ DEBUG CHECKPOINT 3: 檢查進入第二次 AI 呼叫前的最終資料 ▼▼▼
-                print("\n" + "="*20 + " DEBUG CHECKPOINT 3: BEFORE generate_answer " + "="*20)
-                print("--- Final question_text passed to generate the answer ---")
-                print(question_text)
-                print("="*73 + "\n")
-                # ▲▲▲ DEBUG CHECKPOINT 3 ▲▲▲
-                # ======================================================================
-
-                # 直接使用純淨的題幹生成答案
-                answer_data = await self.gemini.generate_answer(question_text)
-                print(f"DEBUG: answer_data type: {type(answer_data)}, value: {answer_data}")
-                answer_text = format_answer_text(self._extract_answer_string(answer_data))
-                print(f"DEBUG: answer_text type: {type(answer_text)}, value: {answer_text}")
-                sources_json = json.dumps(answer_data.get('sources', []), ensure_ascii=False)
-                
-                question_id = self.db.insert_question(
-                    document_id=doc_id,
-                    title=question_data.get('title', f'題目 {i}'),
-                    question_text=format_code_blocks(question_text),
-                    answer_text=format_code_blocks(answer_text),
-                    answer_sources=sources_json,
-                    subject=subject,
-                    difficulty=question_data.get('difficulty'),
-                    guidance_level=question_data.get('guidance_level')
-                )
-                print(f"DEBUG: Difficulty: {question_data.get('difficulty')}, Guidance Level: {question_data.get('guidance_level')}")
-                
-                await self.mindmap_flow.generate_and_save_mindmap(question_id)
-                
-                knowledge_points = question_data.get('knowledge_points', [])
-                for kp_name in knowledge_points:
-                    kp_id = self.db.add_or_get_knowledge_point(kp_name.strip(), subject)
-                    self.db.link_question_to_knowledge_point(question_id, kp_id)
-                    all_knowledge_points.add(kp_name.strip())
-                
-                saved_questions.append({
-                    'id': question_id,
-                    'stem': question_text,
-                    'answer': answer_text,
-                    'sources': answer_data.get('sources', []),
-                    'knowledge_points': knowledge_points
-                })
-            except Exception as e:
-                print(f"    處理第 {i} 題時發生錯誤: {e}")
-                continue
-        
-        return {
-            'success': True,
-            'content_type': 'exam_paper',
-            'subject': subject,
-            'document_id': doc_id,
-            'questions': saved_questions,
-            'knowledge_points': list(all_knowledge_points),
-            'message': f'成功處理考題，解析了 {len(saved_questions)} 道題目。'
-        }
+            
+            return {
+                'success': True,
+                'content_type': 'exam_paper',
+                'subject': subject,
+                'document_id': doc_id,
+                'questions': saved_questions,
+                'knowledge_points': list(all_knowledge_points),
+                'message': f'成功處理考題，解析了 {len(saved_questions)} 道題目。'
+            }
 
     async def _process_study_material(self, content: str, subject: str, doc_id: int, parsed_data: Dict) -> Dict[str, Any]:
         """學習資料處理流程"""
         print("📚 執行學習資料處理流程...")
         
-        # 生成模擬題
+        # 步驟 1: AI 生成一組包含題目和答案的模擬題
         generated_questions = await self.gemini.generate_questions_from_text(content, subject)
         saved_questions = []
         all_knowledge_points = set()
 
         for q_data in generated_questions:
+            # 步驟 2: 使用 sanitize 清理題目文字
             q_text = self._sanitize_question_text(q_data.get('question', ''))
+
+            # 對於模擬題，我們使用 generate_answer 重新生成答案，確保答案品質
             answer_data = await self.gemini.generate_answer(q_text)
-            answer_text = format_code_blocks(
-                format_answer_text(self._extract_answer_string(answer_data))
-            )
+            answer_text = format_answer_text(self._extract_answer_string(answer_data))
             sources_json = json.dumps(answer_data.get('sources', []), ensure_ascii=False)
 
+            # 步驟 3: 將完美格式的內容直接存入資料庫
             question_id = self.db.insert_question(
                 document_id=doc_id,
                 title=q_data.get('title', '模擬題'),
-                question_text=format_code_blocks(q_text),
-                answer_text=answer_text,
+                question_text=q_text,               # <--- 已修正
+                answer_text=answer_text,            # <--- 已修正
                 answer_sources=sources_json,
                 subject=subject,
                 difficulty=q_data.get('difficulty'),
             )
+            
+            # 步驟 4: 處理知識點關聯 (新增)
+            knowledge_points = q_data.get('knowledge_points', [])
+            if knowledge_points:
+                print(f"🔗 為題目 {question_id} 關聯知識點: {knowledge_points}")
+                for kp_name in knowledge_points:
+                    # 新增或取得知識點
+                    kp_id = self.db.add_or_get_knowledge_point(
+                        name=kp_name.strip(),
+                        subject=subject,
+                        description=f"來自學習資料：{parsed_data.get('title', '未知文件')}"
+                    )
+                    # 關聯題目與知識點
+                    self.db.link_question_to_knowledge_point(question_id, kp_id)
+                    all_knowledge_points.add(kp_name.strip())
+            else:
+                print(f"⚠️ 題目 {question_id} 沒有生成知識點")
+            
             # 生成心智圖
-            mindmap_code = await self.mindmap_flow.generate_and_save_mindmap(question_id)
+            mindmap_result = await self.mindmap_flow.generate_and_save_mindmap(question_id)
             
             # 將心智圖程式碼儲存到 mindmap_code 欄位
-            if mindmap_code:
-                self.db.update_question_mindmap(question_id, mindmap_code)
+            if mindmap_result and mindmap_result.get('success'):
+                self.db.update_question_mindmap(question_id, mindmap_result.get('mindmap_code', ''))
+            
+            # 生成解題技巧 (新增)
+            try:
+                print(f"🧠 為題目 {question_id} 生成解題技巧...")
+                summary_result = await self.gemini.generate_question_summary(q_text, q_data.get('title', ''))
+                if summary_result and 'summary' in summary_result and 'solving_tips' in summary_result:
+                    self.db.update_question_solving_tips(
+                        question_id,
+                        summary_result['summary'],
+                        summary_result['solving_tips']
+                    )
+                    print(f"✅ 解題技巧已生成並儲存")
+                else:
+                    print(f"⚠️ 解題技巧生成失敗")
+            except Exception as e:
+                print(f"❌ 生成解題技巧時發生錯誤: {e}")
 
-            q_data['answer'] = answer_text
-            q_data['sources'] = answer_data.get('sources', [])
+            q_data['id'] = question_id
             q_data['question'] = q_text
-            saved_questions.append({'id': question_id, **q_data})
-            
-            
-
-            
-
-            for kp_name in q_data.get('knowledge_points', []):
-                kp_id = self.db.add_or_get_knowledge_point(kp_name.strip(), subject)
-                self.db.link_question_to_knowledge_point(question_id, kp_id)
-                all_knowledge_points.add(kp_name.strip())
+            q_data['answer'] = answer_text
+            saved_questions.append(q_data)
 
         # 生成摘要和測驗
         summary_raw_data = await self.gemini.generate_summary(content)
