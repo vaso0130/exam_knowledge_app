@@ -52,7 +52,23 @@ class MindmapFlow:
 
             # 2. 組合文本
             subject = question_data['subject']
-            knowledge_points = [kp['name'] for kp in question_data.get('knowledge_points', [])]
+            knowledge_points_data = question_data.get('knowledge_points', [])
+            
+            # 提取知識點名稱，處理不同的資料格式
+            knowledge_points = []
+            for kp in knowledge_points_data:
+                if isinstance(kp, dict):
+                    # 如果是字典格式，提取 name 字段
+                    knowledge_points.append(kp.get('name', ''))
+                elif isinstance(kp, str):
+                    # 如果已經是字符串，直接使用
+                    knowledge_points.append(kp)
+                else:
+                    # 其他格式轉為字符串
+                    knowledge_points.append(str(kp))
+            
+            # 過濾掉空值
+            knowledge_points = [kp for kp in knowledge_points if kp.strip()]
 
             # 3. 調用 Gemini API 生成心智圖程式碼
             print("正在生成心智圖...")

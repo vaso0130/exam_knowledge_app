@@ -175,7 +175,7 @@ def create_app():
 
         return render_template('questions.html', questions=questions_data, subject=subject)
 
-    @app.route('/delete_question/<int:q_id>', methods=['POST'])
+    @app.route('/delete_question/<q_id>', methods=['POST'])
     def delete_question(q_id):
         try:
             db.delete_question(q_id)
@@ -190,9 +190,9 @@ def create_app():
         try:
             question_ids_str = request.form.getlist('question_ids')
             if question_ids_str:
-                question_ids = [int(id_str) for id_str in question_ids_str]
-                db.batch_delete_questions(question_ids)
-                flash(f'已刪除 {len(question_ids)} 個題目')
+                # question_ids = [int(id_str) for id_str in question_ids_str] # Removed int() conversion
+                db.batch_delete_questions(question_ids_str)
+                flash(f'已刪除 {len(question_ids_str)} 個題目')
             else:
                 flash('請選擇要刪除的題目')
         except Exception as e:
@@ -200,7 +200,7 @@ def create_app():
             flash(f'批次刪除失敗: {str(e)}')
         return redirect(url_for('questions'))
 
-    @app.route('/edit_question/<int:q_id>', methods=['GET', 'POST'])
+    @app.route('/edit_question/<q_id>', methods=['GET', 'POST'])
     def edit_question(q_id):
         if request.method == 'POST':
             try:
@@ -222,7 +222,7 @@ def create_app():
         subjects = db.get_all_subjects()
         return render_template('edit_question.html', question=q, subjects=subjects)
 
-    @app.route('/question/<int:q_id>')
+    @app.route('/question/<q_id>')
     def question_detail(q_id):
         q = db.get_question_by_id(q_id)
         if not q:
@@ -382,7 +382,7 @@ def create_app():
             md_content += "---\n\n"
         return md_content
 
-    @app.route('/export_question/<int:q_id>')
+    @app.route('/export_question/<q_id>')
     def export_question(q_id):
         q = db.get_question_by_id(q_id)
         if not q:
@@ -403,7 +403,7 @@ def create_app():
         
         questions_data = []
         for q_id in question_ids_str:
-            q = db.get_question_by_id(int(q_id))
+            q = db.get_question_by_id(q_id)
             if q:
                 questions_data.append(q)
         

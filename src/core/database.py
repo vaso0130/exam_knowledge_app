@@ -46,9 +46,11 @@ class Document(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     questions = relationship("Question", back_populates="document", cascade="all, delete-orphan")
 
+import uuid # Import uuid module
+
 class Question(Base):
     __tablename__ = "questions"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), unique=True) # Changed to String(36) for UUID
     document_id = Column(Integer, ForeignKey("documents.id"))
     title = Column(String(512))
     question_text = Column(Text)
@@ -82,7 +84,7 @@ class KnowledgePoint(Base):
 
 class QuestionKnowledgeLink(Base):
     __tablename__ = "question_knowledge_links"
-    question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
+    question_id = Column(String(36), ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True) # Changed to String(36)
     knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
 
 
@@ -132,7 +134,7 @@ class DatabaseManager:
 
     def insert_question(self, document_id: int, title: str, question_text: str, answer_text: str = None,
                         subject: str = None, answer_sources: str = None,
-                        difficulty: str = None, guidance_level: str = None, mindmap_code: str = None) -> int:
+                        difficulty: str = None, guidance_level: str = None, mindmap_code: str = None) -> str:
         with self._session_scope() as session:
             new_q = Question(
                 document_id=document_id,
@@ -166,7 +168,7 @@ class DatabaseManager:
                 } for q, doc_title in results
             ]
 
-    def get_question_by_id(self, question_id: int) -> Optional[Dict[str, Any]]:
+    def get_question_by_id(self, question_id: str) -> Optional[Dict[str, Any]]:
         with self._session_scope() as session:
             result = session.query(Question).options(joinedload(Question.document), joinedload(Question.knowledge_points)).filter(Question.id == question_id).first()
             if not result:
@@ -202,7 +204,7 @@ class DatabaseManager:
                 session.flush()
                 return new_kp.id
 
-    def link_question_to_knowledge_point(self, question_id: int, knowledge_point_id: int):
+    def link_question_to_knowledge_point(self, question_id: str, knowledge_point_id: int):
         with self._session_scope() as session:
             link = session.query(QuestionKnowledgeLink).filter_by(
                 question_id=question_id, 
@@ -212,7 +214,7 @@ class DatabaseManager:
                 new_link = QuestionKnowledgeLink(question_id=question_id, knowledge_point_id=knowledge_point_id)
                 session.add(new_link)
 
-    def update_question_mindmap(self, question_id: int, mindmap_code: str):
+    def update_question_mindmap(self, question_id: str, mindmap_code: str):
         with self._session_scope() as session:
             session.query(Question).filter(Question.id == question_id).update({"mindmap_code": mindmap_code})
 
@@ -317,13 +319,13 @@ class DatabaseManager:
             kps = session.query(KnowledgePoint).order_by(KnowledgePoint.subject, KnowledgePoint.name).all()
             return [{c.name: getattr(kp, c.name) for c in kp.__table__.columns} for kp in kps]
 
-    def delete_question(self, q_id: int):
+    def delete_question(self, q_id: str):
         with self._session_scope() as session:
             q = session.query(Question).filter(Question.id == q_id).first()
             if q:
                 session.delete(q)
 
-    def batch_delete_questions(self, question_ids: List[int]):
+    def batch_delete_questions(self, question_ids: List[str]):
         with self._session_scope() as session:
             session.query(Question).filter(Question.id.in_(question_ids)).delete(synchronize_session=False)
 
@@ -333,7 +335,7 @@ class DatabaseManager:
             if doc:
                 session.delete(doc)
 
-    def edit_question(self, q_id: int, new_subject: str, new_question: str, new_answer: str):
+    def edit_question(self, q_id: str, new_subject: str, new_question: str, new_answer: str):
         with self._session_scope() as session:
             session.query(Question).filter(Question.id == q_id).update({
                 "subject": new_subject,
