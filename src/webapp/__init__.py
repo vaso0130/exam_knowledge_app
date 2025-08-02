@@ -9,50 +9,45 @@ import re
 from ..utils.markdown_utils import format_answer_text
 
 def fix_markdown_numbering(text: str) -> str:
-    """只修正明顯重複的阿拉伯數字編號問題，保持所有其他格式不變"""
+    """Normalize ordered list formatting so markdown renders correctly.
+
+    This function adds missing blank lines before list blocks and fixes
+    numbering so that sequences like ``1.`` ``2.`` render as an ordered
+    list in HTML. Other content is returned unchanged.
+    """
     if not text:
         return text
-    
-    lines = text.split('\n')
-    result_lines = []
-    
-    for i, line in enumerate(lines):
-        # 檢查是否為阿拉伯數字編號行
-        arabic_match = re.match(r'^(\s*)(\d+)\.\s+(.+)$', line)
-        
-        if arabic_match:
-            indent, old_number, content = arabic_match.groups()
-            
-            # 只有在明確發現重複編號時才修正
-            should_fix = False
-            correct_number = int(old_number)
-            
-            # 向前查找同層級的最近編號
-            for j in range(i-1, max(-1, i-5), -1):
-                if j < 0 or not lines[j].strip():
-                    continue
-                    
-                prev_match = re.match(r'^(\s*)(\d+)\.\s+', lines[j])
-                if prev_match:
-                    prev_indent, prev_number = prev_match.groups()
-                    
-                    # 如果是同層級
-                    if len(prev_indent) == len(indent):
-                        expected_number = int(prev_number) + 1
-                        # 只有當編號不連續且不是正確的連續編號時才修正
-                        if int(old_number) == int(prev_number) and int(old_number) != expected_number:
-                            should_fix = True
-                            correct_number = expected_number
-                        break
-            
-            if should_fix:
-                result_lines.append(f"{indent}{correct_number}. {content}")
-            else:
-                result_lines.append(line)
+
+    lines = text.splitlines()
+    result: list[str] = []
+    counters: dict[int, int] = {}
+    prev_is_list = False
+    prev_indent = 0
+
+    for line in lines:
+        match = re.match(r"^(\s*)(\d+)\.\s+(.*)$", line)
+        if match:
+            indent_str, _num, content = match.groups()
+            indent = len(indent_str)
+
+            # reset deeper indent counters when indentation decreases
+            counters = {k: v for k, v in counters.items() if k <= indent}
+
+            if not prev_is_list or indent != prev_indent:
+                if result and result[-1].strip():
+                    result.append("")
+                counters[indent] = 0
+
+            counters[indent] = counters.get(indent, 0) + 1
+            result.append(f"{indent_str}{counters[indent]}. {content}")
+            prev_is_list = True
+            prev_indent = indent
         else:
-            result_lines.append(line)
-    
-    return '\n'.join(result_lines)
+            prev_is_list = False
+            prev_indent = 0
+            result.append(line)
+
+    return "\n".join(result)
 import uuid
 from pathlib import Path
 from datetime import datetime
@@ -302,14 +297,12 @@ def create_app():
         if not q:
             abort(404)
         
-        md = markdown.Markdown(extensions=['codehilite', 'fenced_code', 'tables'])
-        question_html = md.convert(q.get('question_text', ''))
-        
-        # 處理答案文本 - 暫時停用修正，測試原始渲染效果
-        answer_text = q.get('answer_text', '')
-        # 暫時停用編號修正
-        # if answer_text:
-        #     answer_text = fix_markdown_numbering(answer_text)
+        md = markdown.Markdown(extensions=['sane_lists', 'codehilite', 'fenced_code', 'tables'])
+        question_text = fix_markdown_numbering(q.get('question_text', ''))
+        question_html = md.convert(question_text)
+
+        answer_text = fix_markdown_numbering(q.get('answer_text', ''))
+        md.reset()
         answer_html = md.convert(answer_text)
         
         return render_template('question_detail.html', 
@@ -412,7 +405,8 @@ def create_app():
         else:
             abort(404) # No valid source or file not found
 
-        md = markdown.Markdown(extensions=['codehilite', 'fenced_code', 'tables'])
+        md = markdown.Markdown(extensions=['sane_lists', 'codehilite', 'fenced_code', 'tables'])
+        original_content = fix_markdown_numbering(original_content)
         original_html = md.convert(original_content)
         
         return render_template('original_document.html', 
@@ -460,9 +454,14 @@ def create_app():
             flash('此文件尚未生成學習摘要與測驗', 'warning')
             return redirect(url_for('learning_summaries'))
             
-        md = markdown.Markdown(extensions=['codehilite', 'fenced_code', 'tables'])
-        document['content'] = md.convert(document.get('content', ''))
-        document['key_points_summary'] = md.convert(document.get('key_points_summary', ''))
+        md = markdown.Markdown(extensions=['sane_lists', 'codehilite', 'fenced_code', 'tables'])
+        document['content'] = md.convert(
+            fix_markdown_numbering(document.get('content', ''))
+        )
+        md.reset()
+        document['key_points_summary'] = md.convert(
+            fix_markdown_numbering(document.get('key_points_summary', ''))
+        )
         return render_template('learning_summary_detail.html', document=document)
 
     @app.route('/knowledge-graph')
