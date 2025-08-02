@@ -2,7 +2,7 @@
 import os
 import json
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
@@ -88,6 +88,19 @@ class QuestionKnowledgeLink(Base):
     __tablename__ = "question_knowledge_links"
     question_id = Column(String(36), ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True) # Changed to String(36)
     knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
+
+class AsyncJob(Base):
+    __tablename__ = "async_jobs"
+    id = Column(String(36), primary_key=True, index=True)  # UUID
+    job_type = Column(String(50), nullable=False)
+    status = Column(String(20), default="pending")  # pending, running, completed, failed
+    progress = Column(Integer, default=0)
+    message = Column(Text, nullable=True)
+    result_json = Column(Text, nullable=True)  # JSON 格式的結果
+    error_message = Column(Text, nullable=True)
+    kwargs_json = Column(Text, nullable=True)  # JSON 格式的參數
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
 
 # --- Database Manager ---
@@ -415,3 +428,76 @@ class DatabaseManager:
                             knowledge_point_id=kp.id
                         )
                         session.add(link)
+
+    # === AsyncJob 相關方法 ===
+    
+    def create_async_job(self, job_id: str, job_type: str, kwargs_dict: Dict[str, Any]) -> None:
+        """創建新的非同步工作記錄"""
+        with self._session_scope() as session:
+            job = AsyncJob(
+                id=job_id,
+                job_type=job_type,
+                status="pending",
+                progress=0,
+                message="等待處理中...",
+                kwargs_json=json.dumps(kwargs_dict, ensure_ascii=False)
+            )
+            session.add(job)
+    
+    def update_async_job_status(self, job_id: str, status: str, progress: int, 
+                               message: str, result: Any = None, error: str = None) -> None:
+        """更新非同步工作狀態"""
+        with self._session_scope() as session:
+            job = session.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                job.status = status
+                job.progress = progress
+                job.message = message
+                job.updated_at = datetime.utcnow()
+                
+                if result is not None:
+                    job.result_json = json.dumps(result, ensure_ascii=False)
+                if error is not None:
+                    job.error_message = error
+    
+    def get_async_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """取得非同步工作狀態"""
+        with self._session_scope() as session:
+            job = session.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                result = {
+                    'id': job.id,
+                    'type': job.job_type,
+                    'status': job.status,
+                    'progress': job.progress,
+                    'message': job.message,
+                    'created_at': job.created_at.isoformat(),
+                    'updated_at': job.updated_at.isoformat()
+                }
+                
+                if job.result_json:
+                    try:
+                        result['result'] = json.loads(job.result_json)
+                    except json.JSONDecodeError:
+                        result['result'] = None
+                
+                if job.error_message:
+                    result['error'] = job.error_message
+                
+                if job.kwargs_json:
+                    try:
+                        result['kwargs'] = json.loads(job.kwargs_json)
+                    except json.JSONDecodeError:
+                        result['kwargs'] = {}
+                
+                return result
+        return None
+    
+    def cleanup_old_async_jobs(self, days: int = 7) -> int:
+        """清理舊的非同步工作記錄"""
+        with self._session_scope() as session:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            deleted_count = session.query(AsyncJob).filter(
+                AsyncJob.created_at < cutoff_date
+            ).delete()
+            return deleted_count

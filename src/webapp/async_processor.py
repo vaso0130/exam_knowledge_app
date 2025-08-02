@@ -13,13 +13,12 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 class AsyncProcessor:
-    """非同步處理器"""
+    """非同步處理器 - 使用資料庫儲存工作狀態"""
     
     def __init__(self, flow_manager):
         self.flow_manager = flow_manager
-        self.jobs: Dict[str, Dict[str, Any]] = {}
-        self.results_dir = Path("async_results")
-        self.results_dir.mkdir(exist_ok=True)
+        self.jobs: Dict[str, Dict[str, Any]] = {}  # 記憶體快取，提升查詢效能
+        # 不再需要檔案目錄
         
     def submit_job(self, job_type: str, **kwargs) -> str:
         """提交非同步工作"""
@@ -39,7 +38,9 @@ class AsyncProcessor:
         }
         
         self.jobs[job_id] = job_info
-        self._save_job_status(job_id, job_info)
+        
+        # 儲存到資料庫
+        self.flow_manager.db_manager.create_async_job(job_id, job_type, kwargs)
         
         # 啟動背景線程處理
         thread = threading.Thread(
@@ -61,12 +62,18 @@ class AsyncProcessor:
         )
     
     def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
-        """取得工作狀態"""
+        """取得工作狀態 - 優先從記憶體快取，然後從資料庫"""
+        # 先檢查記憶體快取
         if job_id in self.jobs:
             return self.jobs[job_id]
         
-        # 嘗試從檔案載入
-        return self._load_job_status(job_id)
+        # 從資料庫載入
+        job_data = self.flow_manager.db_manager.get_async_job(job_id)
+        if job_data:
+            # 更新記憶體快取
+            self.jobs[job_id] = job_data
+        
+        return job_data
     
     def _process_job(self, job_id: str, job_type: str, kwargs: Dict[str, Any]):
         """處理工作的背景方法"""
@@ -193,8 +200,9 @@ class AsyncProcessor:
     
     def _update_job_status(self, job_id: str, status: str, progress: int, 
                           message: str, result: Any = None, error: str = None):
-        """更新工作狀態"""
+        """更新工作狀態 - 同時更新記憶體快取和資料庫"""
         if job_id in self.jobs:
+            # 更新記憶體快取
             self.jobs[job_id].update({
                 'status': status,
                 'progress': progress,
@@ -206,42 +214,17 @@ class AsyncProcessor:
                 self.jobs[job_id]['result'] = result
             if error is not None:
                 self.jobs[job_id]['error'] = error
-            
-            self._save_job_status(job_id, self.jobs[job_id])
-    
-    def _save_job_status(self, job_id: str, job_info: Dict[str, Any]):
-        """儲存工作狀態到檔案"""
-        try:
-            status_file = self.results_dir / f"{job_id}.json"
-            with open(status_file, 'w', encoding='utf-8') as f:
-                json.dump(job_info, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"儲存工作狀態失敗: {e}")
-    
-    def _load_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
-        """從檔案載入工作狀態"""
-        try:
-            status_file = self.results_dir / f"{job_id}.json"
-            if status_file.exists():
-                with open(status_file, 'r', encoding='utf-8') as f:
-                    job_info = json.load(f)
-                    self.jobs[job_id] = job_info
-                    return job_info
-        except Exception as e:
-            print(f"載入工作狀態失敗: {e}")
         
-        return None
-    
-    def cleanup_old_jobs(self, days: int = 7):
+        # 更新資料庫
+        self.flow_manager.db_manager.update_async_job_status(
+            job_id=job_id,
+            status=status,
+            progress=progress,
+            message=message,
+            result=result,
+            error=error
+        )
+
+    def cleanup_old_jobs(self, days: int = 7) -> int:
         """清理舊的工作記錄"""
-        cutoff_time = time.time() - (days * 24 * 60 * 60)
-        
-        for job_file in self.results_dir.glob("*.json"):
-            if job_file.stat().st_mtime < cutoff_time:
-                try:
-                    job_file.unlink()
-                    job_id = job_file.stem
-                    if job_id in self.jobs:
-                        del self.jobs[job_id]
-                except Exception as e:
-                    print(f"清理工作檔案失敗: {e}")
+        return self.flow_manager.db_manager.cleanup_old_async_jobs(days)

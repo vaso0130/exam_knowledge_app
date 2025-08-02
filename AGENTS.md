@@ -248,7 +248,12 @@ download
 Use code with caution.
 Python
 IGNORE_WHEN_COPYING_END
+
 3. 總結與驗收標準
+
+因為後續我們又更改了一些功能以及多了一些功能
+
+現在要確保再題目處理時 所有流程都是多執行緒的
 
 重構目標：將 _process_exam_content 和 _process_study_material 兩個函式中的 for 迴圈改為使用 asyncio.gather 的並行模式。
 
