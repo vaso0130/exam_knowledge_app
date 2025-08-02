@@ -23,9 +23,15 @@
 
 ### 📊 視覺化與分析
 - **知識圖譜**：概念關聯性視覺化
-- **心智圖**：主題式知識結構
+- **心智圖**：主題式知識結構（Mermaid.js）
 - **學習進度追蹤**：科目別統計分析
 - **互動式界面**：現代化響應式設計
+
+### 🚀 生產環境部署
+- **WSGI 支援**：使用 Waitress 作為生產級 WSGI 伺服器
+- **資料庫彈性**：支援 SQLite 與 MySQL 資料庫
+- **環境變數配置**：彈性的部署設定管理
+- **非同步處理**：解決 Cloudflare 524 Timeout 問題
 
 ## 🚀 快速開始
 
@@ -45,57 +51,317 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 2. API 設定
+### 2. 環境變數設定
 
-創建 `.env` 檔案：
+創建 `.env` 檔案並設定以下參數：
+
+#### Windows 環境
 ```env
+# Google Gemini AI API 金鑰
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# 資料庫設定（預設使用 SQLite）
+DATABASE_URL=sqlite:///./db.sqlite3
+# MySQL 範例：DATABASE_URL=mysql+mysqlconnector://user:password@localhost/exam_db
+
+# Flask 設定
+FLASK_SECRET_KEY=your-super-secret-key-here
+
+# 檔案儲存路徑（使用相對路徑避免問題）
+FILE_STORAGE_PATH=./uploads
 ```
 
+#### WSL 環境（推薦配置）
+```env
+# Google Gemini AI API 金鑰
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# 資料庫設定（建議使用絕對路徑或相對路徑）
+DATABASE_URL=sqlite:////home/username/exam_app/db.sqlite3
+# 或使用相對路徑：DATABASE_URL=sqlite:///./db.sqlite3
+
+# Flask 設定
+FLASK_SECRET_KEY=your-super-secret-key-here
+
+# 檔案儲存路徑（WSL 原生路徑）
+FILE_STORAGE_PATH=/home/username/exam_app/uploads
+# 或使用相對路徑：FILE_STORAGE_PATH=./uploads
+```
+
+**Google Cloud Vision API 設定**：
 將 Google Cloud Vision API 金鑰檔案命名為 `google_credentials.json` 並放在專案根目錄。
 
-### 3. 啟動應用
+### 🔐 FLASK_SECRET_KEY 詳細說明
+
+`FLASK_SECRET_KEY` 是 Flask 應用程式的安全核心，用於：
+
+#### 🎯 **主要用途**
+- **Session 加密**：保護使用者 session 資料不被竄改
+- **CSRF 保護**：防止跨站請求偽造攻擊
+- **Flash 訊息安全**：加密系統訊息
+- **Cookie 簽名**：確保 cookies 完整性
+
+#### 🔑 **安全金鑰生成**
 
 ```bash
-# 啟動 Web 應用
+# 方法 1：使用 Python secrets 模組（推薦）
+python -c "import secrets; print(secrets.token_hex(32))"
+
+# 方法 2：使用 openssl
+openssl rand -hex 32
+
+# 方法 3：使用 uuid4
+python -c "import uuid; print(str(uuid.uuid4()).replace('-', ''))"
+```
+
+#### ⚠️ **安全注意事項**
+- 🚫 **絕對不要使用**：`"your-secret-key"`、`"dev"`、`"123456"` 等簡單字串
+- ✅ **必須使用**：至少 32 字元的隨機字串
+- 🔒 **保密性**：不要提交到版本控制系統
+- 🔄 **定期更換**：生產環境建議定期更新
+
+#### 💡 **在程式中的使用**
+```python
+# Flask 應用程式會這樣使用
+app.secret_key = os.environ.get("FLASK_SECRET_KEY")
+
+# 支援的功能
+session['user_data'] = data    # 加密 session
+flash('操作成功')              # 安全 flash 訊息
+csrf_token = generate_csrf()   # CSRF 保護
+```
+
+### ⚠️ WSL 路徑配置特別注意事項
+
+#### 問題分析
+1. **Windows 路徑格式在 WSL 中失效**
+2. **相對路徑基準點可能不同** 
+3. **檔案權限問題**
+
+#### 解決方案
+```bash
+# 1. 建議將專案完全放在 WSL 檔案系統中
+cd ~
+git clone <repository-url>
+cd exam_knowledge_app
+
+# 2. 檢查路徑設定
+pwd  # 確認當前路徑
+ls -la  # 檢查檔案權限
+
+# 3. 創建 WSL 專用的 .env
+cat > .env << 'EOF'
+GEMINI_API_KEY=your_key_here
+DATABASE_URL=sqlite:///./db.sqlite3
+FLASK_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+FILE_STORAGE_PATH=./uploads
+EOF
+
+# 4. 確保目錄存在且有正確權限
+mkdir -p uploads
+chmod 755 uploads
+```
+
+#### 路徑策略建議
+| 檔案 | Windows | WSL | 建議 |
+|------|---------|-----|------|
+| 專案目錄 | `C:\project` | `~/exam_app` | 🟢 WSL 原生 |
+| 資料庫 | 相對路徑 | 相對路徑 | 🟢 `./db.sqlite3` |
+| 上傳檔案 | 相對路徑 | 相對路徑 | 🟢 `./uploads` |
+| Google 金鑰 | 專案根目錄 | 專案根目錄 | 🟢 相對路徑 |
+
+### 3. 資料庫初始化
+
+系統啟動時會自動創建所需的資料表，支援：
+- **SQLite**（預設）：適合開發和小型部署
+- **MySQL**：適合生產環境，需要設定 `DATABASE_URL`
+
+### 4. 啟動應用
+
+#### 開發模式
+```bash
+# 啟動開發伺服器
 python web_app.py
 ```
 
-瀏覽器開啟：<http://localhost:5000>
+#### 生產模式
+```bash
+# 使用 Waitress（推薦用於 Windows 或簡單部署）
+python wsgi.py
+
+# 使用 Gunicorn（推薦用於 Linux 生產環境，需額外安裝）
+# 注意：Gunicorn 在 Windows 上支援有限，建議 Linux 環境使用
+# 安裝：pip install gunicorn
+gunicorn --bind 0.0.0.0:8001 --workers 4 wsgi:app
+
+# 使用 Granian（最新高性能選擇，支援 WSL/Linux）
+# 安裝：pip install granian
+granian --interface wsgi --host 0.0.0.0 --port 8001 --workers 4 wsgi:app
+
+# Gunicorn 進階配置
+gunicorn --bind 0.0.0.0:8001 \
+         --workers 4 \
+         --worker-class gevent \
+         --worker-connections 1000 \
+         --timeout 120 \
+         --keep-alive 2 \
+         --max-requests 1000 \
+         --max-requests-jitter 100 \
+         wsgi:app
+```
+
+瀏覽器開啟：<http://localhost:8001>
+
+## 🔧 常見問題解決
+
+### Cloudflare 524 Timeout 錯誤
+
+#### 問題描述
+當上傳檔案進行 AI 分析時，可能遇到：
+```
+A timeout occurred Error code 524
+Visit cloudflare.com for more information.
+```
+
+#### 原因分析
+- **Cloudflare 超時限制**：免費方案 100 秒，Pro 方案 600 秒
+- **AI 處理耗時**：Gemini 分析大文件、OCR 識別、8 步驟處理管線
+- **服務實際正常**：後端仍在處理，只是 CDN 誤判為超時
+
+#### ✅ 解決方案：非同步處理
+
+系統已內建**非同步處理模式**來解決此問題：
+
+1. **上傳檔案時**：
+   - ✅ 勾選「🚀 非同步處理模式」（預設已勾選）
+   - 📤 檔案立即上傳，返回處理狀態頁面
+   - ⏱️ 即時查看處理進度和狀態
+
+2. **處理流程**：
+   ```
+   上傳檔案 → 立即回應 → 背景處理 → 即時更新進度 → 完成通知
+   ```
+
+3. **技術優勢**：
+   - 🚫 避免 Cloudflare 超時
+   - 📊 即時進度追蹤
+   - 🔄 自動狀態更新
+   - 📱 支援大檔案處理
+
+#### 🎛️ 手動選擇模式
+
+- **非同步模式**（推薦）：適合生產環境、大檔案、複雜處理
+- **同步模式**：適合小檔案、測試環境
+
+#### 📋 進度監控
+
+非同步處理期間可以：
+- 📈 查看即時處理進度
+- 📝 了解當前處理步驟
+- 🔔 接收完成/錯誤通知
+- 🔗 直接跳轉到結果頁面
+
+## 🏭 生產環境部署建議
+
+### WSGI 伺服器選擇
+
+| 伺服器 | 適用場景 | 優勢 | 注意事項 |
+|--------|----------|------|----------|
+| **Waitress** | Windows 部署、中小型應用 | 跨平台兼容、配置簡單 | 單進程，適合 1-10 並發 |
+| **Gunicorn** | Linux 生產環境、高負載應用 | 高性能、豐富配置選項 | ⚠️ Windows 支援有限 |
+| **Granian** | WSL/Linux 高性能部署 | 🚀 極高性能（Rust）、HTTP/2 | 🆕 較新，需 Python 3.8+ |
+
+### 完整生產環境架構
+
+#### Linux 環境（推薦）
+```bash
+# 1. 安裝 Gunicorn（Linux 環境）
+pip install gunicorn[gevent]
+
+# 2. 或安裝 Granian（推薦高性能選擇）
+pip install granian
+
+# 3. 使用 systemd 服務管理
+sudo nano /etc/systemd/system/exam-app.service
+
+# 4. 配置 Nginx 反向代理
+sudo nano /etc/nginx/sites-available/exam-app
+
+# 5. 啟動服務
+sudo systemctl enable exam-app
+sudo systemctl start exam-app
+```
+
+#### WSL 環境（Windows 用戶推薦）
+```bash
+# 1. 在 WSL2 中安裝 Granian
+pip install granian
+
+# 2. 啟動高性能伺服器
+granian --interface wsgi --host 0.0.0.0 --port 8001 --workers 4 wsgi:app
+
+# 3. 進階配置
+granian --interface wsgi \
+        --host 0.0.0.0 \
+        --port 8001 \
+        --workers 4 \
+        --threads 2 \
+        --backlog 1024 \
+        --http2 \
+        wsgi:app
+
+# 4. Windows 主機可透過 localhost:8001 存取
+```
+
+#### Windows 環境
+```powershell
+# 1. 使用 Waitress（Windows 原生支援）
+pip install waitress
+
+# 2. 創建 Windows 服務（使用 NSSM 或 sc）
+# 下載 NSSM: https://nssm.cc/
+nssm install "ExamApp" python "C:\path\to\wsgi.py"
+
+# 3. 配置 IIS 或 Apache 作為反向代理（可選）
+# 或直接使用 Waitress 的內建伺服器
+```
 
 ## 📁 專案架構
 
 ```text
 exam_knowledge_app/
 ├── 🚀 啟動檔案
-│   └── web_app.py                 # Flask Web 應用程式
+│   ├── web_app.py                 # Flask 開發伺服器
+│   └── wsgi.py                    # WSGI 生產伺服器
 ├── 🗄️ 資料儲存
 │   ├── db.sqlite3                 # SQLite 主資料庫
-│   ├── data/                      # Markdown 檔案儲存
+│   ├── uploads/                   # 上傳檔案暫存
 │   └── google_credentials.json   # Google API 金鑰
 ├── 🧠 核心系統
 │   └── src/
 │       ├── core/                  # 核心模組
-│       │   ├── database.py        # 資料庫管理
+│       │   ├── database.py        # 資料庫管理（支援 SQLite/MySQL）
 │       │   └── gemini_client.py   # AI 客戶端
 │       ├── flows/                 # 處理流程
 │       │   ├── content_flow.py    # 內容處理管線
 │       │   ├── answer_flow.py     # 答案生成流程
-│       │   └── mindmap_flow.py    # 心智圖生成
-│       ├── gui/                   # 桌面 GUI（可選）
+│       │   ├── mindmap_flow.py    # 心智圖生成
+│       │   └── flow_manager.py    # 統一流程管理
 │       ├── webapp/                # Web 介面
 │       │   ├── __init__.py        # Flask 應用初始化
 │       │   └── templates/         # HTML 模板
 │       └── utils/                 # 工具函式
 │           ├── file_processor.py  # 檔案處理
-│           └── json_parser.py     # JSON 解析
-├── 📋 測試與文檔
-│   ├── test_question_generation.py # 題目生成測試
-│   ├── README.md                   # 專案說明
-│   └── REFACTORING_PLAN.md         # 重構計畫
-└── ⚙️ 設定檔案
-    ├── requirements.txt            # Python 依賴
-    └── .vscode/settings.json       # VS Code 設定
+│           ├── json_parser.py     # JSON 解析
+│           ├── markdown_utils.py  # Markdown 工具
+│           └── playwright_scraper.py # 網頁爬取
+├── 📋 設定與文檔
+│   ├── .env                       # 環境變數設定
+│   ├── requirements.txt           # Python 依賴
+│   ├── README.md                  # 專案說明
+│   └── REFACTORING_PLAN.md        # 重構計畫
+└── ⚙️ 額外檔案
+    └── .vscode/settings.json      # VS Code 設定
 ```
 
 ## 📂 主要程式檔案用途
@@ -157,34 +423,71 @@ exam_knowledge_app/
 ## 🔧 技術棧
 
 ### 後端技術
+
 - **Python 3.8+**：主要開發語言
-- **Flask**：Web 框架
-- **SQLite**：輕量級資料庫
-- **Google Gemini AI**：內容分析與生成
+- **Flask 3.1+**：Web 框架
+- **SQLAlchemy 2.0+**：ORM 資料庫抽象層
+- **SQLite/MySQL**：支援多種資料庫後端
+- **WSGI 伺服器**：
+  - **Waitress**：跨平台，適合 Windows 或簡單部署
+  - **Gunicorn**：高性能，Linux 生產環境首選
+  - **Granian**：🚀 極高性能（Rust 核心），支援 HTTP/2
 
 ### 前端技術
+
 - **Bootstrap 5**：響應式 UI 框架
 - **Jinja2**：模板引擎
 - **Markdown**：內容渲染
+- **Mermaid.js**：心智圖與流程圖
 - **Code Highlighting**：程式碼語法高亮
 
 ### AI 整合
+
 - **Google Gemini Pro**：文字分析與生成
 - **Google Cloud Vision**：圖片文字識別
 - **自然語言處理**：智慧內容理解
+
+### 檔案處理
+
+- **pdfplumber**：PDF 內容精確解析
+- **python-docx**：Word 文件處理
+- **pdf2image + Pillow**：PDF 轉圖片與圖像處理
+- **Playwright**：進階網頁內容擷取
 
 ## 📦 主要相依套件
 
 以下列出專案執行時最重要的套件，完整清單請見 `requirements.txt`。
 
-- `google-generativeai` – 與 Gemini API 溝通
-- `Flask` – 建立 Web 服務
-- `python-dotenv` – 載入環境設定
-- `google-cloud-vision` – 影像文字擷取
-- `pdf2image` – PDF 轉圖片供 OCR 使用
-- `pdfplumber` – 精準解析 PDF 版面內容
-- `playwright` – 進階網頁擷取
-- `markdown` – Markdown 內容處理
+```requirements
+# 核心 AI 功能
+google-generativeai>=0.8.0    # Gemini AI 整合
+google-cloud-vision>=3.7.0    # 圖片 OCR 識別
+
+# Web 應用程式
+Flask>=3.1.0                  # Web 框架
+waitress>=2.1.0               # WSGI 伺服器（跨平台）
+# gunicorn>=21.0.0             # WSGI 伺服器（Linux 推薦，可選）
+# granian>=1.3.0               # WSGI 伺服器（高性能 Rust，可選）
+
+# 資料庫
+SQLAlchemy>=2.0.0             # ORM 層
+mysql-connector-python>=8.0.0 # MySQL 驅動
+
+# 檔案處理
+pdfplumber>=0.7.0             # PDF 解析
+python-docx>=1.1.0            # Word 文件
+pdf2image>=1.17.0             # PDF 轉圖片
+Pillow>=10.4.0                # 圖像處理
+
+# 網頁爬取
+playwright>=1.54.0            # 瀏覽器自動化
+beautifulsoup4>=4.12.0        # HTML 解析
+requests>=2.32.0              # HTTP 請求
+
+# 內容處理
+markdown>=3.7.0               # Markdown 渲染
+python-dotenv>=1.0.0          # 環境變數管理
+```
 
 ## 🎨 使用範例
 
@@ -216,18 +519,32 @@ result = content_flow.complete_ai_processing(
 
 ## 🔄 最新更新
 
+### v2.2 - 生產環境優化 (2025/08/02)
+
+- ✅ **WSGI 部署支援**：新增 `wsgi.py` 使用 Waitress 伺服器
+- ✅ **高性能伺服器**：新增 Granian 支援，提供極致性能
+- ✅ **WSL 最佳化**：完整的 WSL 路徑配置指南
+- ✅ **資料庫彈性**：支援 SQLite 與 MySQL 資料庫
+- ✅ **環境變數配置**：完整的 `.env` 設定支援
+- ✅ **批次刪除修復**：修正變數名稱錯誤問題
+- ✅ **心智圖參數優化**：改善知識點格式處理
+- ✅ **非同步處理系統**：解決 Cloudflare 524 Timeout 問題
+- ✅ **Flask Secret Key 安全強化**：完整的安全配置與警告系統
+
 ### v2.1 - OCR 改進 (2025/08/01)
+
 - ✅ **PDF 解析升級**：以 `pdfplumber` 取代 `PyPDF2`，改善版面還原
 - ✅ **影像 OCR 強化**：切換 `document_text_detection`，提高圖片與 PDF 解析度
 
-
 ### v2.0 - AI 增強版 (2025/07/31)
+
 - ✅ **申論題品質提升**：禁止複述型題目，要求情境導向分析
 - ✅ **完整學習流程**：8步驟處理管線
 - ✅ **三部分學習結構**：主文 + 摘要 + 測驗
-- ✅ **品質測試框架**：自動化品質驗
+- ✅ **品質測試框架**：自動化品質驗證
 
 ### v1.0 - 基礎版本
+
 - ✅ 基本檔案處理功能
 - ✅ 題目解析與答案生成
 - ✅ 知識點管理
