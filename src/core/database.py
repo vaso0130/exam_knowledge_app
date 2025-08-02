@@ -2,7 +2,7 @@
 import os
 import json
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
@@ -60,6 +60,8 @@ class Question(Base):
     difficulty = Column(String(50), nullable=True)
     guidance_level = Column(String(50), nullable=True)
     mindmap_code = Column(Text, nullable=True)
+    question_summary = Column(Text, nullable=True)  # 新增：題目摘要
+    solving_tips = Column(Text, nullable=True)      # 新增：解題技巧
     created_at = Column(DateTime, default=datetime.utcnow)
     
     document = relationship("Document", back_populates="questions")
@@ -86,6 +88,19 @@ class QuestionKnowledgeLink(Base):
     __tablename__ = "question_knowledge_links"
     question_id = Column(String(36), ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True) # Changed to String(36)
     knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
+
+class AsyncJob(Base):
+    __tablename__ = "async_jobs"
+    id = Column(String(36), primary_key=True, index=True)  # UUID
+    job_type = Column(String(50), nullable=False)
+    status = Column(String(20), default="pending")  # pending, running, completed, failed
+    progress = Column(Integer, default=0)
+    message = Column(Text, nullable=True)
+    result_json = Column(Text, nullable=True)  # JSON 格式的結果
+    error_message = Column(Text, nullable=True)
+    kwargs_json = Column(Text, nullable=True)  # JSON 格式的參數
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
 
 # --- Database Manager ---
@@ -181,6 +196,7 @@ class DatabaseManager:
                 "answer_sources": q.answer_sources, "subject": q.subject,
                 "difficulty": q.difficulty, "guidance_level": q.guidance_level,
                 "created_at": q.created_at, "mindmap_code": q.mindmap_code,
+                "question_summary": q.question_summary, "solving_tips": q.solving_tips,
                 "doc_title": q.document.title if q.document else None,
                 "knowledge_points": [{"id": kp.id, "name": kp.name, "subject": kp.subject} for kp in q.knowledge_points]
             }
@@ -217,6 +233,14 @@ class DatabaseManager:
     def update_question_mindmap(self, question_id: str, mindmap_code: str):
         with self._session_scope() as session:
             session.query(Question).filter(Question.id == question_id).update({"mindmap_code": mindmap_code})
+
+    def update_question_solving_tips(self, question_id: str, summary: str, solving_tips: str):
+        """更新題目的摘要與解題技巧"""
+        with self._session_scope() as session:
+            session.query(Question).filter(Question.id == question_id).update({
+                "question_summary": summary,
+                "solving_tips": solving_tips
+            })
 
     def update_document_summary_and_quiz(self, document_id: int, summary: str, quiz: str):
         with self._session_scope() as session:
@@ -319,26 +343,161 @@ class DatabaseManager:
             kps = session.query(KnowledgePoint).order_by(KnowledgePoint.subject, KnowledgePoint.name).all()
             return [{c.name: getattr(kp, c.name) for c in kp.__table__.columns} for kp in kps]
 
+    def clean_orphaned_knowledge_points(self) -> int:
+        """清理沒有關聯問題的孤立知識點"""
+        with self._session_scope() as session:
+            # 查找所有沒有關聯問題的知識點
+            orphaned_kps = session.query(KnowledgePoint).filter(
+                ~KnowledgePoint.id.in_(
+                    session.query(QuestionKnowledgeLink.knowledge_point_id).distinct()
+                )
+            ).all()
+            
+            deleted_count = len(orphaned_kps)
+            for kp in orphaned_kps:
+                session.delete(kp)
+            
+            return deleted_count
+
     def delete_question(self, q_id: str):
         with self._session_scope() as session:
             q = session.query(Question).filter(Question.id == q_id).first()
             if q:
                 session.delete(q)
+                session.flush()  # 確保刪除操作完成
+                # 自動清理孤立的知識點
+                self.clean_orphaned_knowledge_points()
 
     def batch_delete_questions(self, question_ids: List[str]):
         with self._session_scope() as session:
             session.query(Question).filter(Question.id.in_(question_ids)).delete(synchronize_session=False)
+            session.flush()  # 確保刪除操作完成
+            # 自動清理孤立的知識點
+            self.clean_orphaned_knowledge_points()
 
     def delete_document(self, doc_id: int):
         with self._session_scope() as session:
             doc = session.query(Document).filter(Document.id == doc_id).first()
             if doc:
                 session.delete(doc)
+                session.flush()  # 確保刪除操作完成
+                # 自動清理孤立的知識點
+                self.clean_orphaned_knowledge_points()
 
-    def edit_question(self, q_id: str, new_subject: str, new_question: str, new_answer: str):
+    def edit_question(self, q_id: str, new_subject: str, new_question: str, new_answer: str, 
+                     new_mindmap: str = None, new_knowledge_points: List[str] = None):
         with self._session_scope() as session:
-            session.query(Question).filter(Question.id == q_id).update({
+            # 更新題目基本資訊
+            update_data = {
                 "subject": new_subject,
                 "question_text": new_question,
                 "answer_text": new_answer
-            })
+            }
+            
+            # 如果提供了心智圖，則更新
+            if new_mindmap is not None:
+                update_data["mindmap_code"] = new_mindmap
+            
+            session.query(Question).filter(Question.id == q_id).update(update_data)
+            
+            # 如果提供了知識點列表，則更新知識點關聯
+            if new_knowledge_points is not None:
+                # 先刪除現有的知識點關聯
+                session.query(QuestionKnowledgeLink).filter(
+                    QuestionKnowledgeLink.question_id == q_id
+                ).delete()
+                
+                # 添加新的知識點關聯
+                for kp_name in new_knowledge_points:
+                    if kp_name.strip():  # 確保不是空字串
+                        # 查找或創建知識點
+                        kp = session.query(KnowledgePoint).filter(
+                            KnowledgePoint.name == kp_name.strip(),
+                            KnowledgePoint.subject == new_subject
+                        ).first()
+                        
+                        if not kp:
+                            # 創建新的知識點
+                            kp = KnowledgePoint(name=kp_name.strip(), subject=new_subject)
+                            session.add(kp)
+                            session.flush()  # 確保獲得 ID
+                        
+                        # 創建關聯
+                        link = QuestionKnowledgeLink(
+                            question_id=q_id,
+                            knowledge_point_id=kp.id
+                        )
+                        session.add(link)
+
+    # === AsyncJob 相關方法 ===
+    
+    def create_async_job(self, job_id: str, job_type: str, kwargs_dict: Dict[str, Any]) -> None:
+        """創建新的非同步工作記錄"""
+        with self._session_scope() as session:
+            job = AsyncJob(
+                id=job_id,
+                job_type=job_type,
+                status="pending",
+                progress=0,
+                message="等待處理中...",
+                kwargs_json=json.dumps(kwargs_dict, ensure_ascii=False)
+            )
+            session.add(job)
+    
+    def update_async_job_status(self, job_id: str, status: str, progress: int, 
+                               message: str, result: Any = None, error: str = None) -> None:
+        """更新非同步工作狀態"""
+        with self._session_scope() as session:
+            job = session.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                job.status = status
+                job.progress = progress
+                job.message = message
+                job.updated_at = datetime.utcnow()
+                
+                if result is not None:
+                    job.result_json = json.dumps(result, ensure_ascii=False)
+                if error is not None:
+                    job.error_message = error
+    
+    def get_async_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """取得非同步工作狀態"""
+        with self._session_scope() as session:
+            job = session.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                result = {
+                    'id': job.id,
+                    'type': job.job_type,
+                    'status': job.status,
+                    'progress': job.progress,
+                    'message': job.message,
+                    'created_at': job.created_at.isoformat(),
+                    'updated_at': job.updated_at.isoformat()
+                }
+                
+                if job.result_json:
+                    try:
+                        result['result'] = json.loads(job.result_json)
+                    except json.JSONDecodeError:
+                        result['result'] = None
+                
+                if job.error_message:
+                    result['error'] = job.error_message
+                
+                if job.kwargs_json:
+                    try:
+                        result['kwargs'] = json.loads(job.kwargs_json)
+                    except json.JSONDecodeError:
+                        result['kwargs'] = {}
+                
+                return result
+        return None
+    
+    def cleanup_old_async_jobs(self, days: int = 7) -> int:
+        """清理舊的非同步工作記錄"""
+        with self._session_scope() as session:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            deleted_count = session.query(AsyncJob).filter(
+                AsyncJob.created_at < cutoff_date
+            ).delete()
+            return deleted_count

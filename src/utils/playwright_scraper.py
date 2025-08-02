@@ -13,13 +13,13 @@ logger = logging.getLogger(__name__)
 class PlaywrightScraper:
     """使用 Playwright 的進階網頁爬取器"""
     
-    def __init__(self, headless: bool = True, timeout: int = 30000):
+    def __init__(self, headless: bool = True, timeout: int = 60000):
         """
         初始化爬取器
         
         Args:
             headless: 是否使用無頭瀏覽器模式
-            timeout: 頁面載入超時時間（毫秒）
+            timeout: 頁面載入超時時間（毫秒），增加到60秒以避免 Cloudflare 超時
         """
         self.headless = headless
         self.timeout = timeout
@@ -41,11 +41,23 @@ class PlaywrightScraper:
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(
                 headless=self.headless,
-                args=['--no-sandbox', '--disable-dev-shm-usage']
+                args=[
+                    '--no-sandbox', 
+                    '--disable-dev-shm-usage',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-features=VizDisplayCompositor'
+                ]
             )
             self.context = await self.browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                viewport={'width': 1920, 'height': 1080}
+                viewport={'width': 1920, 'height': 1080},
+                extra_http_headers={
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                }
             )
             logger.info("Playwright 瀏覽器已啟動")
         except Exception as e:
@@ -67,7 +79,7 @@ class PlaywrightScraper:
     
     async def scrape_webpage(self, url: str, query: str = "") -> Dict[str, Any]:
         """
-        爬取網頁內容
+        爬取網頁內容，增強對 Cloudflare 和反爬蟲機制的處理
         
         Args:
             url: 要爬取的網址
@@ -88,13 +100,28 @@ class PlaywrightScraper:
             
             # 訪問頁面
             logger.info(f"正在載入頁面: {url}")
-            response = await page.goto(url, wait_until='domcontentloaded')
+            response = await page.goto(url, wait_until='domcontentloaded', timeout=self.timeout)
             
             if not response or response.status >= 400:
                 raise Exception(f"頁面載入失敗，狀態碼: {response.status if response else 'None'}")
             
-            # 等待頁面完全載入
-            await page.wait_for_load_state('networkidle', timeout=10000)
+            # 檢查是否遇到 Cloudflare 或其他反爬蟲頁面
+            page_content = await page.content()
+            if any(indicator in page_content.lower() for indicator in [
+                'cloudflare', 'ray id', 'checking your browser', 'ddos protection',
+                'please wait while we check your browser', 'security check'
+            ]):
+                logger.info(f"檢測到反爬蟲保護，等待更長時間: {url}")
+                # 等待更長時間讓 Cloudflare 完成檢查
+                try:
+                    await page.wait_for_load_state('networkidle', timeout=30000)
+                    # 再次等待一段時間
+                    await page.wait_for_timeout(3000)
+                except PlaywrightTimeoutError:
+                    logger.warning(f"等待反爬蟲檢查超時，嘗試繼續: {url}")
+            else:
+                # 等待頁面完全載入
+                await page.wait_for_load_state('networkidle', timeout=15000)
             
             # 提取頁面資訊
             page_data = await self._extract_page_content(page)
@@ -121,7 +148,7 @@ class PlaywrightScraper:
                 'images': [],
                 'query': query,
                 'status': 'timeout',
-                'error': '頁面載入超時'
+                'error': '頁面載入超時，可能遇到 Cloudflare 或網站過載'
             }
         except Exception as e:
             logger.error(f"爬取頁面失敗 {url}: {e}")

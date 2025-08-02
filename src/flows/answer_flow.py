@@ -107,7 +107,7 @@ class AnswerFlow:
             mindmap_code = None
             if knowledge_points:
                 try:
-                    mindmap_code = await self.gemini.generate_mindmap(subject, knowledge_points)
+                    mindmap_code = await self.gemini.generate_mindmap(subject, knowledge_points, question_text)
                     if mindmap_code:
                         self.db.update_question_mindmap(result['question_id'], mindmap_code)
                 except Exception as e:

@@ -1,13 +1,5 @@
-# html markdown渲染問題
 
-請參考輸出.md
-不管是ai回答還是存入DB的回答
-格式都是正確的
-但是在html渲染上，就會出現排版錯誤、編碼都變成1.等問題
-請看看是哪裡需要修正
-
-
-# 以下改版計畫先忽視
+# 重要重要重要:以下改版計畫先忽視
 # Please disregard the following revision plan for now.
 
 # Development Guide for AI Agents

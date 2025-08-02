@@ -128,8 +128,22 @@ document.getElementById('textForm').addEventListener('submit', function(e) {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.text(); // 先取得文字內容
+    })
+    .then(text => {
+        let data;
+        try {
+            data = JSON.parse(text); // 嘗試解析 JSON
+        } catch (jsonError) {
+            console.error('JSON 解析錯誤:', jsonError);
+            console.error('收到的內容:', text);
+            throw new Error('伺服器回應格式錯誤，請稍後再試或聯繫管理員');
+        }
+        
         if (data.success) {
             resultDiv.innerHTML = `<p class="success">✅ ${data.message}</p>`;
             // 清空文字區域
@@ -168,16 +182,39 @@ document.getElementById('urlForm').addEventListener('submit', function(e) {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.text(); // 先取得文字內容
+    })
+    .then(text => {
+        let data;
+        try {
+            data = JSON.parse(text); // 嘗試解析 JSON
+        } catch (jsonError) {
+            console.error('JSON 解析錯誤:', jsonError);
+            console.error('收到的內容:', text);
+            throw new Error('伺服器回應格式錯誤，請稍後再試或聯繫管理員');
+        }
+        
         if (data.success) {
-            resultDiv.innerHTML = `<p class="success">✅ ${data.message}</p>`;
-            // 清空網址輸入
-            document.getElementById('url_content').value = '';
-            // 3秒後跳轉到題庫頁面
-            setTimeout(() => {
-                window.location.href = '/questions';
-            }, 2000);
+            if (data.job_id) {
+                // 如果返回 job_id，則導向 job 狀態頁面
+                resultDiv.innerHTML = `<p class="success">✅ ${data.message}</p>`;
+                setTimeout(() => {
+                    window.location.href = `/job/${data.job_id}`;
+                }, 1500);
+            } else {
+                // 舊版同步處理的回應
+                resultDiv.innerHTML = `<p class="success">✅ ${data.message}</p>`;
+                // 清空網址輸入
+                document.getElementById('url_content').value = '';
+                // 3秒後跳轉到題庫頁面
+                setTimeout(() => {
+                    window.location.href = '/questions';
+                }, 2000);
+            }
         } else {
             resultDiv.innerHTML = `<p class="error">❌ ${data.error}</p>`;
         }
