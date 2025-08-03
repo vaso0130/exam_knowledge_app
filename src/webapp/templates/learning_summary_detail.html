@@ -22,8 +22,8 @@
                 {% if document.content %}
                 <div class="mb-4 content-material">
                     <h3 class="border-bottom pb-2 mb-3">
-                        📄 AI整理後的文章內容 
-                        <small class="text-muted">(已移除廣告和無關內容，重新排版)</small>
+                        🤖 AI深度整理後的文章內容 
+                        <small class="text-muted">(已移除廣告、導航、頁面註腳等雜訊，並重新格式化排版)</small>
                         <button class="btn btn-outline-secondary btn-sm ms-2" onclick="toggleMainContent()">
                             📖 展開完整內容
                         </button>
@@ -39,12 +39,13 @@
                     <!-- 新增查看原始內容的選項 -->
                     {% if document.original_content and document.original_content != document.content %}
                     <div class="mt-2">
-                        <button class="btn btn-outline-secondary btn-sm" onclick="toggleOriginalContent()">
-                            📰 查看網頁原始內容
+                        <button class="btn btn-outline-warning btn-sm" onclick="toggleOriginalContent()">
+                            📰 對比原始網頁內容
                         </button>
                         <div id="original-content" class="mt-3 p-4 border rounded bg-warning bg-opacity-10 d-none">
-                            <h6>📰 網頁原始內容：</h6>
-                            <div class="small text-muted">{{ document.original_content[:500]|safe }}{% if document.original_content|length > 500 %}...{% endif %}</div>
+                            <h6>📰 原始網頁內容（清理前）：</h6>
+                            <small class="text-muted">以下是AI清理前的原始內容，可與上方清理後內容對比效果</small>
+                            <div class="small text-muted mt-2" style="max-height: 300px; overflow-y: auto;">{{ document.original_content[:1000]|safe }}{% if document.original_content|length > 1000 %}...<br><em>（內容過長，已截斷）</em>{% endif %}</div>
                         </div>
                     </div>
                     {% endif %}
@@ -122,10 +123,10 @@ function toggleOriginalContent() {
     
     if (originalContent.classList.contains('d-none')) {
         originalContent.classList.remove('d-none');
-        button.textContent = '🔼 隱藏網頁原始內容';
+        button.textContent = '🔼 隱藏原始網頁內容';
     } else {
         originalContent.classList.add('d-none');
-        button.textContent = '📰 查看網頁原始內容';
+        button.textContent = '📰 對比原始網頁內容';
     }
 }
 

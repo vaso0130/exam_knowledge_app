@@ -298,12 +298,14 @@ class GeminiClient:
         - 國情提要：請勿出現中國的考試內容與法規或場景，台灣的國考不太可能會考這些東西。
         
         **品牌與技術使用指導原則：**
+        - **避免涉及具體的公司名稱、產品名稱**
         - **技術導向使用**：品牌應作為技術概念的載體，重點在於背後的技術知識
           - ✅ 正確範例：「Facebook 作為社群媒體平台，企業可透過其廣告系統進行精準行銷，請分析社群媒體行銷的優勢與挑戰」
           - ✅ 正確範例：「Facebook 與Line 都是作為社群媒體平台，但是提供的服務不太相同，請分析公司如何選擇這兩種平台，各自的優勢與挑戰在哪裡」
           - ✅ 正確範例：「Azure 提供 IaaS、PaaS、SaaS 等雲端服務，請評估企業選擇不同服務模式的考量因素」
           - ❌ 錯誤範例：「X.com 與 Threads.com 都是社群平台，企業應該選擇哪個進行行銷？」
           - ❌ 錯誤範例：「Azure vs AWS vs GCP，公司應該選擇哪個雲端平台？」
+          - ❌ 錯誤範例：「公司考慮使用 AWS S3 作為主要的資料儲存方案，但同時也聽聞 EFS 和 FSx for Lustre 在特定場景下的優勢。請分析在考量資料的存取頻率、檔案大小、並行處理需求以及成本效益的前提下，該公司應如何評估並選擇最適合的儲存服務（S3, EFS, FSx for Lustre）」 這樣對產品服務太細節，不是平常國考會出現的樣子
         - **知識點優先**：使用知名品牌時，必須確保題目測驗的是技術概念、商業模式、系統架構等知識，而非品牌偏好
         - **避免直接比較**：不出現同類型服務的品牌選擇題，改為分析該類服務的技術特性、適用場景或導入策略
         - **通用化處理**：對於不夠知名的品牌，使用「某電商平台」、「主流CRM系統」等通用描述
@@ -442,38 +444,43 @@ class GeminiClient:
     async def generate_summary(self, text: str) -> Dict[str, Any]:
         """
         生成摘要 - 使用中級模型 (gemini-2.5-flash-lite)
+        專注於技術知識、理論概念和法律條文，而非品牌比較
         """
+
         prompt = f"""
-        你是一位專業的學習資料整理專家，請為以下內容生成結構化的知識摘要。
+        你是一位專業的技術知識整理專家，請為以下內容生成結構化的知識摘要。
 
-        **核心要求：**
-        1. **原始性保持**：直接從原文提取重點，不進行二次加工或改寫
-        2. **Markdown格式**：使用標準的 Markdown 語法來組織內容結構
-        3. **技術導向**：專注於知識、技術、概念、方法論本身
-        4. **品牌處理原則**：
-           - **技術導向使用**：保留具有學習價值的知名品牌，重點關注其背後的技術概念
-             - ✅ 保留：Facebook（社群媒體技術）、Azure（雲端服務架構）、AWS（雲端運算概念）
-             - ✅ 保留：ISO、IEEE、RFC（技術標準）、TCP/IP、HTTP（協議標準）
-           - **通用化處理**：將不具代表性的品牌替換為技術類型
-             - ❌ 特定品牌 → ✅ 通用描述：「某電商平台」、「主流CRM系統」、「知名社群軟體」
-           - **避免品牌比較**：不進行同類型服務的品牌選擇，改為技術特性分析
-             - ❌ 避免：「Azure vs AWS 選擇」→ ✅ 改為：「雲端服務模式比較（IaaS/PaaS/SaaS）」
-           - **知識點優先**：使用品牌時確保測驗的是技術知識，而非品牌認知
-        5. **結構化呈現**：使用標題、列表、表格等 Markdown 元素清晰呈現資訊
+        **核心原則：**
+        1. **技術導向**：專注於技術概念、理論基礎、實作方法、系統架構等知識本身
+        2. **知識提煉**：提取核心的技術原理、運作機制、應用場景、實務考量
+        3. **理論基礎**：說明背後的技術理論、演算法原理、設計模式
+        4. **法律準確**：如涉及法律，提供正確的法條名稱、條文號碼、適用範圍
+        5. **實務應用**：描述技術在實際應用中的重點、注意事項、最佳實踐
 
-        **內容：**
-        {text[:6000]}
+        **處理方式：**
+        - **品牌處理**：將品牌名稱轉換為對應的技術類型或概念
+          - 例如：「Facebook」→「社群媒體平台」，重點在社群網路技術、使用者互動機制
+          - 例如：「Azure、AWS」→「雲端服務平台」，重點在雲端運算架構、服務模式（IaaS/PaaS/SaaS）
+        - **技術深入**：對每個技術概念，說明其定義、特性、應用場景、技術細節
+        - **法條引用**：如涉及法律，格式為「《法規名稱》第X條」或「XX法第X條第X項」
+        -   使用不同層級的編號：第一層用「一、二、三、」，第二層用「(一) (二) (三)」，第三層用「1. 2. 3.」，第四層用「(1) (2) (3)」。
+        -   使用不同層級標題請記得使用markdown語法：「## 一、概說」、「> ### (一)理論」、「>> #### 1.主要分析」依此類推，記得一定要使用‵>‵與‵>>‵來根據不同層級進行縮排，增加版面美觀性。
 
-        請以JSON格式回應，包含完整的 Markdown 格式摘要：
+        **輸出結構：**
+        根據內容類型適當調整結構，重點在知識傳達：
+
+        **原始內容：**
+        {text}
+
+        請以JSON格式回應，生成專業的技術知識摘要：
         {{
-            "summary": "# 知識摘要標題\n\n## 核心概念\n\n- 重點1\n- 重點2\n\n## 技術要點\n\n### 關鍵技術\n\n- **技術名稱**：技術說明\n- **方法論**：方法說明\n\n### 分類資訊\n\n| 類別 | 說明 | 特點 |\n|------|------|------|\n| 分類1 | 說明1 | 特點1 |\n| 分類2 | 說明2 | 特點2 |\n\n## 實務應用\n\n1. **應用場景1**\n   - 具體說明\n   - 注意事項\n\n2. **應用場景2**\n   - 具體說明\n   - 注意事項",
-            "bullets": ["重點1", "重點2", "重點3"]
+            "summary": "# 技術知識摘要\n\n## 核心概念\n\n[從技術角度解釋主要概念]\n\n## 技術原理\n\n[說明背後的技術理論和運作機制]\n\n## 實務應用\n\n[描述實際應用場景和重點]\n\n## 相關技術\n\n[相關的技術標準、協議、框架等]\n\n[如有法律相關則加入：## 法律依據\n\n[正確的法條引用]]",
+            "bullets": ["核心技術概念1", "重要理論原理2", "實務應用重點3", "相關技術標準4"]
         }}
 
-        **重要：summary 欄位必須是完整的 Markdown 格式文本，包含適當的標題、列表、表格等結構化元素。**
+        **重要：請專注於技術知識的提煉和整理，避免品牌宣傳或產品比較，強調技術本質和應用原理。**
         """
         
-        # 修改為使用不要求JSON的生成配置，因為我們要生成Markdown
         try:
             text_generation_config = genai.types.GenerationConfig(
                 temperature=0.2,
@@ -492,7 +499,7 @@ class GeminiClient:
                 if parsed_json and 'summary' in parsed_json:
                     return parsed_json
                     
-            return {"summary": "# 摘要生成失敗\n\n無法解析學習資料內容", "bullets": []}
+            return {"summary": "# 摘要生成失敗\n\n無法解析內容", "bullets": []}
         except Exception as e:
             print(f"生成摘要時發生錯誤: {e}")
             return {"summary": "# 摘要生成錯誤\n\n請檢查輸入內容或網路連線", "bullets": []}
@@ -884,6 +891,128 @@ class GeminiClient:
         
         print(f"無法從回應中解析出知識點: {parsed_json}")
         return None
+
+    async def clean_and_format_content(self, raw_content: str, subject: str = None) -> Dict[str, Any]:
+        """
+        使用AI深度清理和格式化學習內容 - 使用中級模型 (gemini-2.5-flash-lite)
+        專門移除廣告、導航、頁面註腳等雜訊，並重新組織為適合學習的高品質Markdown格式
+        """
+        
+        prompt = f"""
+你是一位專業的教育內容編輯師，負責將網路上採集來的原始學習資料，清理整理成高品質的教育內容。
+
+**你的核心任務：**
+1. **移除雜訊內容**：廣告文字、導航選單、頁面註腳、社群媒體連結、相關推薦、留言區、版權聲明等
+2. **保留核心知識**：技術概念、理論說明、實作步驟、程式碼範例、圖表說明、法條內容等
+3. **重新組織結構**：將內容重新排列為邏輯清晰的學習順序
+4. **深度格式化**：使用豐富的 Markdown 語法，包括標題、列表、程式碼區塊、表格、引用等
+5. **補充說明**：對於過於簡略或專業的內容，適當補充背景知識和說明
+
+**處理原則：**
+- **保持原始技術資訊的準確性**，絕不修改技術細節
+- **移除商業宣傳和不相關內容**，專注於教育價值
+- **統一術語和概念表達**，確保前後一致
+- **確保內容的教育價值**，適合學習和考試準備
+- **使用繁體中文撰寫說明文字**，保持專業性
+
+**詳細格式化要求：**
+1. **標題層級化**：
+   - 使用 `#` 、`##`、`###` 等建立清晰的內容層級
+   - 為重要概念建立子標題
+   - 使用不同層級標題：「## 一、概說」、「### (一) 基本理論」、「#### 1. 主要特點」
+
+2. **列表結構化**：
+   - 使用 `-` 或 `*` 建立無序列表
+   - 使用 `1.` 建立有序列表  
+   - 多層級列表使用適當縮排
+
+3. **強調與標記**：
+   - 使用 `**粗體**` 標記重要概念
+   - 使用 `*斜體*` 標記關鍵術語
+   - 使用 `` `程式碼` `` 標記技術名詞
+
+4. **程式碼與範例**：
+   - 使用 ``` 語言名稱 包裹程式碼區塊
+   - 保持原有縮排和格式
+   - 為程式碼添加簡潔說明
+
+5. **表格化資訊**：
+   - 將比較性內容整理為 Markdown 表格
+   - 使用 `|` 分隔符建立表格結構
+
+6. **引用與重點**：
+   - 使用 `>` 標記重要引用或法條
+   - 建立重點摘要框
+
+**原始內容：**
+```
+{raw_content}
+```
+
+**科目領域：** {subject or '通用'}
+
+**請以JSON格式回應，提供清理和格式化後的高品質學習內容：**
+{{
+    "cleaned_content": "清理並深度格式化後的 Markdown 內容（使用豐富的 Markdown 語法）",
+    "removed_elements": ["移除的雜訊類型1", "移除的雜訊類型2", "移除的雜訊類型3"],
+    "improvements": ["格式化改進1", "格式化改進2", "結構調整3"],
+    "confidence": 0.95,
+    "word_count_before": 原始內容字數,
+    "word_count_after": 清理後內容字數
+}}
+
+**重要提醒：**
+- 清理後的內容應該比原始內容更適合學習和閱讀
+- 保持技術內容的準確性，不可任意修改
+- 大量使用 Markdown 語法提升可讀性
+- 確保內容邏輯清晰，學習路徑明確
+        """
+        
+        try:
+            response = await asyncio.to_thread(
+                self.intermediate_model.generate_content,
+                prompt,
+                generation_config=self.generation_config
+            )
+            
+            if response and response.text:
+                result = extract_json_from_text(response.text)
+                if result and 'cleaned_content' in result:
+                    # 確保信心度在合理範圍內
+                    confidence = result.get('confidence', 0.0)
+                    if confidence > 1.0:
+                        confidence = 1.0
+                    elif confidence < 0.0:
+                        confidence = 0.0
+                    result['confidence'] = confidence
+                    
+                    # 計算字數（如果沒有提供的話）
+                    if 'word_count_before' not in result:
+                        result['word_count_before'] = len(raw_content)
+                    if 'word_count_after' not in result:
+                        result['word_count_after'] = len(result['cleaned_content'])
+                    
+                    return result
+                    
+            return {
+                "cleaned_content": raw_content,
+                "removed_elements": [],
+                "improvements": [],
+                "confidence": 0.0,
+                "word_count_before": len(raw_content),
+                "word_count_after": len(raw_content)
+            }
+            
+        except Exception as e:
+            print(f"內容清理失敗: {e}")
+            return {
+                "cleaned_content": raw_content,
+                "removed_elements": [],
+                "improvements": [f"清理過程發生錯誤: {str(e)}"],
+                "confidence": 0.0,
+                "word_count_before": len(raw_content),
+                "word_count_after": len(raw_content)
+            }
 
     async def generate_tags(self, text: str, subject: str) -> List[str]:
         """生成標籤 - 使用輔助模型節省成本"""

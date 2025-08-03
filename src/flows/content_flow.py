@@ -291,11 +291,42 @@ class ContentFlow:
         }
 
     async def _process_study_material(self, content: str, subject: str, doc_id: int, parsed_data: Dict) -> Dict[str, Any]:
-        """學習資料處理流程 (模擬題部分已升級為並行處理)"""
+        """學習資料處理流程 (模擬題部分已升級為並行處理，新增AI深度內容清理)"""
         print("📚 執行學習資料處理流程...")
         
-        # 步驟 1: AI 生成一組包含題目和答案的模擬題
-        generated_questions = await self.gemini.generate_questions_from_text(content, subject)
+        # 🆕 新增：AI 深度內容清理與格式化
+        print("🧹 AI 正在深度清理和格式化內容...")
+        cleaning_result = await self.gemini.clean_and_format_content(content, subject)
+        
+        cleaned_content = cleaning_result.get('cleaned_content', content)
+        confidence = cleaning_result.get('confidence', 0.0)
+        removed_elements = cleaning_result.get('removed_elements', [])
+        improvements = cleaning_result.get('improvements', [])
+        word_count_before = cleaning_result.get('word_count_before', len(content))
+        word_count_after = cleaning_result.get('word_count_after', len(cleaned_content))
+        
+        # 根據信心度決定是否使用清理後的內容
+        if confidence > 0.6:  # 降低門檻，讓更多內容受益於AI清理
+            print(f"✅ 內容清理完成，信心度: {confidence:.2f}")
+            print(f"📊 內容統計：{word_count_before} → {word_count_after} 字")
+            if removed_elements:
+                print(f"🗑️ 移除元素: {', '.join(removed_elements)}")
+            if improvements:
+                print(f"🔧 改進項目: {', '.join(improvements[:3])}...")  # 只顯示前3項
+            
+            # 更新資料庫中的內容為清理後的版本，並備份原始內容
+            self.db.update_document_content(doc_id, cleaned_content, content)
+            print("💾 已保存清理後內容，原始內容已備份")
+            
+            # 使用清理後的內容進行後續處理
+            content_for_processing = cleaned_content
+        else:
+            print(f"⚠️ 內容清理信心度較低 ({confidence:.2f})，使用原始內容")
+            print(f"❌ 清理問題: {', '.join(improvements) if improvements else '未知錯誤'}")
+            content_for_processing = content
+        
+        # 步驟 1: AI 生成一組包含題目和答案的模擬題（使用處理後的內容）
+        generated_questions = await self.gemini.generate_questions_from_text(content_for_processing, subject)
         print(f"🤖 AI 已生成 {len(generated_questions)} 道模擬題，開始並行處理...")
 
         # 2. 建立所有模擬題的處理任務列表
@@ -339,9 +370,9 @@ class ContentFlow:
         
         print(f"📊 模擬題並行處理完成：{len(saved_questions)} 道成功，{failed_count} 道失敗")
 
-        # 5. 後續的摘要和測驗處理保持不變，因為這些不是重複性任務
+        # 5. 後續的摘要和測驗處理保持不變，因為這些不是重複性任務（使用處理後的內容）
         print("📄 開始生成摘要...")
-        summary_raw_data = await self.gemini.generate_summary(content)
+        summary_raw_data = await self.gemini.generate_summary(content_for_processing)
         # 確保 summary_data 是字典，如果不是則嘗試解析
         if isinstance(summary_raw_data, str):
             try:
@@ -352,7 +383,7 @@ class ContentFlow:
             summary_data = summary_raw_data
 
         print("🧩 開始生成快速測驗...")
-        quiz_data = await self.gemini.generate_quick_quiz(content, subject)
+        quiz_data = await self.gemini.generate_quick_quiz(content_for_processing, subject)
 
         # 儲存摘要和測驗
         # 新版本：AI 已經直接返回 Markdown 格式，不需要再次格式化
@@ -387,6 +418,8 @@ class ContentFlow:
         self.db.update_document_summary_and_quiz(doc_id, summary_text, quiz_text)
 
         message = f'學習資料處理完成！生成了 {len(saved_questions)} 道模擬題 ({failed_count} 道失敗)。'
+        if confidence > 0.6:
+            message += f' AI內容清理信心度: {confidence:.2f}'
         print(f"🎉 {message}")
 
         return {
@@ -398,5 +431,11 @@ class ContentFlow:
             'knowledge_points': list(all_knowledge_points),
             'summary': summary_data,
             'quiz': quiz_data,
-            'message': message
+            'message': message,
+            'cleaning_result': {
+                'confidence': confidence,
+                'removed_elements': removed_elements,
+                'improvements': improvements,
+                'word_count_change': f"{word_count_before} → {word_count_after}"
+            } if confidence > 0.6 else None
         }

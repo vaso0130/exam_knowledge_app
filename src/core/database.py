@@ -254,6 +254,27 @@ class DatabaseManager:
             session.flush()
             return new_doc.id
 
+    def update_document_content(self, doc_id: int, cleaned_content: str, original_content: str = None):
+        """
+        更新文件內容，可選擇保存原始內容備份
+        
+        Args:
+            doc_id: 文件ID
+            cleaned_content: AI清理後的內容
+            original_content: 原始內容（可選，用於備份）
+        """
+        with self._session_scope() as session:
+            document = session.query(Document).filter_by(id=doc_id).first()
+            if document:
+                # 如果提供了原始內容且文件中還沒有備份，則保存備份
+                if original_content and not document.original_content:
+                    document.original_content = original_content
+                # 更新為清理後的內容
+                document.content = cleaned_content
+                session.commit()
+                return True
+            return False
+
     def insert_question(self, document_id: int, title: str, question_text: str, answer_text: str = None,
                         subject: str = None, answer_sources: str = None,
                         difficulty: str = None, guidance_level: str = None, mindmap_code: str = None) -> str:
