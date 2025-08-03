@@ -4,6 +4,15 @@
 <div class="upload-container">
     <h1>📁 檔案上傳與處理</h1>
     
+    <!-- 檢查用戶是否被禁用 -->
+    {% if g.current_user and g.current_user.role == 'viewer' and user_points and user_points.is_banned %}
+    <div class="alert alert-danger">
+        <h4><i class="fas fa-ban"></i> 帳戶已被暫時禁用</h4>
+        <p>您的帳戶因為上傳不當內容已被暫時禁用至：<strong>{{ user_points.ban_until }}</strong></p>
+        <p>在禁用期間，您無法上傳檔案、處理文字或擷取網址內容。</p>
+        <p>如有疑問，請聯繫管理員。</p>
+    </div>
+    {% else %}
     <!-- 檔案上傳區域 -->
     <div class="upload-section">
         <h2>上傳檔案</h2>
@@ -109,6 +118,7 @@
         
         <div id="url-result" class="result-message"></div>
     </div>
+{% endif %}
 </div>
 
 <script>

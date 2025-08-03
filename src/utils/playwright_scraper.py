@@ -13,13 +13,13 @@ logger = logging.getLogger(__name__)
 class PlaywrightScraper:
     """使用 Playwright 的進階網頁爬取器"""
     
-    def __init__(self, headless: bool = True, timeout: int = 60000):
+    def __init__(self, headless: bool = True, timeout: int = 45000):
         """
         初始化爬取器
         
         Args:
             headless: 是否使用無頭瀏覽器模式
-            timeout: 頁面載入超時時間（毫秒），增加到60秒以避免 Cloudflare 超時
+            timeout: 頁面載入超時時間（毫秒），設為45秒避免過度等待反爬蟲檢查
         """
         self.headless = headless
         self.timeout = timeout
@@ -112,13 +112,15 @@ class PlaywrightScraper:
                 'please wait while we check your browser', 'security check'
             ]):
                 logger.info(f"檢測到反爬蟲保護，等待更長時間: {url}")
-                # 等待更長時間讓 Cloudflare 完成檢查
+                # 等待較短時間讓 Cloudflare 完成檢查，如果超時就放棄
                 try:
-                    await page.wait_for_load_state('networkidle', timeout=30000)
+                    await page.wait_for_load_state('networkidle', timeout=20000)  # 減少到20秒
                     # 再次等待一段時間
-                    await page.wait_for_timeout(3000)
+                    await page.wait_for_timeout(2000)  # 減少到2秒
                 except PlaywrightTimeoutError:
                     logger.warning(f"等待反爬蟲檢查超時，嘗試繼續: {url}")
+                    # 如果超時，直接拋出異常讓系統回退到傳統方式
+                    raise PlaywrightTimeoutError("反爬蟲檢查超時，建議使用傳統方式")
             else:
                 # 等待頁面完全載入
                 await page.wait_for_load_state('networkidle', timeout=15000)

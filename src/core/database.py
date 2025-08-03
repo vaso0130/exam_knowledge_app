@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Float
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base, joinedload
 from sqlalchemy.pool import StaticPool
 from dotenv import load_dotenv
@@ -44,7 +44,14 @@ class Document(Base):
     key_points_summary = Column(Text, nullable=True)
     quick_quiz = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # v3.1 上傳者追蹤
+    uploader_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    uploader_name = Column(String(50), nullable=True)  # 快照，避免 JOIN
+    
+    # 關聯
     questions = relationship("Question", back_populates="document", cascade="all, delete-orphan")
+    uploader = relationship("User", back_populates="uploads")
 
 import uuid # Import uuid module
 
@@ -102,6 +109,103 @@ class AsyncJob(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
+# === v3.0 安全與權限管理模型 ===
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(20), default="viewer")  # admin, viewer
+    email = Column(String(100), nullable=True)
+    full_name = Column(String(100), nullable=True)  # 完整姓名
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+    is_active = Column(Integer, default=1)  # SQLite 不支援 BOOLEAN，使用 INTEGER
+    
+    # v3.1 點數系統
+    points = Column(Integer, default=100)  # 當前點數
+    points_updated_at = Column(DateTime, default=datetime.utcnow)  # 點數最後更新時間
+    is_banned = Column(Integer, default=0)  # 是否被禁用（違規上傳）
+    ban_until = Column(DateTime, nullable=True)  # 禁用到期時間
+    
+    # 關聯
+    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+    login_attempts = relationship("LoginAttempt", back_populates="user", cascade="all, delete-orphan")
+    uploads = relationship("Document", back_populates="uploader", cascade="all, delete-orphan")
+    point_transactions = relationship("PointTransaction", back_populates="user", cascade="all, delete-orphan")
+
+class LoginAttempt(Base):
+    __tablename__ = "login_attempts"
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String(45), nullable=False, index=True)
+    username = Column(String(50), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    success = Column(Integer, default=0)  # 0=失敗, 1=成功
+    attempt_time = Column(DateTime, default=datetime.utcnow, index=True)
+    user_agent = Column(Text, nullable=True)
+    
+    # 關聯
+    user = relationship("User", back_populates="login_attempts")
+
+class IPBlacklist(Base):
+    __tablename__ = "ip_blacklist"
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String(45), unique=True, nullable=False, index=True)
+    reason = Column(String(255), default="Too many failed login attempts")
+    blocked_at = Column(DateTime, default=datetime.utcnow)
+    blocked_by = Column(String(50), nullable=True)  # 操作者用戶名
+    is_active = Column(Integer, default=1)  # 0=已解除, 1=生效中
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    id = Column(String(255), primary_key=True)  # session ID
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    ip_address = Column(String(45), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    last_activity = Column(DateTime, default=datetime.utcnow)
+    
+    # 關聯
+    user = relationship("User", back_populates="sessions")
+
+
+# v3.1 點數系統相關模型
+
+class PointTransaction(Base):
+    """點數交易記錄"""
+    __tablename__ = "point_transactions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action_type = Column(String(50), nullable=False)  # upload, generate_quiz, regenerate_answer, mindmap, etc.
+    points_change = Column(Integer, nullable=False)  # 正數=獲得，負數=消耗
+    points_before = Column(Integer, nullable=False)
+    points_after = Column(Integer, nullable=False)
+    description = Column(String(255), nullable=True)
+    related_document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 關聯
+    user = relationship("User", back_populates="point_transactions")
+    related_document = relationship("Document")
+
+
+class ContentValidation(Base):
+    """內容驗證記錄"""
+    __tablename__ = "content_validations"
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    is_valid_content = Column(Integer, nullable=False)  # 1=合法內容, 0=違規內容
+    confidence_score = Column(Float, nullable=True)  # AI 信心分數
+    validation_details = Column(Text, nullable=True)  # AI 回傳的詳細說明
+    penalty_applied = Column(Integer, default=0)  # 是否已處罰
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 關聯
+    document = relationship("Document")
+    user = relationship("User")
+
 
 # --- Database Manager ---
 
@@ -129,7 +233,8 @@ class DatabaseManager:
     def add_document(self, title: str, content: str, subject: str = None, 
                      tags: str = None, file_path: str = None, source: str = None, 
                      key_points_summary: str = None, 
-                     quick_quiz: str = None, doc_type: str = "info") -> int:
+                     quick_quiz: str = None, doc_type: str = "info",
+                     uploader_id: int = None, uploader_name: str = None) -> int:
         with self._session_scope() as session:
             new_doc = Document(
                 title=title,
@@ -141,7 +246,9 @@ class DatabaseManager:
                 source=source,
                 key_points_summary=key_points_summary,
                 quick_quiz=quick_quiz,
-                type=doc_type
+                type=doc_type,
+                uploader_id=uploader_id,
+                uploader_name=uploader_name
             )
             session.add(new_doc)
             session.flush()
@@ -501,3 +608,281 @@ class DatabaseManager:
                 AsyncJob.created_at < cutoff_date
             ).delete()
             return deleted_count
+
+    # === v3.0 安全與權限管理方法 ===
+    
+    def create_user(self, username: str, password_hash: str, role: str = "viewer", email: str = None) -> int:
+        """創建新用戶"""
+        with self._session_scope() as session:
+            user = User(
+                username=username,
+                password_hash=password_hash,
+                role=role,
+                email=email
+            )
+            session.add(user)
+            session.flush()
+            return user.id
+    
+    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        """根據用戶名獲取用戶資訊"""
+        with self._session_scope() as session:
+            user = session.query(User).filter(User.username == username, User.is_active == 1).first()
+            if user:
+                return {
+                    'id': user.id,
+                    'username': user.username,
+                    'password_hash': user.password_hash,
+                    'role': user.role,
+                    'email': user.email,
+                    'created_at': user.created_at.isoformat(),
+                    'last_login': user.last_login.isoformat() if user.last_login else None,
+                    'is_active': bool(user.is_active)
+                }
+            return None
+    
+    def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """根據 ID 獲取用戶資訊"""
+        with self._session_scope() as session:
+            user = session.query(User).filter(User.id == user_id, User.is_active == 1).first()
+            if user:
+                return {
+                    'id': user.id,
+                    'username': user.username,
+                    'role': user.role,
+                    'email': user.email,
+                    'created_at': user.created_at.isoformat(),
+                    'last_login': user.last_login.isoformat() if user.last_login else None,
+                    'is_active': bool(user.is_active)
+                }
+            return None
+    
+    def update_user_last_login(self, user_id: int) -> None:
+        """更新用戶最後登入時間"""
+        with self._session_scope() as session:
+            session.query(User).filter(User.id == user_id).update({
+                'last_login': datetime.utcnow()
+            })
+    
+    def update_user_password(self, user_id: int, new_password_hash: str) -> None:
+        """更新用戶密碼"""
+        with self._session_scope() as session:
+            session.query(User).filter(User.id == user_id).update({
+                'password_hash': new_password_hash
+            })
+    
+    def disable_user(self, user_id: int) -> None:
+        """停用用戶"""
+        with self._session_scope() as session:
+            session.query(User).filter(User.id == user_id).update({
+                'is_active': 0
+            })
+    
+    def enable_user(self, user_id: int) -> None:
+        """啟用用戶"""
+        with self._session_scope() as session:
+            session.query(User).filter(User.id == user_id).update({
+                'is_active': 1
+            })
+    
+    def get_all_users(self) -> List[Dict[str, Any]]:
+        """獲取所有用戶列表"""
+        with self._session_scope() as session:
+            users = session.query(User).all()
+            return [{
+                'id': user.id,
+                'username': user.username,
+                'role': user.role,
+                'email': user.email,
+                'created_at': user.created_at.isoformat(),
+                'last_login': user.last_login.isoformat() if user.last_login else None,
+                'is_active': bool(user.is_active)
+            } for user in users]
+    
+    # === 登入記錄管理 ===
+    
+    def record_login_attempt(self, ip_address: str, username: str = None, user_id: int = None, 
+                           success: bool = False, user_agent: str = None) -> None:
+        """記錄登入嘗試"""
+        with self._session_scope() as session:
+            attempt = LoginAttempt(
+                ip_address=ip_address,
+                username=username,
+                user_id=user_id,
+                success=1 if success else 0,
+                user_agent=user_agent
+            )
+            session.add(attempt)
+    
+    def get_failed_attempts_count(self, ip_address: str, time_window_minutes: int = 60) -> int:
+        """獲取指定 IP 在時間窗口內的失敗嘗試次數"""
+        with self._session_scope() as session:
+            cutoff_time = datetime.utcnow() - timedelta(minutes=time_window_minutes)
+            count = session.query(LoginAttempt).filter(
+                LoginAttempt.ip_address == ip_address,
+                LoginAttempt.success == 0,
+                LoginAttempt.attempt_time >= cutoff_time
+            ).count()
+            return count
+    
+    def get_login_attempts(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """獲取登入記錄"""
+        with self._session_scope() as session:
+            attempts = session.query(LoginAttempt).order_by(
+                LoginAttempt.attempt_time.desc()
+            ).limit(limit).all()
+            
+            return [{
+                'id': attempt.id,
+                'ip_address': attempt.ip_address,
+                'username': attempt.username,
+                'success': bool(attempt.success),
+                'attempt_time': attempt.attempt_time.isoformat(),
+                'user_agent': attempt.user_agent
+            } for attempt in attempts]
+    
+    # === IP 黑名單管理 ===
+    
+    def add_ip_to_blacklist(self, ip_address: str, reason: str = "Too many failed login attempts", 
+                          blocked_by: str = None) -> None:
+        """將 IP 加入黑名單"""
+        with self._session_scope() as session:
+            # 檢查是否已存在
+            existing = session.query(IPBlacklist).filter(
+                IPBlacklist.ip_address == ip_address
+            ).first()
+            
+            if existing:
+                # 更新現有記錄
+                existing.reason = reason
+                existing.blocked_at = datetime.utcnow()
+                existing.blocked_by = blocked_by
+                existing.is_active = 1
+            else:
+                # 創建新記錄
+                blacklist_entry = IPBlacklist(
+                    ip_address=ip_address,
+                    reason=reason,
+                    blocked_by=blocked_by
+                )
+                session.add(blacklist_entry)
+    
+    def remove_ip_from_blacklist(self, ip_address: str) -> bool:
+        """從黑名單移除 IP"""
+        with self._session_scope() as session:
+            result = session.query(IPBlacklist).filter(
+                IPBlacklist.ip_address == ip_address,
+                IPBlacklist.is_active == 1
+            ).update({'is_active': 0})
+            return result > 0
+    
+    def is_ip_blacklisted(self, ip_address: str) -> bool:
+        """檢查 IP 是否在黑名單中"""
+        with self._session_scope() as session:
+            count = session.query(IPBlacklist).filter(
+                IPBlacklist.ip_address == ip_address,
+                IPBlacklist.is_active == 1
+            ).count()
+            return count > 0
+    
+    def get_blacklisted_ips(self) -> List[Dict[str, Any]]:
+        """獲取黑名單 IP 列表"""
+        with self._session_scope() as session:
+            blacklist = session.query(IPBlacklist).filter(
+                IPBlacklist.is_active == 1
+            ).order_by(IPBlacklist.blocked_at.desc()).all()
+            
+            return [{
+                'id': entry.id,
+                'ip_address': entry.ip_address,
+                'reason': entry.reason,
+                'blocked_at': entry.blocked_at.isoformat(),
+                'blocked_by': entry.blocked_by
+            } for entry in blacklist]
+    
+    # === 用戶會話管理 ===
+    
+    def create_user_session(self, user_id: int, session_token: str, ip_address: str = None, 
+                          user_agent: str = None) -> str:
+        """創建用戶會話"""
+        with self._session_scope() as session:
+            user_session = UserSession(
+                user_id=user_id,
+                session_token=session_token,
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            session.add(user_session)
+            return session_token
+    
+    def get_session(self, session_token: str) -> Optional[Dict[str, Any]]:
+        """根據 token 獲取會話資訊"""
+        with self._session_scope() as session:
+            user_session = session.query(UserSession).filter(
+                UserSession.session_token == session_token,
+                UserSession.is_active == 1
+            ).first()
+            
+            if user_session:
+                return {
+                    'id': user_session.id,
+                    'user_id': user_session.user_id,
+                    'session_token': user_session.session_token,
+                    'ip_address': user_session.ip_address,
+                    'created_at': user_session.created_at.isoformat(),
+                    'last_accessed': user_session.last_accessed.isoformat() if user_session.last_accessed else None,
+                    'user_agent': user_session.user_agent
+                }
+            return None
+    
+    def update_session_access(self, session_token: str) -> None:
+        """更新會話最後訪問時間"""
+        with self._session_scope() as session:
+            session.query(UserSession).filter(
+                UserSession.session_token == session_token
+            ).update({'last_accessed': datetime.utcnow()})
+    
+    def invalidate_session(self, session_token: str) -> bool:
+        """使會話失效"""
+        with self._session_scope() as session:
+            result = session.query(UserSession).filter(
+                UserSession.session_token == session_token
+            ).update({'is_active': 0})
+            return result > 0
+    
+    def invalidate_user_sessions(self, user_id: int) -> int:
+        """使用戶所有會話失效"""
+        with self._session_scope() as session:
+            result = session.query(UserSession).filter(
+                UserSession.user_id == user_id,
+                UserSession.is_active == 1
+            ).update({'is_active': 0})
+            return result
+    
+    def cleanup_expired_sessions(self, hours: int = 24) -> int:
+        """清理過期會話"""
+        with self._session_scope() as session:
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            result = session.query(UserSession).filter(
+                UserSession.last_accessed < cutoff_time,
+                UserSession.is_active == 1
+            ).update({'is_active': 0})
+            return result
+    
+    def get_active_sessions(self, user_id: int = None) -> List[Dict[str, Any]]:
+        """獲取活躍會話列表"""
+        with self._session_scope() as session:
+            query = session.query(UserSession).filter(UserSession.is_active == 1)
+            if user_id:
+                query = query.filter(UserSession.user_id == user_id)
+            
+            sessions = query.order_by(UserSession.created_at.desc()).all()
+            
+            return [{
+                'id': s.id,
+                'user_id': s.user_id,
+                'ip_address': s.ip_address,
+                'created_at': s.created_at.isoformat(),
+                'last_accessed': s.last_accessed.isoformat() if s.last_accessed else None,
+                'user_agent': s.user_agent
+            } for s in sessions]

@@ -6,7 +6,6 @@ import tempfile
 import asyncio
 import markdown
 import re
-from ..utils.markdown_utils import format_answer_text
 
 def fix_markdown_numbering(text: str) -> str:
     """Normalize ordered list formatting so markdown renders correctly.
@@ -52,7 +51,7 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 from werkzeug.utils import secure_filename
-from flask import Flask, render_template, request, abort, redirect, url_for, flash, jsonify, Response
+from flask import Flask, render_template, request, abort, redirect, url_for, flash, jsonify, Response, g
 
 from ..core.database import DatabaseManager
 from ..core.gemini_client import GeminiClient
@@ -79,6 +78,19 @@ def create_app():
     gemini_client = GeminiClient()
     flow_manager = FlowManager(gemini_client, db)
     async_processor = AsyncProcessor(flow_manager)  # 新增非同步處理器
+    
+    # v3.1 點數系統和內容驗證
+    from ..utils.points_manager import PointsManager
+    from ..utils.content_validator import ContentValidator
+    from ..utils.points_decorator import add_points_info_to_template
+    points_manager = PointsManager(db)
+    content_validator = ContentValidator(gemini_client, db)
+    
+    # 將 points_manager 存儲到 app 中供裝飾器使用
+    app._points_manager = points_manager
+    
+    # 註冊模板上下文處理器
+    app.context_processor(add_points_info_to_template())
 
     # --- File Upload Settings ---
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
@@ -103,7 +115,213 @@ def create_app():
             app.logger.error(f"JSON parsing error: {e} for value: {value}")
             return []
 
+    @app.template_filter('markdown')
+    def markdown_filter(text):
+        """將 Markdown 文本轉換為 HTML"""
+        if not text:
+            return ""
+        
+        # 修正編號格式，確保 Markdown 可以正確渲染
+        text = fix_markdown_numbering(text)
+        
+        # 配置 Markdown 解析器
+        md = markdown.Markdown(
+            extensions=[
+                'tables',           # 支援表格
+                'fenced_code',      # 支援圍欄式程式碼區塊
+                'codehilite',       # 支援程式碼高亮
+                'toc',              # 支援目錄
+                'nl2br'             # 換行轉為 <br>
+            ],
+            extension_configs={
+                'codehilite': {
+                    'css_class': 'highlight',
+                    'use_pygments': False  # 使用前端的 Prism.js 進行高亮
+                }
+            }
+        )
+        
+        # 轉換為 HTML
+        html = md.convert(text)
+        
+        # 返回安全的 HTML（Flask 會自動處理 Markup）
+        from markupsafe import Markup
+        return Markup(html)
+
+    # --- Authentication Helpers ---
+    @app.before_request
+    def load_logged_in_user():
+        """在每個請求前檢查用戶登入狀態"""
+        user_id = request.cookies.get('user_id')
+        if user_id:
+            try:
+                with db._session_scope() as session:
+                    from ..core.database import User
+                    user = session.query(User).filter(User.id == int(user_id)).first()
+                    if user:
+                        g.current_user = {
+                            'id': user.id,
+                            'username': user.username,
+                            'role': user.role
+                        }
+                    else:
+                        g.current_user = None
+            except:
+                g.current_user = None
+        else:
+            g.current_user = None
+        
+        # 檢查是否需要登入才能訪問（排除登入頁面本身）
+        if not g.current_user and request.endpoint not in ['login', 'static', 'check_user']:
+            return redirect(url_for('login'))
+
     # --- Routes ---
+
+    @app.route('/check-user', methods=['POST'])
+    def check_user():
+        """檢查用戶是否存在"""
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        
+        if not username:
+            return jsonify({'exists': False})
+        
+        try:
+            with db._session_scope() as session:
+                from ..core.database import User
+                user = session.query(User).filter(User.username == username).first()
+                return jsonify({'exists': user is not None})
+        except:
+            return jsonify({'exists': False})
+
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        """登入頁面"""
+        # 如果已經登入，直接跳轉到首頁
+        if g.current_user:
+            return redirect(url_for('index'))
+            
+        if request.method == 'POST':
+            action = request.form.get('action', 'login')
+            username = request.form.get('username', '').strip()
+            password = request.form.get('password', '').strip()
+            
+            if not username or not password:
+                flash('請輸入用戶名和密碼')
+                return render_template('login.html')
+            
+            if action == 'register':
+                # 新用戶註冊
+                return handle_user_registration(username, password)
+            else:
+                # 現有用戶登入
+                return handle_user_login(username, password)
+                
+        return render_template('login.html')
+
+    def handle_user_login(username: str, password: str):
+        """處理用戶登入"""
+        try:
+            with db._session_scope() as session:
+                from ..core.database import User
+                user = session.query(User).filter(User.username == username).first()
+                
+                if not user:
+                    flash('用戶不存在')
+                    return render_template('login.html')
+                
+                # 驗證密碼 - 使用與管理系統相同的方式
+                from ..core.security_manager import SecurityManager
+                security_manager = SecurityManager(db)
+                if not security_manager.verify_password(password, user.password_hash):
+                    flash('密碼錯誤，請重新輸入')
+                    return render_template('login.html')
+                
+                # 設定登入 cookie
+                resp = redirect(url_for('index'))
+                resp.set_cookie('user_id', str(user.id), max_age=30*24*60*60)  # 30天
+                flash(f'歡迎回來，{user.username}！')
+                return resp
+                
+        except Exception as e:
+            app.logger.error(f"登入錯誤: {e}")
+            flash('登入時發生錯誤，請稍後再試')
+            return render_template('login.html')
+
+    def handle_user_registration(username: str, password: str):
+        """處理用戶註冊"""
+        fullname = request.form.get('fullname', '').strip()
+        email = request.form.get('email', '').strip()
+        invite_code = request.form.get('invite_code', '').strip()
+        
+        # 使用SecurityManager驗證邀請碼
+        from ..core.security_manager import SecurityManager
+        security_manager = SecurityManager(db)
+        
+        role = security_manager.validate_invitation_code(invite_code)
+        if not role:
+            flash('邀請碼無效，請檢查後重新輸入')
+            return render_template('login.html')
+        
+        if not fullname or not email:
+            flash('請填寫完整的註冊資訊')
+            return render_template('login.html')
+        
+        # 驗證密碼長度
+        if len(password) < 6:
+            flash('密碼長度至少6個字元')
+            return render_template('login.html')
+        
+        try:
+            with db._session_scope() as session:
+                from ..core.database import User
+                
+                # 檢查用戶名是否已存在
+                existing_user = session.query(User).filter(User.username == username).first()
+                if existing_user:
+                    flash('用戶名已存在，請選擇其他用戶名')
+                    return render_template('login.html')
+                
+                # 檢查信箱是否已存在
+                existing_email = session.query(User).filter(User.email == email).first()
+                if existing_email:
+                    flash('此信箱已被註冊，請使用其他信箱')
+                    return render_template('login.html')
+                
+                # 創建新用戶
+                password_hash = security_manager.hash_password(password)
+                
+                user = User(
+                    username=username, 
+                    password_hash=password_hash, 
+                    role=role,
+                    email=email,
+                    full_name=fullname
+                )
+                session.add(user)
+                session.commit()
+                session.refresh(user)
+                
+                # 設定登入 cookie
+                resp = redirect(url_for('index'))
+                resp.set_cookie('user_id', str(user.id), max_age=30*24*60*60)  # 30天
+                
+                role_name = '管理者' if role == 'admin' else '檢視者'
+                flash(f'歡迎 {fullname}！帳號已成功創建，您的角色是：{role_name}')
+                return resp
+                
+        except Exception as e:
+            app.logger.error(f"註冊錯誤: {e}")
+            flash('註冊時發生錯誤，請稍後再試')
+            return render_template('login.html')
+
+    @app.route('/logout')
+    def logout():
+        """登出"""
+        resp = redirect(url_for('index'))
+        resp.delete_cookie('user_id')
+        flash('已成功登出')
+        return resp
 
     @app.route('/')
     def index():
@@ -112,7 +330,20 @@ def create_app():
 
     @app.route('/upload', methods=['GET', 'POST'])
     def upload_file():
+        # v3.1: 需要登入才能上傳
+        current_user = getattr(g, 'current_user', None)
+        if not current_user:
+            flash('請先登入才能上傳檔案')
+            return redirect(url_for('index'))
+        
         if request.method == 'POST':
+            # v3.1: 檢查用戶點數和禁用狀態（僅對 viewer）
+            if current_user.get('role') == 'viewer':
+                user_status = points_manager.get_user_points(current_user['id'])
+                if user_status.get("is_banned"):
+                    flash(f'❌ 您的帳戶已被暫時禁用至 {user_status["ban_until"]}')
+                    return redirect(request.url)
+            
             if 'file' not in request.files:
                 flash('請選擇檔案')
                 return redirect(request.url)
@@ -129,8 +360,39 @@ def create_app():
                 
                 try:
                     file.save(file_path)
+                    
+                    # v3.1: 首先進行內容驗證
+                    from ..utils.file_processor import FileProcessor
+                    extracted_content, input_type = FileProcessor.process_input(str(file_path))
+                    
+                    # 驗證內容是否合法
+                    validation_result = content_validator.validate_content_sync(
+                        document_id=0,  # 暫時使用0，稍後會更新
+                        content=extracted_content[:2000],  # 只取前2000字符驗證
+                        user_id=current_user['id']
+                    )
+                    
+                    if not validation_result["is_valid"]:
+                        # 內容不合法，對 viewer 應用懲罰
+                        if current_user.get('role') == 'viewer':
+                            penalty_result = points_manager.apply_penalty(
+                                user_id=current_user['id'],
+                                document_id=0,
+                                validation_details=validation_result["details"]
+                            )
+                            penalty_message = "您的帳戶已被暫時禁用48小時。"
+                        else:
+                            penalty_message = "管理員帳戶不受懲罰限制。"
+                        
+                        # 刪除檔案
+                        if os.path.exists(file_path):
+                            os.unlink(file_path)
+                        
+                        flash(f'❌ 上傳內容不符合學習用途要求，已被拒絕。{validation_result["reason"]}。{penalty_message}')
+                        return redirect(request.url)
+                    
                     suggested_subject = request.form.get('subject')
-                    use_async = request.form.get('async_processing') == 'on'  # 檢查是否使用非同步
+                    use_async = request.form.get('async_processing') == 'on'
                     
                     if use_async:
                         # 非同步處理
@@ -138,18 +400,39 @@ def create_app():
                             'content_processing',
                             file_path=str(file_path),
                             filename=original_filename,
-                            subject=suggested_subject or ''
+                            subject=suggested_subject or '',
+                            uploader_id=current_user['id'],
+                            uploader_name=current_user['username']
                         )
-                        flash('檔案已提交處理，請稍候查看結果')
+                        flash('✅ 檔案已提交處理，請稍候查看結果')
                         return redirect(url_for('job_status', job_id=job_id))
                     else:
-                        # 同步處理（原來的方式）
-                        result = flow_manager.content_flow.process_file(str(file_path), original_filename, suggested_subject)
+                        # 同步處理
+                        result = flow_manager.content_flow.process_file(
+                            str(file_path), 
+                            original_filename, 
+                            suggested_subject,
+                            uploader_id=current_user['id'],
+                            uploader_name=current_user['username']
+                        )
                         
                         if result.get('success'):
-                            flash(result.get('message', '檔案處理完成！'))
+                            # 更新驗證記錄的 document_id
+                            if result.get('document_id'):
+                                with db._session_scope() as session:
+                                    from ..core.database import ContentValidation
+                                    validation_record = session.query(ContentValidation)\
+                                        .filter(ContentValidation.document_id == 0)\
+                                        .filter(ContentValidation.user_id == current_user['id'])\
+                                        .order_by(ContentValidation.created_at.desc()).first()
+                                    
+                                    if validation_record:
+                                        validation_record.document_id = result['document_id']
+                                        session.commit()
+                            
+                            flash(result.get('message', '✅ 檔案處理完成！'))
                         else:
-                            flash(f'檔案處理失敗: {result.get("error", "未知錯誤")}')
+                            flash(f'❌ 檔案處理失敗: {result.get("error", "未知錯誤")}')
                         
                         return redirect(url_for('questions'))
                     
@@ -157,17 +440,27 @@ def create_app():
                     app.logger.error(f"File processing failed: {e}", exc_info=True)
                     if os.path.exists(file_path):
                         os.unlink(file_path)
-                    flash(f'檔案處理失敗: {str(e)}')
+                    flash(f'❌ 檔案處理失敗: {str(e)}')
                     return redirect(request.url)
             else:
-                flash('不支援的檔案格式')
+                flash('❌ 不支援的檔案格式')
                 return redirect(request.url)
         
+        # GET request - 顯示上傳表單，僅對 viewer 顯示點數資訊
+        user_points = None
+        if current_user and current_user.get('role') == 'viewer':
+            user_points = points_manager.get_user_points(current_user['id'])
+        
         subjects = db.get_all_subjects()
-        return render_template('upload.html', subjects=subjects)
+        return render_template('upload.html', subjects=subjects, user_points=user_points)
 
     @app.route('/process_text', methods=['POST'])
     def process_text():
+        # v3.1: 需要登入才能處理文字
+        current_user = getattr(g, 'current_user', None)
+        if not current_user:
+            return jsonify({'error': '請先登入才能處理文字'}), 401
+        
         try:
             text_content = request.form.get('text_content', '').strip()
             suggested_subject = request.form.get('subject', '').strip()
@@ -175,16 +468,73 @@ def create_app():
             if not text_content:
                 return jsonify({'error': '請輸入文字內容'}), 400
 
+            # v3.1: 檢查用戶點數和禁用狀態（僅對 viewer）
+            if current_user.get('role') == 'viewer':
+                user_status = points_manager.get_user_points(current_user['id'])
+                if user_status.get("is_banned"):
+                    return jsonify({'error': f'您的帳戶已被暫時禁用至 {user_status["ban_until"]}'}), 403
+            
+            # 對所有用戶進行內容驗證
+            validation_result = content_validator.validate_content_sync(
+                document_id=0,  # 暫時使用0
+                content=text_content[:2000],
+                user_id=current_user['id']
+            )
+            
+            if not validation_result["is_valid"]:
+                # 內容不合法，僅對 viewer 應用懲罰
+                if current_user.get('role') == 'viewer':
+                    penalty_result = points_manager.apply_penalty(
+                        user_id=current_user['id'],
+                        document_id=0,
+                        validation_details=validation_result["details"]
+                    )
+                    penalty_message = "您的帳戶已被暫時禁用48小時。"
+                else:
+                    penalty_message = "管理員帳戶不受懲罰限制。"
+                
+                return jsonify({
+                    'error': f'內容不符合學習用途要求，已被拒絕。{validation_result["reason"]}。{penalty_message}'
+                }), 400
+            
+            # v3.1: 檢查並扣除處理費用（僅對 viewer）
+            if current_user.get('role') == 'viewer':
+                # 檢查並扣除處理費用（假設為中等考題生成）
+                can_afford = points_manager.can_afford(current_user['id'], 'generate_quiz', question_count=15)
+                if not can_afford['can_afford']:
+                    return jsonify({
+                        'error': f'點數不足。需要約 {can_afford["cost"]} 點，目前只有 {can_afford["current_points"]} 點'
+                    }), 400
+
             result = flow_manager.content_flow.complete_ai_processing(
-                text_content, 'user_input.txt', suggested_subject
+                text_content, 'user_input.txt', suggested_subject,
+                uploader_id=current_user['id'],
+                uploader_name=current_user['username']
             )
             
             if result.get('success'):
-                return jsonify({
+                # 對 viewer 扣除實際點數
+                if current_user.get('role') == 'viewer':
+                    actual_questions = len(result.get("questions", []))
+                    deduct_result = points_manager.deduct_points(
+                        user_id=current_user['id'],
+                        action_type='generate_quiz',
+                        question_count=actual_questions,
+                        description=f'處理文字並生成{actual_questions}題考題'
+                    )
+                
+                response = {
                     'success': True,
                     'message': result.get('message', '處理完成！'),
                     'questions_count': len(result.get("questions", []))
-                })
+                }
+                
+                # 添加點數資訊
+                if current_user.get('role') == 'viewer' and 'deduct_result' in locals():
+                    response['points_deducted'] = deduct_result['points_deducted']
+                    response['points_remaining'] = deduct_result['points_remaining']
+                
+                return jsonify(response)
             else:
                 return jsonify({'error': f'處理失敗: {result.get("error", "未知錯誤")}'}), 500
                 
@@ -194,6 +544,17 @@ def create_app():
 
     @app.route('/process_url', methods=['POST'])
     def process_url():
+        # v3.1: 需要登入才能處理網址
+        current_user = getattr(g, 'current_user', None)
+        if not current_user:
+            return jsonify({'error': '請先登入才能處理網址'}), 401
+        
+        # v3.1: 檢查用戶點數和禁用狀態（僅對 viewer）
+        if current_user.get('role') == 'viewer':
+            user_status = points_manager.get_user_points(current_user['id'])
+            if user_status.get("is_banned"):
+                return jsonify({'error': f'您的帳戶已被暫時禁用至 {user_status["ban_until"]}'}), 403
+        
         try:
             url_content = request.form.get('url_content', '').strip()
             suggested_subject = request.form.get('subject', '').strip()
@@ -235,6 +596,16 @@ def create_app():
 
     @app.route('/delete_question/<q_id>', methods=['POST'])
     def delete_question(q_id):
+        # v3.1: 檢查權限 - 只有管理員可以刪除題目
+        current_user = getattr(g, 'current_user', None)
+        if not current_user:
+            flash('請先登入才能刪除題目')
+            return redirect(url_for('login'))
+        
+        if current_user.get('role') != 'admin':
+            flash('只有管理員可以刪除題目')
+            return redirect(url_for('questions'))
+        
         try:
             db.delete_question(q_id)
             flash('題目已刪除')
@@ -245,6 +616,16 @@ def create_app():
 
     @app.route('/batch_delete', methods=['POST'])
     def batch_delete():
+        # v3.1: 檢查權限 - 只有管理員可以批次刪除題目
+        current_user = getattr(g, 'current_user', None)
+        if not current_user:
+            flash('請先登入才能刪除題目')
+            return redirect(url_for('login'))
+        
+        if current_user.get('role') != 'admin':
+            flash('只有管理員可以刪除題目')
+            return redirect(url_for('questions'))
+        
         try:
             question_ids_str = request.form.getlist('question_ids')
             if question_ids_str:
@@ -260,6 +641,16 @@ def create_app():
 
     @app.route('/edit_question/<q_id>', methods=['GET', 'POST'])
     def edit_question(q_id):
+        # v3.1: 檢查權限 - 只有管理員可以編輯題目
+        current_user = getattr(g, 'current_user', None)
+        if not current_user:
+            flash('請先登入才能編輯題目')
+            return redirect(url_for('login'))
+        
+        if current_user.get('role') != 'admin':
+            flash('只有管理員可以編輯題目')
+            return redirect(url_for('question_detail', q_id=q_id))
+        
         if request.method == 'POST':
             try:
                 new_subject = request.form.get('subject')
@@ -369,6 +760,16 @@ def create_app():
 
     @app.route('/delete_document/<int:doc_id>', methods=['POST'])
     def delete_document(doc_id):
+        # v3.1: 檢查權限 - 只有管理員可以刪除文件
+        current_user = getattr(g, 'current_user', None)
+        if not current_user:
+            flash('請先登入才能刪除文件', 'danger')
+            return redirect(url_for('login'))
+        
+        if current_user.get('role') != 'admin':
+            flash('只有管理員可以刪除文件', 'danger')
+            return redirect(url_for('documents_list'))
+        
         try:
             document = db.get_document_by_id(doc_id)
             if not document:
@@ -490,6 +891,26 @@ def create_app():
     @app.route('/regenerate_mindmap/<q_id>', methods=['POST'])
     def regenerate_mindmap(q_id):
         """重新生成心智圖"""
+        # v3.1: 檢查點數（僅對 viewer）
+        current_user = getattr(g, 'current_user', None)
+        if current_user and current_user.get('role') == 'viewer':
+            can_afford = points_manager.can_afford(current_user['id'], 'generate_mindmap')
+            if not can_afford['can_afford']:
+                return jsonify({
+                    'success': False, 
+                    'error': f'點數不足。需要 {can_afford["cost"]} 點，目前只有 {can_afford["current_points"]} 點'
+                })
+            
+            # 扣除點數
+            deduct_result = points_manager.deduct_points(
+                user_id=current_user['id'],
+                action_type='generate_mindmap',
+                description=f'重新生成心智圖 (問題ID: {q_id})'
+            )
+            
+            if not deduct_result['success']:
+                return jsonify({'success': False, 'error': deduct_result['error']})
+        
         try:
             # 使用 MindmapFlow 重新生成心智圖
             from ..flows.mindmap_flow import MindmapFlow
@@ -503,15 +924,22 @@ def create_app():
             try:
                 result = loop.run_until_complete(mindmap_flow.generate_and_save_mindmap(q_id))
                 
-                if isinstance(result, str):
+                if isinstance(result, dict) and result.get('success'):
                     # 成功生成心智圖
-                    return jsonify({
+                    response = {
                         'success': True, 
                         'message': '心智圖已重新生成', 
-                        'mindmap_code': result
-                    })
+                        'mindmap_code': result.get('mindmap_code', '')
+                    }
+                    
+                    # 添加點數資訊
+                    if current_user and current_user.get('role') == 'viewer':
+                        response['points_deducted'] = deduct_result['points_deducted']
+                        response['points_remaining'] = deduct_result['points_remaining']
+                    
+                    return jsonify(response)
                 elif isinstance(result, dict) and not result.get('success', True):
-                    # 生成失敗
+                    # 生成失敗，如果已扣點數需要退還（這裡簡化處理）
                     return jsonify({
                         'success': False, 
                         'error': result.get('error', '未知錯誤')
@@ -529,6 +957,26 @@ def create_app():
     @app.route('/regenerate_answer/<q_id>', methods=['POST'])
     def regenerate_answer(q_id):
         """重新生成題目答案"""
+        # v3.1: 檢查點數（僅對 viewer）
+        current_user = getattr(g, 'current_user', None)
+        if current_user and current_user.get('role') == 'viewer':
+            can_afford = points_manager.can_afford(current_user['id'], 'regenerate_answer')
+            if not can_afford['can_afford']:
+                return jsonify({
+                    'success': False, 
+                    'error': f'點數不足。需要 {can_afford["cost"]} 點，目前只有 {can_afford["current_points"]} 點'
+                })
+            
+            # 扣除點數
+            deduct_result = points_manager.deduct_points(
+                user_id=current_user['id'],
+                action_type='regenerate_answer',
+                description=f'重新生成答案 (問題ID: {q_id})'
+            )
+            
+            if not deduct_result['success']:
+                return jsonify({'success': False, 'error': deduct_result['error']})
+        
         try:
             # 獲取題目信息
             question_data = db.get_question_by_id(q_id)
@@ -569,12 +1017,19 @@ def create_app():
                         except Exception as e:
                             print(f"保存答案來源失敗: {e}")
                     
-                    return jsonify({
+                    response = {
                         'success': True, 
                         'message': '答案已重新生成',
                         'answer': answer_text,
                         'sources': sources
-                    })
+                    }
+                    
+                    # 添加點數資訊
+                    if current_user and current_user.get('role') == 'viewer':
+                        response['points_deducted'] = deduct_result['points_deducted']
+                        response['points_remaining'] = deduct_result['points_remaining']
+                    
+                    return jsonify(response)
                 else:
                     return jsonify({'success': False, 'error': '答案生成失敗，請稍後重試'})
                     
@@ -588,6 +1043,26 @@ def create_app():
     @app.route('/generate_solving_tips/<q_id>', methods=['POST'])
     def generate_solving_tips(q_id):
         """生成題目解題技巧"""
+        # v3.1: 檢查點數（僅對 viewer）
+        current_user = getattr(g, 'current_user', None)
+        if current_user and current_user.get('role') == 'viewer':
+            can_afford = points_manager.can_afford(current_user['id'], 'generate_techniques')
+            if not can_afford['can_afford']:
+                return jsonify({
+                    'success': False, 
+                    'error': f'點數不足。需要 {can_afford["cost"]} 點，目前只有 {can_afford["current_points"]} 點'
+                })
+            
+            # 扣除點數
+            deduct_result = points_manager.deduct_points(
+                user_id=current_user['id'],
+                action_type='generate_techniques',
+                description=f'生成解題技巧 (問題ID: {q_id})'
+            )
+            
+            if not deduct_result['success']:
+                return jsonify({'success': False, 'error': deduct_result['error']})
+        
         try:
             # 獲取題目信息
             question_data = db.get_question_by_id(q_id)
@@ -628,12 +1103,19 @@ def create_app():
                     summary_result['solving_tips']
                 )
                 
-                return jsonify({
+                response = {
                     'success': True, 
                     'message': '解題技巧已生成並儲存',
                     'summary': summary_result['summary'],
                     'solving_tips': summary_result['solving_tips']
-                })
+                }
+                
+                # 添加點數資訊
+                if current_user and current_user.get('role') == 'viewer':
+                    response['points_deducted'] = deduct_result['points_deducted']
+                    response['points_remaining'] = deduct_result['points_remaining']
+                
+                return jsonify(response)
             else:
                 return jsonify({'success': False, 'error': '解題技巧生成失敗，請稍後重試'})
                     

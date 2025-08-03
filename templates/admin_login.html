@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>本地管理介面 - 系統管理員登入</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .admin-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            padding: 3rem;
+            width: 100%;
+            max-width: 450px;
+            border: 3px solid #dc3545;
+        }
+        .admin-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .admin-header i {
+            font-size: 4rem;
+            color: #dc3545;
+            margin-bottom: 1rem;
+        }
+        .security-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .form-floating {
+            margin-bottom: 1rem;
+        }
+        .btn-admin {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            border: none;
+            padding: 15px;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        .local-info {
+            background: #e7f3ff;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            text-align: center;
+        }
+        .connection-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            background: #28a745;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <div class="admin-header">
+            <i class="bi bi-shield-lock-fill"></i>
+            <h2 style="color: #dc3545;">本地管理介面</h2>
+            <p class="text-muted">僅限本機管理員訪問</p>
+        </div>
+
+        <!-- 安全警告 -->
+        <div class="security-warning">
+            <i class="bi bi-exclamation-triangle text-warning"></i>
+            <strong>安全模式</strong><br>
+            <small>此介面僅接受本機連線，且使用隨機端口</small>
+        </div>
+
+        <!-- 錯誤訊息 -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- 連線狀態 -->
+        <div class="connection-status">
+            <div class="status-dot"></div>
+            <small class="text-success"><strong>本地連線已建立</strong></small>
+        </div>
+
+        <!-- 登入表單 -->
+        <form method="POST" action="{{ url_for('login') }}">
+            <div class="form-floating">
+                <input type="text" class="form-control" id="username" name="username" 
+                       placeholder="管理員帳號" required autofocus>
+                <label for="username">
+                    <i class="bi bi-person-fill"></i> 管理員帳號
+                </label>
+            </div>
+
+            <div class="form-floating">
+                <input type="password" class="form-control" id="password" name="password" 
+                       placeholder="密碼" required>
+                <label for="password">
+                    <i class="bi bi-lock-fill"></i> 密碼
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-danger btn-admin w-100">
+                <i class="bi bi-shield-check"></i> 進入管理模式
+            </button>
+        </form>
+
+        <!-- 本地資訊 -->
+        <div class="local-info">
+            <h6><i class="bi bi-pc-display"></i> 本機專用管理</h6>
+            <div class="row text-center mt-3">
+                <div class="col-4">
+                    <i class="bi bi-lock text-danger"></i>
+                    <br><small>僅本機</small>
+                </div>
+                <div class="col-4">
+                    <i class="bi bi-shuffle text-primary"></i>
+                    <br><small>隨機端口</small>
+                </div>
+                <div class="col-4">
+                    <i class="bi bi-clock text-warning"></i>
+                    <br><small>會話限時</small>
+                </div>
+            </div>
+            <hr>
+            <small class="text-muted">
+                <i class="bi bi-info-circle"></i>
+                此管理介面完全獨立於主系統運行
+            </small>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // 顯示當前端口資訊
+        document.addEventListener('DOMContentLoaded', function() {
+            const port = window.location.port;
+            if (port) {
+                const portInfo = document.createElement('small');
+                portInfo.className = 'text-muted d-block mt-2';
+                portInfo.innerHTML = `<i class="bi bi-router"></i> 當前端口: ${port}`;
+                document.querySelector('.local-info').appendChild(portInfo);
+            }
+        });
+
+        // 自動關閉成功提示
+        setTimeout(function() {
+            const successAlerts = document.querySelectorAll('.alert-success');
+            successAlerts.forEach(function(alert) {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            });
+        }, 3000);
+    </script>
+</body>
+</html>

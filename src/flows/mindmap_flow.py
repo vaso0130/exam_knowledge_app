@@ -83,13 +83,27 @@ class MindmapFlow:
                 # 3. 調用 Gemini API 生成心智圖程式碼，加入題目文本
                 print(f"正在為 {len(knowledge_points)} 個知識點生成心智圖...")
                 question_text = question_data.get('title', '') + '\n\n' + question_data.get('question_text', '')
-                mindmap_code = await self.gemini.generate_mindmap(subject, knowledge_points, question_text)
+                mindmap_result = await self.gemini.generate_mindmap(subject, knowledge_points, question_text)
+                
+                # 提取心智圖代碼和題目摘要
+                mindmap_code = mindmap_result.get('mindmap_code', '')
+                question_summary = mindmap_result.get('question_summary')
+                
             if not mindmap_code:
                 return {'success': False, 'error': '無法生成心智圖程式碼'}
 
             # 4. 將心智圖程式碼儲存回資料庫
             print("正在儲存心智圖...")
             self.db.update_question_mindmap(question_id, mindmap_code)
+            
+            # 5. 如果有題目摘要，也一併儲存
+            if question_summary and question_summary.get('summary') and question_summary.get('solving_tips'):
+                print("正在儲存題目摘要與解題技巧...")
+                self.db.update_question_solving_tips(
+                    question_id, 
+                    question_summary.get('summary', ''),
+                    question_summary.get('solving_tips', '')
+                )
 
             return {
                 'success': True,

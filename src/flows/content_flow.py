@@ -5,9 +5,7 @@ from src.core.gemini_client import GeminiClient
 from src.core.database import DatabaseManager
 import json
 from ..utils.markdown_utils import (
-    format_code_blocks,
     format_summary_to_markdown,
-    format_answer_text,
     detect_and_fence_indented_code,
 )
 from ..flows.mindmap_flow import MindmapFlow
@@ -73,7 +71,7 @@ class ContentFlow:
 
             # 1. 生成答案 (I/O 密集型)
             answer_data = await self.gemini.generate_answer(question_text)
-            answer_text = format_answer_text(self._extract_answer_string(answer_data))
+            answer_text = self._extract_answer_string(answer_data)  # 直接使用 AI 回傳的答案，不做二次加工
             sources_json = json.dumps(answer_data.get('sources', []), ensure_ascii=False)
 
             # 2. 存入資料庫 (I/O 密集型)
@@ -136,23 +134,34 @@ class ContentFlow:
 
     
     
-    def process_file(self, file_path: str, filename: str, suggested_subject: str = None) -> Dict[str, Any]:
+    def process_file(self, file_path: str, filename: str, suggested_subject: str = None, 
+                    uploader_id: int = None, uploader_name: str = None) -> Dict[str, Any]:
         """處理檔案的統一入口點"""
         try:
             # content is the extracted text from the file
             content, _ = self.file_processor.process_input(file_path)
 
             # Pass the file_path along with the extracted content
-            return self.complete_ai_processing(content, filename, suggested_subject, file_path=file_path)
+            return self.complete_ai_processing(
+                content, filename, suggested_subject, 
+                file_path=file_path,
+                uploader_id=uploader_id,
+                uploader_name=uploader_name
+            )
         except Exception as e:
             print(f"處理檔案時發生錯誤: {e}")
             return {'success': False, 'error': str(e), 'message': f'檔案處理失敗: {str(e)}'}
     
-    def complete_ai_processing(self, content: str, filename: str, suggested_subject: str = None, source_url: str = None, file_path: str = None) -> Dict[str, Any]:
+    def complete_ai_processing(self, content: str, filename: str, suggested_subject: str = None, 
+                              source_url: str = None, file_path: str = None,
+                              uploader_id: int = None, uploader_name: str = None) -> Dict[str, Any]:
         """完整 AI 處理流程"""
         try:
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, self._run_async_processing(content, filename, suggested_subject, source_url, file_path))
+                future = executor.submit(asyncio.run, self._run_async_processing(
+                    content, filename, suggested_subject, source_url, file_path,
+                    uploader_id, uploader_name
+                ))
                 return future.result()
         except Exception as e:
             print(f"完整 AI 處理時發生錯誤: {e}")
@@ -176,7 +185,9 @@ class ContentFlow:
                 return "（參考答案生成失敗或未提供，請檢查原始資料或稍後重試。）"
             return extracted_answer
 
-    async def _run_async_processing(self, content: str, filename: str, suggested_subject: str = None, source_url: str = None, file_path: str = None) -> Dict[str, Any]:
+    async def _run_async_processing(self, content: str, filename: str, suggested_subject: str = None, 
+                                   source_url: str = None, file_path: str = None,
+                                   uploader_id: int = None, uploader_name: str = None) -> Dict[str, Any]:
         """執行異步處理流程"""
         try:
             print("🤖 AI 正在分析內容類型...")
@@ -207,7 +218,9 @@ class ContentFlow:
                 content=content, # Extracted text
                 subject=detected_subject, 
                 source=source_url,
-                file_path=file_path # The actual file path
+                file_path=file_path, # The actual file path
+                uploader_id=uploader_id,
+                uploader_name=uploader_name
             )
             
             if content_type == 'exam_paper':
@@ -342,7 +355,34 @@ class ContentFlow:
         quiz_data = await self.gemini.generate_quick_quiz(content, subject)
 
         # 儲存摘要和測驗
-        summary_text = format_summary_to_markdown(summary_data) if summary_data else None
+        # 新版本：AI 已經直接返回 Markdown 格式，不需要再次格式化
+        if summary_data and isinstance(summary_data, dict):
+            if 'summary' in summary_data and isinstance(summary_data['summary'], str):
+                # 檢查是否為新格式（已經是 Markdown）
+                summary_content = summary_data['summary']
+                if summary_content.strip().startswith("#") or "##" in summary_content:
+                    # 新格式：直接使用 AI 生成的 Markdown
+                    summary_text = summary_content
+                    
+                    # 檢查是否需要添加 bullets（如果 AI 沒有包含的話）
+                    if ('bullets' in summary_data and 
+                        isinstance(summary_data['bullets'], list) and 
+                        summary_data['bullets']):
+                        
+                        # 檢查是否已經包含 bullets 內容
+                        bullets_exist = any(bullet in summary_text for bullet in summary_data['bullets'][:2])
+                        if not bullets_exist:
+                            summary_text += "\n\n## 條列式重點\n\n"
+                            for bullet in summary_data['bullets']:
+                                summary_text += f"- {bullet}\n"
+                else:
+                    # 舊格式：使用格式化函數
+                    summary_text = format_summary_to_markdown(summary_data)
+            else:
+                # 舊格式：使用格式化函數
+                summary_text = format_summary_to_markdown(summary_data)
+        else:
+            summary_text = None
         quiz_text = json.dumps(quiz_data, ensure_ascii=False) if quiz_data else None
         self.db.update_document_summary_and_quiz(doc_id, summary_text, quiz_text)
 

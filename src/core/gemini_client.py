@@ -14,12 +14,21 @@ class GeminiClient:
         
         genai.configure(api_key=self.api_key)
         
-        # 設置主要模型 (gemini-2.5-flash)
+        # === 三層模型使用策略 ===
+        # 主模型 (gemini-2.5-flash): 複雜推理任務 (答案生成)
+        # 中級模型 (gemini-2.5-flash-lite): 中等複雜度任務 (內容摘要、知識點提取、考卷解析、模擬題生成)  
+        # 輔助模型 (gemini-2.0-flash-lite): 簡單任務 (標籤生成、選擇題、心智圖等)
+        
+        # 設置主模型 - 用於複雜推理任務（答案生成、模擬題生成）
         self.primary_model_name = os.getenv('GEMINI_MODEL_NAME', 'gemini-2.5-flash')
         self.model = genai.GenerativeModel(self.primary_model_name)
         
-        # 設置輔助模型 (gemini-1.5-flash) 用於簡單任務
-        self.secondary_model_name = 'gemini-1.5-flash'
+        # 設置中級模型 - 用於中等複雜度任務（內容摘要、知識點提取）
+        self.intermediate_model_name = 'gemini-2.5-flash-lite'
+        self.intermediate_model = genai.GenerativeModel(self.intermediate_model_name)
+        
+        # 設置輔助模型 - 用於簡單任務（標籤生成、選擇題等）
+        self.secondary_model_name = 'gemini-2.0-flash-lite'
         self.secondary_model = genai.GenerativeModel(self.secondary_model_name)
         
         self.generation_config = genai.types.GenerationConfig(
@@ -45,6 +54,23 @@ class GeminiClient:
         parsed_json = extract_json_from_text(raw_response)
         return parsed_json
 
+    async def _generate_with_intermediate_model(self, prompt: str) -> Optional[Dict[str, Any]]:
+        """使用中級模型 (gemini-2.5-flash-lite) 進行JSON解析 - 用於內容摘要和知識點提取"""
+        try:
+            response = await asyncio.to_thread(
+                self.intermediate_model.generate_content,
+                prompt,
+                generation_config=self.generation_config
+            )
+            
+            if response and response.text:
+                parsed_json = extract_json_from_text(response.text)
+                return parsed_json
+            return None
+        except Exception as e:
+            print(f"中級模型 (gemini-2.5-flash-lite) 錯誤: {e}")
+            return None
+
     async def generate_async(self, prompt: str, is_json: bool = True) -> str:
         try:
             config = self.generation_config if is_json else genai.types.GenerationConfig(
@@ -62,10 +88,28 @@ class GeminiClient:
             print(f"Gemini API 錯誤: {e}")
             return ""
 
+    async def generate_async_simple(self, prompt: str, is_json: bool = True) -> str:
+        """使用輔助模型進行簡單任務，節省成本"""
+        try:
+            config = self.generation_config if is_json else genai.types.GenerationConfig(
+                temperature=0.2,
+                top_p=0.9,
+                max_output_tokens=2048
+            )
+            response = await asyncio.to_thread(
+                self.secondary_model.generate_content,
+                prompt,
+                generation_config=config
+            )
+            return response.text
+        except Exception as e:
+            print(f"Gemini API (輔助模型) 錯誤: {e}")
+            return ""
+
     async def parse_exam_paper(self, text: str) -> Dict[str, Any]:
         """
         解析考卷內容，自動分割題目並識別考科，並進行難度分級
-        使用輕量級模型 (gemini-1.5-flash) 進行內容分類
+        使用中級模型 (gemini-2.5-flash-lite) 進行內容分類
         """
         prompt = f"""
         你是一位專精於解析台灣國家考試題庫的 AI 分析師。你的核心任務是將輸入的文本，精準地轉換為結構化的 JSON 格式，並確保最終輸出的可讀性。請嚴格遵循以下所有準則進行分析。
@@ -195,9 +239,10 @@ class GeminiClient:
         }}
         """
         
-        # 使用輕量級模型 (gemini-1.5-flash) 進行內容分類
+        # 使用中級模型 (gemini-2.5-flash-lite) 進行內容分類
         try:
-            response = await self.secondary_model.generate_content_async(
+            response = await asyncio.to_thread(
+                self.intermediate_model.generate_content,
                 prompt,
                 generation_config=self.generation_config
             )
@@ -228,6 +273,7 @@ class GeminiClient:
         """
         根據完整文本內容生成高品質申論模擬題，並為每個問題自動標註知識點標籤
         專注於生成需要深入分析和應用的題目，而非單純複述知識
+        使用中級模型 (gemini-2.5-flash-lite) 進行題目生成
         """
         prompt = f"""
         你是一位專業的{subject}科申論題出題專家。請根據提供的學習資料，設計2-4道高品質的申論模擬題。
@@ -249,6 +295,18 @@ class GeminiClient:
         - 問題解決：要求學生提出解決方案或建議
         - 批判思考：要求分析優缺點、比較不同方法
         - 實務應用：將理論知識應用到實際情況
+        - 國情提要：請勿出現中國的考試內容與法規或場景，台灣的國考不太可能會考這些東西。
+        
+        **品牌與技術使用指導原則：**
+        - **技術導向使用**：品牌應作為技術概念的載體，重點在於背後的技術知識
+          - ✅ 正確範例：「Facebook 作為社群媒體平台，企業可透過其廣告系統進行精準行銷，請分析社群媒體行銷的優勢與挑戰」
+          - ✅ 正確範例：「Facebook 與Line 都是作為社群媒體平台，但是提供的服務不太相同，請分析公司如何選擇這兩種平台，各自的優勢與挑戰在哪裡」
+          - ✅ 正確範例：「Azure 提供 IaaS、PaaS、SaaS 等雲端服務，請評估企業選擇不同服務模式的考量因素」
+          - ❌ 錯誤範例：「X.com 與 Threads.com 都是社群平台，企業應該選擇哪個進行行銷？」
+          - ❌ 錯誤範例：「Azure vs AWS vs GCP，公司應該選擇哪個雲端平台？」
+        - **知識點優先**：使用知名品牌時，必須確保題目測驗的是技術概念、商業模式、系統架構等知識，而非品牌偏好
+        - **避免直接比較**：不出現同類型服務的品牌選擇題，改為分析該類服務的技術特性、適用場景或導入策略
+        - **通用化處理**：對於不夠知名的品牌，使用「某電商平台」、「主流CRM系統」等通用描述
 
         **題目難度分級標準**
             *   請根據以下標準，設計申論題難度。
@@ -284,7 +342,7 @@ class GeminiClient:
             ]
         }}
         """
-        parsed_json = await self._generate_with_json_parsing(prompt)
+        parsed_json = await self._generate_with_intermediate_model(prompt)
         return parsed_json.get("questions", []) if parsed_json else []
 
     async def generate_answer(self, question_text: str) -> Optional[Dict[str, Any]]:
@@ -340,7 +398,7 @@ class GeminiClient:
             -   回答時，請格式化，請使用 Markdown 語法，特別是程式碼區塊（```pseudocode ... ```）來清晰呈現程式碼，以及所有如果列點請注意層級與縮排還有標題、編碼與換行。
             -   **重要I：編號格式規範**
                 -   使用不同層級的編號：第一層用「一、二、三、」，第二層用「(一) (二) (三)」，第三層用「1. 2. 3.」，第四層用「(1) (2) (3)」。
-                -   使用不同層級標題請記得使用markdown語法：「### 一、主要分析」、「#### (一)詳細說明」依此類推。
+                -   使用不同層級標題請記得使用markdown語法：「## 一、概說」、「> ### (一)理論」、「>> #### 1.主要分析」依此類推，記得一定要使用‵>‵與‵>>‵來根據不同層級進行縮排，增加版面美觀性。
             -   **重要II：題目回答版面規範**
                 -   **禁止:**將整份作答內容全部放在一個大段落中，必須使用適當的段落分隔與標題。
                 -   **嚴謹:**每個段落都必須有清晰的主題句，並且每個段落之間要有適當的空行分隔。
@@ -383,47 +441,61 @@ class GeminiClient:
 
     async def generate_summary(self, text: str) -> Dict[str, Any]:
         """
-        生成摘要
+        生成摘要 - 使用中級模型 (gemini-2.5-flash-lite)
         """
         prompt = f"""
-        請為以下內容生成結構化的知識重點摘要。請特別注意：
+        你是一位專業的學習資料整理專家，請為以下內容生成結構化的知識摘要。
 
-        1. **提取表格資訊**：如果內容包含表格，請將表格資訊轉換為清晰的重點項目
-        2. **技術術語整理**：將專業術語、技術名稱、攻擊手法等整理成學習要點，**每個術語都要提供簡潔的解釋**
-        3. **避免重複**：不要直接複述原文，而是要歸納出關鍵概念和要點
-        4. **實用性導向**：重點應該是便於學習和記憶的知識點
-        5. **分類整理**：將知識點分為核心概念、技術術語、分類資訊、實務應用等類別
-        6. **去品牌化**：避免使用具體的品牌名稱或產品名稱，專注於技術和概念本身，除非品牌名稱是學習重點的一部分。
+        **核心要求：**
+        1. **原始性保持**：直接從原文提取重點，不進行二次加工或改寫
+        2. **Markdown格式**：使用標準的 Markdown 語法來組織內容結構
+        3. **技術導向**：專注於知識、技術、概念、方法論本身
+        4. **品牌處理原則**：
+           - **技術導向使用**：保留具有學習價值的知名品牌，重點關注其背後的技術概念
+             - ✅ 保留：Facebook（社群媒體技術）、Azure（雲端服務架構）、AWS（雲端運算概念）
+             - ✅ 保留：ISO、IEEE、RFC（技術標準）、TCP/IP、HTTP（協議標準）
+           - **通用化處理**：將不具代表性的品牌替換為技術類型
+             - ❌ 特定品牌 → ✅ 通用描述：「某電商平台」、「主流CRM系統」、「知名社群軟體」
+           - **避免品牌比較**：不進行同類型服務的品牌選擇，改為技術特性分析
+             - ❌ 避免：「Azure vs AWS 選擇」→ ✅ 改為：「雲端服務模式比較（IaaS/PaaS/SaaS）」
+           - **知識點優先**：使用品牌時確保測驗的是技術知識，而非品牌認知
+        5. **結構化呈現**：使用標題、列表、表格等 Markdown 元素清晰呈現資訊
 
         **內容：**
         {text[:6000]}
 
-        請以JSON格式回應，生成高品質的學習摘要：
+        請以JSON格式回應，包含完整的 Markdown 格式摘要：
         {{
-            "summary": "一句話概括整體內容的核心主題",
-            "key_concepts": [
-                {{"name": "核心概念1", "description": "簡潔的解釋說明"}},
-                {{"name": "核心概念2", "description": "簡潔的解釋說明"}}
-            ],
-            "technical_terms": [
-                {{"name": "技術術語1", "description": "一句話解釋這個術語的含義和作用"}},
-                {{"name": "技術術語2", "description": "一句話解釋這個術語的含義和作用"}}
-            ],
-            "classification_info": [
-                {{"name": "分類項目1", "description": "分類的詳細說明或等級內容"}},
-                {{"name": "分類項目2", "description": "分類的詳細說明或等級內容"}}
-            ],
-            "practical_applications": [
-                {{"name": "實務應用1", "description": "具體的應用場景或實施方法"}},
-                {{"name": "實務應用2", "description": "具體的應用場景或實施方法"}}
-            ],
-            "bullets": ["整合性重點1：包含詳細說明", "整合性重點2：包含詳細說明", "整合性重點3：包含詳細說明"]
+            "summary": "# 知識摘要標題\n\n## 核心概念\n\n- 重點1\n- 重點2\n\n## 技術要點\n\n### 關鍵技術\n\n- **技術名稱**：技術說明\n- **方法論**：方法說明\n\n### 分類資訊\n\n| 類別 | 說明 | 特點 |\n|------|------|------|\n| 分類1 | 說明1 | 特點1 |\n| 分類2 | 說明2 | 特點2 |\n\n## 實務應用\n\n1. **應用場景1**\n   - 具體說明\n   - 注意事項\n\n2. **應用場景2**\n   - 具體說明\n   - 注意事項",
+            "bullets": ["重點1", "重點2", "重點3"]
         }}
+
+        **重要：summary 欄位必須是完整的 Markdown 格式文本，包含適當的標題、列表、表格等結構化元素。**
         """
-        parsed_json = await self._generate_with_json_parsing(prompt)
-        if parsed_json and 'summary' in parsed_json and 'bullets' in parsed_json:
-            return parsed_json
-        return {"summary": "無法生成摘要", "bullets": []}
+        
+        # 修改為使用不要求JSON的生成配置，因為我們要生成Markdown
+        try:
+            text_generation_config = genai.types.GenerationConfig(
+                temperature=0.2,
+                top_p=0.9,
+                max_output_tokens=4096,
+                response_mime_type="application/json"
+            )
+            response = await asyncio.to_thread(
+                self.intermediate_model.generate_content,
+                prompt,
+                generation_config=text_generation_config
+            )
+            
+            if response and response.text:
+                parsed_json = extract_json_from_text(response.text)
+                if parsed_json and 'summary' in parsed_json:
+                    return parsed_json
+                    
+            return {"summary": "# 摘要生成失敗\n\n無法解析學習資料內容", "bullets": []}
+        except Exception as e:
+            print(f"生成摘要時發生錯誤: {e}")
+            return {"summary": "# 摘要生成錯誤\n\n請檢查輸入內容或網路連線", "bullets": []}
 
     async def generate_quick_quiz(self, content: str, subject: str) -> List[Dict[str, Any]]:
         """生成快速測驗選擇題"""
@@ -458,17 +530,25 @@ class GeminiClient:
         """
         
         try:
-            parsed_response = await self._generate_with_json_parsing(prompt)
-            if parsed_response and 'quiz' in parsed_response:
-                return parsed_response['quiz']
-            else:
-                print("警告：無法解析快速測驗JSON回應")
-                return []
+            # 使用輔助模型生成快速測驗（節省成本）
+            response = await asyncio.to_thread(
+                self.secondary_model.generate_content,
+                prompt,
+                generation_config=self.generation_config
+            )
+            
+            if response and response.text:
+                parsed_response = extract_json_from_text(response.text)
+                if parsed_response and 'quiz' in parsed_response:
+                    return parsed_response['quiz']
+            
+            print("警告：無法解析快速測驗JSON回應")
+            return []
         except Exception as e:
             print(f"生成快速測驗錯誤: {e}")
             return []
 
-    async def generate_mindmap(self, subject: str, knowledge_points: List[str], question_text: str = None) -> str:
+    async def generate_mindmap(self, subject: str, knowledge_points: List[str], question_text: str = None) -> Dict[str, Any]:
         """
         根據輸入的知識點和題目文本，生成 Mermaid.js 格式的心智圖 Markdown。
         
@@ -476,6 +556,9 @@ class GeminiClient:
             subject: 主題/科目
             knowledge_points: 知識點列表
             question_text: 題目文本（可選）
+            
+        Returns:
+            包含心智圖代碼和題目摘要的字典
         """
         # 將知識點列表轉換為 Mermaid 節點
         nodes_text = ""
@@ -508,12 +591,15 @@ class GeminiClient:
         # 檢查是否有有效的知識點
         if not safe_knowledge_points:
             print("警告：沒有提供有效的知識點，將使用預設心智圖")
-            return f"""mindmap
+            return {
+                'mindmap_code': f"""mindmap
   root(("{subject}"))
     提示("請先添加知識點")
       方法1("編輯題目時添加知識點標籤")
       方法2("或上傳相關學習資料")
-      方法3("系統會自動提取知識點")"""
+      方法3("系統會自動提取知識點")""",
+                'question_summary': None
+            }
 
         # 預處理題目文本，處理可能導致 API 問題的內容
         processed_question_text = None
@@ -620,12 +706,21 @@ class GeminiClient:
             # 檢查清理後的代碼是否以 mindmap 開頭
             if not mermaid_code.startswith("mindmap"):
                 print(f"警告：Gemini 回應不是有效的 mindmap 格式 (長度: {len(mermaid_code)})")
-                return "mindmap\n  root((生成失敗))\n    請檢查輸入內容或 API 連線"
+                return {
+                    'mindmap_code': "mindmap\n  root((生成失敗))\n    請檢查輸入內容或 API 連線",
+                    'question_summary': question_summary
+                }
             
-            return mermaid_code
+            return {
+                'mindmap_code': mermaid_code,
+                'question_summary': question_summary
+            }
         except Exception as e:
             print(f"生成心智圖時發生錯誤: {e}")
-            return "mindmap\n  root((錯誤))\n    無法生成心智圖"
+            return {
+                'mindmap_code': "mindmap\n  root((錯誤))\n    無法生成心智圖",
+                'question_summary': question_summary
+            }
 
     async def generate_question_summary(self, question_text: str, question_title: str = "") -> Dict[str, str]:
         """
@@ -737,7 +832,7 @@ class GeminiClient:
         return processed
 
     async def extract_knowledge_points(self, text: str, subject: str) -> Optional[List[str]]:
-        """從文本中提取知識點"""
+        """從文本中提取知識點 - 使用中級模型 (gemini-2.5-flash-lite)"""
         prompt = f"""
         你是一位專業的{subject}科老師，你的任務是從給定的考試題目或文本中，精準地提取出核心的「知識點」。
 
@@ -783,7 +878,7 @@ class GeminiClient:
         請現在分析給定的文本並返回JSON結果。
         """
         
-        parsed_json = await self._generate_with_json_parsing(prompt)
+        parsed_json = await self._generate_with_intermediate_model(prompt)
         if parsed_json and 'knowledge_points' in parsed_json and isinstance(parsed_json['knowledge_points'], list):
             return parsed_json['knowledge_points']
         
@@ -791,7 +886,7 @@ class GeminiClient:
         return None
 
     async def generate_tags(self, text: str, subject: str) -> List[str]:
-        """生成標籤"""
+        """生成標籤 - 使用輔助模型節省成本"""
         prompt = f"""
         基於以下「{subject}」領域的內容，請生成3-6個精確且有代表性的標籤關鍵字。
         標籤應該是常見的技術術語、概念或標準。
@@ -804,7 +899,20 @@ class GeminiClient:
             "tags": ["標籤1", "標籤2", "標籤3", ...]
         }}
         """
-        parsed_json = await self._generate_with_json_parsing(prompt)
-        if parsed_json and 'tags' in parsed_json:
-            return parsed_json.get("tags", [])
-        return []
+        try:
+            # 使用輔助模型生成標籤（節省成本）
+            response = await asyncio.to_thread(
+                self.secondary_model.generate_content,
+                prompt,
+                generation_config=self.generation_config
+            )
+            
+            if response and response.text:
+                parsed_json = extract_json_from_text(response.text)
+                if parsed_json and 'tags' in parsed_json:
+                    return parsed_json.get("tags", [])
+            
+            return []
+        except Exception as e:
+            print(f"生成標籤錯誤: {e}")
+            return []

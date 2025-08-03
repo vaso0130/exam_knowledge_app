@@ -95,7 +95,8 @@ class AsyncProcessor:
             error_msg = f"處理失敗: {str(e)}"
             self._update_job_status(job_id, 'failed', 0, error_msg, error=str(e))
     
-    def _process_content(self, job_id: str, file_path: str, filename: str, subject: str) -> Dict[str, Any]:
+    def _process_content(self, job_id: str, file_path: str, filename: str, subject: str, 
+                        uploader_id: int = None, uploader_name: str = None) -> Dict[str, Any]:
         """處理學習內容"""
         self._update_job_status(job_id, 'running', 20, '讀取檔案內容...')
         
@@ -114,7 +115,10 @@ class AsyncProcessor:
             result = self.flow_manager.content_flow.complete_ai_processing(
                 content=content,
                 filename=filename,
-                suggested_subject=subject
+                suggested_subject=subject,
+                file_path=file_path,
+                uploader_id=uploader_id,
+                uploader_name=uploader_name
             )
             
             # 模擬進度更新
@@ -161,6 +165,7 @@ class AsyncProcessor:
         self._update_job_status(job_id, 'running', 20, '連接網站，擷取內容...')
         
         from ..utils.file_processor import FileProcessor
+        from ..utils.content_validator import ContentValidator
         
         try:
             # 使用 FileProcessor 獲取網路內容
@@ -169,7 +174,25 @@ class AsyncProcessor:
             if not web_content or len(web_content.strip()) < 10:
                 raise Exception("無法從該網址獲取有效內容，請檢查網址是否正確")
             
-            self._update_job_status(job_id, 'running', 40, '內容擷取完成，開始分析...')
+            self._update_job_status(job_id, 'running', 30, '內容擷取完成，進行內容驗證...')
+            
+            # v3.1: 進行內容驗證
+            content_validator = ContentValidator(
+                self.flow_manager.gemini_client, 
+                self.flow_manager.db_manager
+            )
+            
+            validation_result = content_validator.validate_content_sync(
+                document_id=0,  # URL內容暫時使用0
+                content=web_content[:2000],  # 只取前2000字符驗證
+                user_id=1  # 暫時使用默認用戶ID，實際應該從session獲取
+            )
+            
+            if not validation_result["is_valid"]:
+                # 內容不符合學習用途，拒絕處理
+                raise Exception(f'❌ 網址內容不符合學習用途要求，已被拒絕。{validation_result["reason"]}')
+            
+            self._update_job_status(job_id, 'running', 40, '內容驗證通過，開始分析...')
             
             # 使用 content_flow 處理
             result = self.flow_manager.content_flow.complete_ai_processing(

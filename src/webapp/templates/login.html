@@ -1,0 +1,292 @@
+{% extends "layout.html" %}
+
+{% block title %}用戶登入{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card shadow-lg">
+                <div class="card-header bg-gradient-primary text-white text-center">
+                    <h4 class="mb-0">� 考試知識系統</h4>
+                    <small>安全登入 · 邀請制註冊</small>
+                </div>
+                <div class="card-body p-4">
+                    {% with messages = get_flashed_messages() %}
+                        {% if messages %}
+                            {% for message in messages %}
+                                <div class="alert alert-info alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="關閉"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <!-- 第一階段：用戶名檢查 -->
+                    <div id="stage-username" class="auth-stage">
+                        <h5 class="text-center mb-4">🚀 開始使用</h5>
+                        <form id="username-form" class="needs-validation" novalidate>
+                            <div class="mb-3">
+                                <label for="username" class="form-label">
+                                    <i class="fas fa-user"></i> 用戶名稱
+                                </label>
+                                <input type="text" 
+                                       class="form-control form-control-lg" 
+                                       id="username" 
+                                       name="username" 
+                                       required 
+                                       autocomplete="username"
+                                       placeholder="請輸入您的用戶名">
+                                <div class="invalid-feedback">
+                                    請輸入用戶名稱
+                                </div>
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="fas fa-arrow-right"></i> 繼續
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- 第二階段：現有用戶登入 -->
+                    <div id="stage-login" class="auth-stage" style="display: none;">
+                        <div class="text-center mb-3">
+                            <h5>👋 歡迎回來</h5>
+                            <p class="text-muted">用戶：<span id="login-username" class="fw-bold"></span></p>
+                        </div>
+                        <form id="login-form" method="POST" class="needs-validation" novalidate>
+                            <input type="hidden" id="login-username-hidden" name="username">
+                            <div class="mb-3">
+                                <label for="password" class="form-label">
+                                    <i class="fas fa-lock"></i> 密碼
+                                </label>
+                                <input type="password" 
+                                       class="form-control form-control-lg" 
+                                       id="password" 
+                                       name="password" 
+                                       required 
+                                       autocomplete="current-password"
+                                       placeholder="請輸入密碼">
+                                <div class="invalid-feedback">
+                                    請輸入密碼
+                                </div>
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-success btn-lg">
+                                    <i class="fas fa-sign-in-alt"></i> 登入
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="backToUsername()">
+                                    <i class="fas fa-arrow-left"></i> 重新輸入用戶名
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- 第三階段：新用戶註冊 -->
+                    <div id="stage-register" class="auth-stage" style="display: none;">
+                        <div class="text-center mb-3">
+                            <h5>✨ 新用戶註冊</h5>
+                            <p class="text-muted">用戶：<span id="register-username" class="fw-bold"></span></p>
+                        </div>
+                        <form id="register-form" method="POST" class="needs-validation" novalidate>
+                            <input type="hidden" id="register-username-hidden" name="username">
+                            <input type="hidden" name="action" value="register">
+                            
+                            <div class="mb-3">
+                                <label for="fullname" class="form-label">
+                                    <i class="fas fa-id-card"></i> 真實姓名
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="fullname" 
+                                       name="fullname" 
+                                       required 
+                                       placeholder="請輸入您的真實姓名">
+                                <div class="invalid-feedback">
+                                    請輸入真實姓名
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="email" class="form-label">
+                                    <i class="fas fa-envelope"></i> 電子信箱
+                                </label>
+                                <input type="email" 
+                                       class="form-control" 
+                                       id="email" 
+                                       name="email" 
+                                       required 
+                                       placeholder="請輸入您的電子信箱">
+                                <div class="invalid-feedback">
+                                    請輸入有效的電子信箱
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="register-password" class="form-label">
+                                    <i class="fas fa-key"></i> 設定密碼
+                                </label>
+                                <input type="password" 
+                                       class="form-control" 
+                                       id="register-password" 
+                                       name="password" 
+                                       required 
+                                       minlength="6"
+                                       placeholder="請設定密碼（至少6位）">
+                                <div class="invalid-feedback">
+                                    密碼長度至少6個字元
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label for="invite-code" class="form-label">
+                                    <i class="fas fa-ticket-alt"></i> 邀請碼 <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="invite-code" 
+                                       name="invite_code" 
+                                       required 
+                                       placeholder="請輸入邀請碼">
+                                <div class="invalid-feedback">
+                                    請輸入有效的邀請碼
+                                </div>
+                                <div class="form-text">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle"></i> 
+                                        需要有效的邀請碼才能註冊帳號
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="fas fa-user-plus"></i> 創建帳號
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="backToUsername()">
+                                    <i class="fas fa-arrow-left"></i> 重新輸入用戶名
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card-footer text-center text-muted">
+                    <small>
+                        🛡️ 考試知識應用系統 v3.1<br>
+                        具有點數控制和內容驗證功能 · 邀請制安全註冊
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.bg-gradient-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.auth-stage {
+    min-height: 200px;
+}
+
+.form-control-lg {
+    border-radius: 10px;
+}
+
+.btn-lg {
+    border-radius: 25px;
+    padding: 12px 30px;
+}
+
+.card {
+    border-radius: 15px;
+    border: none;
+}
+
+.card-header {
+    border-radius: 15px 15px 0 0 !important;
+    padding: 20px;
+}
+
+.fas {
+    margin-right: 8px;
+}
+
+.shadow-lg {
+    box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.175) !important;
+}
+</style>
+
+<script>
+// 階段管理
+function showStage(stageName) {
+    document.querySelectorAll('.auth-stage').forEach(stage => {
+        stage.style.display = 'none';
+    });
+    document.getElementById('stage-' + stageName).style.display = 'block';
+}
+
+function backToUsername() {
+    showStage('username');
+    document.getElementById('username').value = '';
+    document.getElementById('username').focus();
+}
+
+// 用戶名檢查
+document.getElementById('username-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('username').value.trim();
+    if (!username) return;
+    
+    try {
+        const response = await fetch('/check-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username: username })
+        });
+        
+        const data = await response.json();
+        
+        if (data.exists) {
+            // 用戶存在，顯示登入表單
+            document.getElementById('login-username').textContent = username;
+            document.getElementById('login-username-hidden').value = username;
+            showStage('login');
+            document.getElementById('password').focus();
+        } else {
+            // 用戶不存在，顯示註冊表單
+            document.getElementById('register-username').textContent = username;
+            document.getElementById('register-username-hidden').value = username;
+            showStage('register');
+            document.getElementById('fullname').focus();
+        }
+    } catch (error) {
+        alert('檢查用戶時發生錯誤，請稍後再試');
+    }
+});
+
+// Bootstrap form validation
+(function() {
+    'use strict';
+    window.addEventListener('load', function() {
+        var forms = document.getElementsByClassName('needs-validation');
+        var validation = Array.prototype.filter.call(forms, function(form) {
+            form.addEventListener('submit', function(event) {
+                if (form.checkValidity() === false) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                form.classList.add('was-validated');
+            }, false);
+        });
+    }, false);
+})();
+</script>
+{% endblock %}
