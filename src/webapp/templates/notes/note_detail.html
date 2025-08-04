@@ -14,6 +14,9 @@
             </ol>
         </nav>
         <div>
+            {% if note.source_question %}
+            <a href="{{ url_for('question_detail', q_id=note.source_question.id) }}" class="btn btn-outline-primary btn-sm me-1">返回原始題目</a>
+            {% endif %}
             <a href="{{ url_for('notes.edit_note', note_id=note.id) }}" class="btn btn-secondary btn-sm">
                 <i class="fas fa-edit me-1"></i> 編輯
             </a>
@@ -79,6 +82,24 @@
                             <p class="text-muted">無標籤</p>
                         {% endif %}
                     </div>
+                    {% if note.source_question %}
+                    <div class="mt-4">
+                        <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#source-question-block" aria-expanded="false" aria-controls="source-question-block">
+                            顯示/隱藏來源題目
+                        </button>
+                        <div class="collapse mt-2" id="source-question-block">
+                            <div class="card card-body">
+                                <h6 class="mb-2">題目</h6>
+                                <div class="markdown-body">{{ note.source_question.question_text | markdown }}</div>
+                                {% if note.source_question.answer_text %}
+                                <hr>
+                                <h6 class="mb-2">答案</h6>
+                                <div class="markdown-body">{{ note.source_question.answer_text | markdown }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
 

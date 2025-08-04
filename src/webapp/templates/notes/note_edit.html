@@ -15,15 +15,33 @@
 
     <div class="card shadow-sm">
         <div class="card-body">
+            {% if source_question %}
+            <div class="mb-3">
+                <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#source-question" aria-expanded="false" aria-controls="source-question">
+                    顯示/隱藏來源題目
+                </button>
+                <div class="collapse mt-2" id="source-question">
+                    <div class="card card-body">
+                        <h6 class="mb-2">題目</h6>
+                        <div class="markdown-body">{{ source_question.question_text | markdown }}</div>
+                        {% if source_question.answer_text %}
+                        <hr>
+                        <h6 class="mb-2">答案</h6>
+                        <div class="markdown-body">{{ source_question.answer_text | markdown }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
             <form method="POST" action="">
                 <div class="mb-3">
                     <label for="title" class="form-label"><strong>標題</strong></label>
-                    <input type="text" class="form-control" id="title" name="title" value="{{ note.title if note else '' }}" required>
+                    <input type="text" class="form-control" id="title" name="title" value="{{ note.title if note else default_title }}" required>
                 </div>
 
                 <div class="mb-3">
                     <label for="content" class="form-label"><strong>內容 (支援 Markdown)</strong></label>
-                    <textarea class="form-control" id="content" name="content" rows="15" required>{{ note.content if note else '' }}</textarea>
+                    <textarea class="form-control" id="content" name="content" rows="15" required>{{ note.content if note else default_content }}</textarea>
                 </div>
 
                 <!-- AI 功能選項 -->
@@ -151,9 +169,14 @@
                     <div id="preview" class="border p-3 bg-light markdown-body" style="min-height: 100px;"></div>
                 </div>
 
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" name="action" value="save" class="btn btn-primary">
                     <i class="fas fa-save me-1"></i> 儲存筆記
                 </button>
+                {% if source_question %}
+                <button type="submit" name="action" value="ai_generate" class="btn btn-warning ms-2">
+                    🚀 AI 自動生成筆記
+                </button>
+                {% endif %}
             </form>
         </div>
     </div>

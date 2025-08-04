@@ -1,6 +1,8 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify
 from ..notes.note_manager import NoteManager
 from ..webapp.auth_middleware import require_admin
+from ..core.database import DatabaseManager
+
 
 # Define the blueprint for the notes system
 notes_bp = Blueprint(
@@ -89,6 +91,115 @@ def create_note():
             flash("建立筆記時發生錯誤。", "danger")
 
     return render_template('notes/note_edit.html', title="新增筆記", note=None)
+
+
+@notes_bp.route('/from-question/<int:question_id>', methods=['GET', 'POST'])
+def create_note_from_question(question_id):
+    """Create a note referencing a question."""
+    user_id = g.current_user['id']
+    main_db = DatabaseManager()
+    question = main_db.get_question_by_id(question_id)
+    if not question:
+        flash("找不到指定的題目。", "danger")
+        return redirect(url_for('questions'))
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'ai_generate':
+            note_id = note_manager.create_note_from_questions(
+                user_id=user_id,
+                questions_data=[{
+                    'question_text': question.get('question_text', ''),
+                    'answer_text': question.get('answer_text', '')
+                }]
+            )
+            if note_id:
+                note_manager.db_manager.save_ai_analysis(user_id, note_id, 'source_question', {
+                    'id': question['id'],
+                    'question_text': question.get('question_text', ''),
+                    'answer_text': question.get('answer_text', '')
+                })
+                flash("筆記已成功建立！", "success")
+                return redirect(url_for('.note_detail', note_id=note_id))
+            else:
+                flash("建立筆記時發生錯誤。", "danger")
+        else:
+            title = request.form.get('title')
+            content = request.form.get('content')
+
+            enable_ai_analysis = request.form.get('enable_ai_analysis') == 'on'
+            enable_ai_organization = request.form.get('enable_ai_organization') == 'on'
+            organization_types = request.form.getlist('organization_types')
+
+            if not title or not content:
+                flash("標題和內容不能為空。", "danger")
+            else:
+                note_id = note_manager.create_new_note(
+                    user_id,
+                    title,
+                    content,
+                    enable_ai_analysis=enable_ai_analysis
+                )
+                if note_id:
+                    note_manager.db_manager.save_ai_analysis(user_id, note_id, 'source_question', {
+                        'id': question['id'],
+                        'question_text': question.get('question_text', ''),
+                        'answer_text': question.get('answer_text', '')
+                    })
+
+                    if enable_ai_organization and organization_types:
+                        from threading import Thread
+
+                        def generate_organizations():
+                            for org_type in organization_types:
+                                try:
+                                    note_manager.organize_note_with_ai(user_id, note_id, org_type)
+                                except Exception as e:
+                                    print(f"Warning: Failed to generate {org_type} organization: {e}")
+
+                        thread = Thread(target=generate_organizations)
+                        thread.daemon = True
+                        thread.start()
+
+                        if enable_ai_analysis and organization_types:
+                            flash(
+                                f"筆記已成功建立！AI 智慧助理已啟用，{len(organization_types)} 種整理方式正在背景生成中...",
+                                "success"
+                            )
+                        else:
+                            flash(
+                                f"筆記已成功建立！{len(organization_types)} 種整理方式正在背景生成中...",
+                                "success"
+                            )
+                    else:
+                        if enable_ai_analysis:
+                            flash("筆記已成功建立！AI 智慧助理已啟用。", "success")
+                        else:
+                            flash("筆記已成功建立！", "success")
+
+                    return redirect(url_for('.note_detail', note_id=note_id))
+                else:
+                    flash("建立筆記時發生錯誤。", "danger")
+
+        default_title = f"筆記：{question.get('question_text', '')[:30]}" + ("..." if len(question.get('question_text', '')) > 30 else "")
+        return render_template(
+            'notes/note_edit.html',
+            title="新增筆記",
+            note=None,
+            default_title=default_title,
+            default_content=request.form.get('content', ''),
+            source_question=question
+        )
+
+    default_title = f"筆記：{question.get('question_text', '')[:30]}" + ("..." if len(question.get('question_text', '')) > 30 else "")
+    return render_template(
+        'notes/note_edit.html',
+        title="新增筆記",
+        note=None,
+        default_title=default_title,
+        default_content='',
+        source_question=question
+    )
 
 @notes_bp.route('/<string:note_id>')
 def note_detail(note_id):

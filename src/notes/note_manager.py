@@ -84,6 +84,16 @@ class NoteManager:
             'has_ai_analysis': bool(note.get('ai_summary') or ai_keywords)
         }
 
+        # Source question info if exists
+        try:
+            source_data = self.db_manager.get_ai_analysis(user_id, note_id, 'source_question')
+            if source_data:
+                note_details['source_question'] = source_data[0]['result']
+            else:
+                note_details['source_question'] = None
+        except Exception:
+            note_details['source_question'] = None
+
         # 只有當筆記啟用了 AI 分析時，才生成智慧建議
         if note_details['has_ai_analysis']:
             # 智慧快取：嘗試從資料庫讀取 AI 建議
