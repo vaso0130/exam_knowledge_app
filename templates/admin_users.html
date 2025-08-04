@@ -106,6 +106,11 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
+                                            <a href="{{ url_for('edit_user', user_id=user.id) }}" 
+                                               class="btn btn-primary btn-sm" title="編輯用戶">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            
                                             <a href="{{ url_for('reset_password', user_id=user.id) }}" 
                                                class="btn btn-warning btn-sm" title="重設密碼">
                                                 <i class="bi bi-key"></i>
@@ -124,6 +129,14 @@
                                                         <i class="bi bi-person-check"></i>
                                                     </button>
                                                 {% endif %}
+                                            </form>
+                                            
+                                            <form method="POST" action="{{ url_for('delete_user', user_id=user.id) }}" class="d-inline">
+                                                <button type="submit" class="btn btn-outline-danger btn-sm" 
+                                                        title="刪除用戶"
+                                                        onclick="return confirm('確定要永久刪除此用戶嗎？此操作無法復原！')">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
                                             </form>
                                         </div>
                                     </td>

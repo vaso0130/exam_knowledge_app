@@ -36,7 +36,7 @@ def find_free_port():
 
 def create_admin_app():
     """創建管理應用"""
-    app = Flask(__name__, template_folder='src/webapp/templates')
+    app = Flask(__name__, template_folder='templates')
     app.secret_key = os.urandom(24)  # 隨機生成密鑰
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)  # 2小時後自動登出
     
@@ -105,7 +105,9 @@ def create_admin_app():
             flash('密碼錯誤', 'error')
             return render_template('admin_login.html')
         
-        # 登入成功
+        # 登入成功 - 更新最後登入時間
+        db_manager.update_user_last_login(user['id'])
+        
         session['admin_id'] = user['id']
         session['admin_username'] = user['username']
         session.permanent = True
@@ -209,7 +211,7 @@ def create_admin_app():
     @require_admin
     def toggle_user(user_id):
         """啟用/停用用戶"""
-        user = db_manager.get_user_by_id(user_id)
+        user = db_manager.get_user_by_id(user_id, include_inactive=True)
         if not user:
             flash('用戶不存在', 'error')
             return redirect(url_for('users_list'))
@@ -227,11 +229,39 @@ def create_admin_app():
         
         return redirect(url_for('users_list'))
     
+    @app.route('/users/<int:user_id>/delete', methods=['POST'])
+    @require_admin
+    def delete_user(user_id):
+        """刪除用戶"""
+        user = db_manager.get_user_by_id(user_id, include_inactive=True)
+        if not user:
+            flash('用戶不存在', 'error')
+            return redirect(url_for('users_list'))
+        
+        # 防止刪除自己
+        if user_id == g.admin['id']:
+            flash('不能刪除自己的帳號', 'error')
+            return redirect(url_for('users_list'))
+        
+        try:
+            # 先使所有會話失效
+            db_manager.invalidate_user_sessions(user_id)
+            # 刪除用戶
+            success = db_manager.delete_user(user_id)
+            if success:
+                flash(f'用戶 "{user["username"]}" 已刪除', 'success')
+            else:
+                flash('刪除用戶失敗', 'error')
+        except Exception as e:
+            flash(f'刪除失敗: {str(e)}', 'error')
+        
+        return redirect(url_for('users_list'))
+    
     @app.route('/users/<int:user_id>/reset-password', methods=['GET', 'POST'])
     @require_admin
     def reset_password(user_id):
         """重設密碼"""
-        user = db_manager.get_user_by_id(user_id)
+        user = db_manager.get_user_by_id(user_id, include_inactive=True)
         if not user:
             flash('用戶不存在', 'error')
             return redirect(url_for('users_list'))
@@ -259,6 +289,51 @@ def create_admin_app():
         except Exception as e:
             flash(f'重設密碼失敗: {str(e)}', 'error')
             return render_template('admin_reset_password.html', user=user)
+    
+    @app.route('/users/<int:user_id>/edit', methods=['GET', 'POST'])
+    @require_admin
+    def edit_user(user_id):
+        """編輯用戶資訊"""
+        user = db_manager.get_user_by_id(user_id, include_inactive=True)
+        if not user:
+            flash('用戶不存在', 'error')
+            return redirect(url_for('users_list'))
+        
+        if request.method == 'GET':
+            return render_template('admin_edit_user.html', user=user)
+        
+        # 獲取表單資料
+        username = request.form.get('username', '').strip()
+        role = request.form.get('role', '')
+        email = request.form.get('email', '').strip() or None
+        
+        if not username:
+            flash('用戶名稱不能為空', 'error')
+            return render_template('admin_edit_user.html', user=user)
+        
+        if role not in ['admin', 'viewer']:
+            flash('無效的角色', 'error')
+            return render_template('admin_edit_user.html', user=user)
+        
+        # 檢查用戶名是否被其他用戶使用
+        if username != user['username']:
+            existing_user = db_manager.get_user_by_username(username)
+            if existing_user:
+                flash('用戶名稱已被使用', 'error')
+                return render_template('admin_edit_user.html', user=user)
+        
+        try:
+            # 更新用戶資訊
+            success = db_manager.update_user_info(user_id, username, role, email)
+            if success:
+                flash(f'用戶 "{username}" 資訊已更新', 'success')
+                return redirect(url_for('users_list'))
+            else:
+                flash('更新用戶資訊失敗', 'error')
+        except Exception as e:
+            flash(f'更新失敗: {str(e)}', 'error')
+        
+        return render_template('admin_edit_user.html', user=user)
     
     # === 安全管理 ===
     
@@ -303,6 +378,44 @@ def create_admin_app():
             flash(f'清理失敗: {str(e)}', 'error')
         
         return redirect(url_for('security_overview'))
+    
+    @app.route('/security/block', methods=['GET', 'POST'])
+    @require_admin
+    def block_ip():
+        """手動封鎖 IP"""
+        if request.method == 'GET':
+            return render_template('admin_block_ip.html')
+        
+        ip_address = request.form.get('ip_address', '').strip()
+        reason = request.form.get('reason', '').strip()
+        
+        if not ip_address:
+            flash('請輸入 IP 地址', 'error')
+            return render_template('admin_block_ip.html')
+        
+        if not reason:
+            reason = '手動封鎖'
+        
+        try:
+            # 直接調用資料庫方法
+            admin_username = g.admin['username']
+            db_manager.add_ip_to_blacklist(ip_address, reason, admin_username)
+            flash(f'IP {ip_address} 已加入黑名單', 'success')
+            return redirect(url_for('security_overview'))
+        except Exception as e:
+            flash(f'封鎖 IP 失敗: {str(e)}', 'error')
+            return render_template('admin_block_ip.html')
+    
+    @app.route('/security/attempts')
+    @require_admin
+    def login_attempts():
+        """登入嘗試記錄"""
+        try:
+            attempts = db_manager.get_login_attempts(100)  # 獲取最近100次嘗試
+            return render_template('admin_login_attempts.html', attempts=attempts)
+        except Exception as e:
+            flash(f'獲取登入記錄失敗: {str(e)}', 'error')
+            return render_template('admin_login_attempts.html', attempts=[])
     
     # 錯誤處理
     @app.errorhandler(404)

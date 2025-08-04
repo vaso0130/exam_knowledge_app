@@ -161,10 +161,14 @@ class UserSession(Base):
     __tablename__ = "user_sessions"
     id = Column(String(255), primary_key=True)  # session ID
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    session_token = Column(String(255), nullable=True, index=True)  # 會話 token
     ip_address = Column(String(45), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False)
     last_activity = Column(DateTime, default=datetime.utcnow)
+    last_accessed = Column(DateTime, nullable=True)  # 最後訪問時間
+    is_active = Column(Integer, default=1)  # 0=已失效, 1=活躍中
+    user_agent = Column(Text, nullable=True)  # 用戶代理字串
     
     # 關聯
     user = relationship("User", back_populates="sessions")
@@ -662,10 +666,13 @@ class DatabaseManager:
                 }
             return None
     
-    def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+    def get_user_by_id(self, user_id: int, include_inactive: bool = False) -> Optional[Dict[str, Any]]:
         """根據 ID 獲取用戶資訊"""
         with self._session_scope() as session:
-            user = session.query(User).filter(User.id == user_id, User.is_active == 1).first()
+            query = session.query(User).filter(User.id == user_id)
+            if not include_inactive:
+                query = query.filter(User.is_active == 1)
+            user = query.first()
             if user:
                 return {
                     'id': user.id,
@@ -719,6 +726,55 @@ class DatabaseManager:
                 'last_login': user.last_login.isoformat() if user.last_login else None,
                 'is_active': bool(user.is_active)
             } for user in users]
+    
+    def delete_user(self, user_id: int) -> bool:
+        """刪除用戶"""
+        with self._session_scope() as session:
+            try:
+                user = session.query(User).filter(User.id == user_id).first()
+                if not user:
+                    return False
+                
+                # MySQL 需要按正確順序刪除，避免外鍵約束問題
+                
+                # 1. 先刪除相關的會話記錄
+                session.query(UserSession).filter(UserSession.user_id == user_id).delete(synchronize_session=False)
+                
+                # 2. 刪除登入記錄
+                session.query(LoginAttempt).filter(LoginAttempt.user_id == user_id).delete(synchronize_session=False)
+                
+                # 3. 刪除點數交易記錄
+                session.query(PointTransaction).filter(PointTransaction.user_id == user_id).delete(synchronize_session=False)
+                
+                # 4. 刪除內容驗證記錄
+                session.query(ContentValidation).filter(ContentValidation.user_id == user_id).delete(synchronize_session=False)
+                
+                # 5. 對於 Documents 表中的 uploader_id，設為 NULL 而不是刪除文件
+                # 因為文件內容可能對系統有價值，只是失去上傳者追蹤
+                session.query(Document).filter(Document.uploader_id == user_id).update({
+                    'uploader_id': None,
+                    'uploader_name': None
+                }, synchronize_session=False)
+                
+                # 6. 最後刪除用戶
+                session.delete(user)
+                session.flush()  # 確保所有操作在提交前執行
+                
+                return True
+            except Exception as e:
+                session.rollback()
+                print(f"刪除用戶失敗: {e}")
+                raise e
+    
+    def update_user_info(self, user_id: int, username: str, role: str, email: str = None) -> bool:
+        """更新用戶資訊"""
+        with self._session_scope() as session:
+            result = session.query(User).filter(User.id == user_id).update({
+                'username': username,
+                'role': role,
+                'email': email
+            })
+            return result > 0
     
     # === 登入記錄管理 ===
     
@@ -826,12 +882,19 @@ class DatabaseManager:
     def create_user_session(self, user_id: int, session_token: str, ip_address: str = None, 
                           user_agent: str = None) -> str:
         """創建用戶會話"""
+        from datetime import timedelta
         with self._session_scope() as session:
+            # 設定會話過期時間（預設 24 小時）
+            expires_at = datetime.utcnow() + timedelta(hours=24)
+            
             user_session = UserSession(
+                id=session_token,  # 使用 session_token 作為主鍵
                 user_id=user_id,
                 session_token=session_token,
-                ip_address=ip_address,
-                user_agent=user_agent
+                ip_address=ip_address or '127.0.0.1',
+                expires_at=expires_at,
+                user_agent=user_agent,
+                is_active=1
             )
             session.add(user_session)
             return session_token
@@ -884,9 +947,13 @@ class DatabaseManager:
         """清理過期會話"""
         with self._session_scope() as session:
             cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            # 清理過期會話：基於 last_accessed 或 created_at（如果 last_accessed 為 NULL）
             result = session.query(UserSession).filter(
-                UserSession.last_accessed < cutoff_time,
                 UserSession.is_active == 1
+            ).filter(
+                # 如果 last_accessed 不為空則使用它，否則使用 created_at
+                (UserSession.last_accessed != None) & (UserSession.last_accessed < cutoff_time) |
+                (UserSession.last_accessed == None) & (UserSession.created_at < cutoff_time)
             ).update({'is_active': 0})
             return result
     
