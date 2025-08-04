@@ -384,15 +384,31 @@ def organize_note_with_ai(note_id):
     """API endpoint to organize note with AI."""
     user_id = g.current_user['id']
     organization_type = request.json.get('organization_type')
-    
+
     if not organization_type:
         return jsonify({
             'success': False,
             'error': '請選擇整理方式'
         }), 400
-    
+
     try:
         result = note_manager.organize_note_with_ai(user_id, note_id, organization_type)
+
+        # For qa_learning, manually serialize to ensure clean JSON, as it sometimes contains control characters.
+        if organization_type == 'qa_learning' and result.get('success'):
+            try:
+                # Manually serialize to a UTF-8 encoded string.
+                response_data = json.dumps(result, ensure_ascii=False)
+                
+                # Create a Flask Response object to correctly set the content type and charset.
+                return Response(response_data, content_type='application/json; charset=utf-8')
+
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': f"Error serializing qa_learning result: {e}"
+                }), 500
+
         return jsonify(result)
     except Exception as e:
         return jsonify({
