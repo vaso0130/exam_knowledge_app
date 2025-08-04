@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>本地管理儀表板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body>
+    <!-- 導航列 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-danger">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="bi bi-shield-lock-fill"></i> 本地管理介面
+            </a>
+            
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">
+                    <i class="bi bi-person-check"></i> {{ g.admin.username }}
+                </span>
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> 登出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <!-- 快速導航 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="btn-group" role="group">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
+                        <i class="bi bi-speedometer2"></i> 儀表板
+                    </a>
+                    <a href="{{ url_for('users_list') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-people"></i> 用戶管理
+                    </a>
+                    <a href="{{ url_for('security_overview') }}" class="btn btn-outline-danger">
+                        <i class="bi bi-shield"></i> 安全監控
+                    </a>
+                    <a href="{{ url_for('maintenance') }}" class="btn btn-outline-warning">
+                        <i class="bi bi-tools"></i> 資料庫維護
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 錯誤訊息 -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- 統計卡片 -->
+        <div class="row mb-4">
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card text-white bg-primary">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5>總用戶數</h5>
+                                <h2>{{ stats.total_users or 0 }}</h2>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="bi bi-people" style="font-size: 3rem;"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card text-white bg-success">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5>啟用用戶</h5>
+                                <h2>{{ stats.active_users or 0 }}</h2>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="bi bi-person-check" style="font-size: 3rem;"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card text-white bg-warning">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5>封鎖 IP</h5>
+                                <h2>{{ stats.blacklisted_ips or 0 }}</h2>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="bi bi-shield-x" style="font-size: 3rem;"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card text-white bg-danger">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5>今日失敗</h5>
+                                <h2>{{ stats.failed_attempts_today or 0 }}</h2>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="bi bi-exclamation-triangle" style="font-size: 3rem;"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主要內容 -->
+        <div class="row">
+            <!-- 快速操作 -->
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5><i class="bi bi-lightning"></i> 快速操作</h5>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        <a href="{{ url_for('create_user') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-person-plus text-success"></i> 新增用戶
+                        </a>
+                        <a href="{{ url_for('users_list') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-people text-primary"></i> 管理用戶
+                        </a>
+                        <a href="{{ url_for('security_overview') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-shield text-danger"></i> 安全監控
+                        </a>
+                        <form method="POST" action="{{ url_for('cleanup_system') }}" class="d-inline">
+                            <button type="submit" class="list-group-item list-group-item-action border-0 text-start w-100" 
+                                    onclick="return confirm('確定要清理系統嗎？')">
+                                <i class="bi bi-trash text-warning"></i> 系統清理
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 最近登入記錄 -->
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5><i class="bi bi-clock-history"></i> 最近登入記錄</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if stats.recent_attempts %}
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>時間</th>
+                                            <th>IP 地址</th>
+                                            <th>用戶名</th>
+                                            <th>結果</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for attempt in stats.recent_attempts %}
+                                        <tr>
+                                            <td>{{ attempt.attempt_time[:19] }}</td>
+                                            <td><code>{{ attempt.ip_address }}</code></td>
+                                            <td>{{ attempt.username or '-' }}</td>
+                                            <td>
+                                                {% if attempt.success %}
+                                                    <span class="badge bg-success">成功</span>
+                                                {% else %}
+                                                    <span class="badge bg-danger">失敗</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center text-muted">
+                                <i class="bi bi-info-circle"></i> 暫無登入記錄
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 系統資訊 -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5><i class="bi bi-info-circle"></i> 本地管理資訊</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-md-3">
+                                <i class="bi bi-pc-display text-primary" style="font-size: 2rem;"></i>
+                                <h6 class="mt-2">本機專用</h6>
+                                <small class="text-muted">僅限 127.0.0.1 訪問</small>
+                            </div>
+                            <div class="col-md-3">
+                                <i class="bi bi-shuffle text-success" style="font-size: 2rem;"></i>
+                                <h6 class="mt-2">隨機端口</h6>
+                                <small class="text-muted">每次啟動都不同</small>
+                            </div>
+                            <div class="col-md-3">
+                                <i class="bi bi-clock text-warning" style="font-size: 2rem;"></i>
+                                <h6 class="mt-2">會話限時</h6>
+                                <small class="text-muted">2 小時自動過期</small>
+                            </div>
+                            <div class="col-md-3">
+                                <i class="bi bi-shield-check text-danger" style="font-size: 2rem;"></i>
+                                <h6 class="mt-2">最高安全</h6>
+                                <small class="text-muted">完全隔離管理</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // 自動關閉提示
+        setTimeout(function() {
+            const alerts = document.querySelectorAll('.alert-success');
+            alerts.forEach(function(alert) {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            });
+        }, 3000);
+
+        // 顯示當前時間
+        function updateTime() {
+            const now = new Date().toLocaleString('zh-TW');
+            document.title = `本地管理 - ${now}`;
+        }
+        updateTime();
+        setInterval(updateTime, 60000);
+    </script>
+</body>
+</html>

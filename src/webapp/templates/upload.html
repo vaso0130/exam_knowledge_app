@@ -4,6 +4,15 @@
 <div class="upload-container">
     <h1>📁 檔案上傳與處理</h1>
     
+    <!-- 檢查用戶是否被禁用 -->
+    {% if g.current_user and g.current_user.role == 'viewer' and user_points and user_points.is_banned %}
+    <div class="alert alert-danger">
+        <h4><i class="fas fa-ban"></i> 帳戶已被暫時禁用</h4>
+        <p>您的帳戶因為上傳不當內容已被暫時禁用至：<strong>{{ user_points.ban_until }}</strong></p>
+        <p>在禁用期間，您無法上傳檔案、處理文字或擷取網址內容。</p>
+        <p>如有疑問，請聯繫管理員。</p>
+    </div>
+    {% else %}
     <!-- 檔案上傳區域 -->
     <div class="upload-section">
         <h2>上傳檔案</h2>
@@ -109,6 +118,7 @@
         
         <div id="url-result" class="result-message"></div>
     </div>
+{% endif %}
 </div>
 
 <script>
@@ -128,8 +138,22 @@ document.getElementById('textForm').addEventListener('submit', function(e) {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.text(); // 先取得文字內容
+    })
+    .then(text => {
+        let data;
+        try {
+            data = JSON.parse(text); // 嘗試解析 JSON
+        } catch (jsonError) {
+            console.error('JSON 解析錯誤:', jsonError);
+            console.error('收到的內容:', text);
+            throw new Error('伺服器回應格式錯誤，請稍後再試或聯繫管理員');
+        }
+        
         if (data.success) {
             resultDiv.innerHTML = `<p class="success">✅ ${data.message}</p>`;
             // 清空文字區域
@@ -168,16 +192,39 @@ document.getElementById('urlForm').addEventListener('submit', function(e) {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.text(); // 先取得文字內容
+    })
+    .then(text => {
+        let data;
+        try {
+            data = JSON.parse(text); // 嘗試解析 JSON
+        } catch (jsonError) {
+            console.error('JSON 解析錯誤:', jsonError);
+            console.error('收到的內容:', text);
+            throw new Error('伺服器回應格式錯誤，請稍後再試或聯繫管理員');
+        }
+        
         if (data.success) {
-            resultDiv.innerHTML = `<p class="success">✅ ${data.message}</p>`;
-            // 清空網址輸入
-            document.getElementById('url_content').value = '';
-            // 3秒後跳轉到題庫頁面
-            setTimeout(() => {
-                window.location.href = '/questions';
-            }, 2000);
+            if (data.job_id) {
+                // 如果返回 job_id，則導向 job 狀態頁面
+                resultDiv.innerHTML = `<p class="success">✅ ${data.message}</p>`;
+                setTimeout(() => {
+                    window.location.href = `/job/${data.job_id}`;
+                }, 1500);
+            } else {
+                // 舊版同步處理的回應
+                resultDiv.innerHTML = `<p class="success">✅ ${data.message}</p>`;
+                // 清空網址輸入
+                document.getElementById('url_content').value = '';
+                // 3秒後跳轉到題庫頁面
+                setTimeout(() => {
+                    window.location.href = '/questions';
+                }, 2000);
+            }
         } else {
             resultDiv.innerHTML = `<p class="error">❌ ${data.error}</p>`;
         }

@@ -121,3 +121,7 @@ google_credentials.json
 AGENTS.md
 log.txt
 ruff.txt
+
+
+# async_results
+async_results/*

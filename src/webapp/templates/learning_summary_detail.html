@@ -20,23 +20,32 @@
                 
                 <!-- 🆕 AI整理後的文章內容 -->
                 {% if document.content %}
-                <div class="mb-5">
-                    <h3 class="border-bottom pb-2 mb-4">
-                        📄 AI整理後的文章內容 
-                        <small class="text-muted">(已移除廣告和無關內容，重新排版)</small>
+                <div class="mb-4 content-material">
+                    <h3 class="border-bottom pb-2 mb-3">
+                        🤖 AI深度整理後的文章內容 
+                        <small class="text-muted">(已移除廣告、導航、頁面註腳等雜訊，並重新格式化排版)</small>
+                        <button class="btn btn-outline-secondary btn-sm ms-2" onclick="toggleMainContent()">
+                            📖 展開完整內容
+                        </button>
                     </h3>
-                    <div class="content-display p-4 border rounded bg-light">
-                        <div class="markdown-content">{{ document.content|safe }}</div>
+                    <!-- 文章預覽 -->
+                    <div id="content-preview" class="content-display p-4 border rounded bg-light">
+                        <div class="markdown-content">{{ document.content[:300]|safe }}{% if document.content|length > 300 %}...<br><small class="text-muted">點擊上方按鈕查看完整內容</small>{% endif %}</div>
+                    </div>
+                    <!-- 完整文章內容 -->
+                    <div id="main-content" class="content-display p-4 border rounded bg-light d-none">
+                        <div class="markdown-content">{{ document.content|markdown }}</div>
                     </div>
                     <!-- 新增查看原始內容的選項 -->
                     {% if document.original_content and document.original_content != document.content %}
                     <div class="mt-2">
-                        <button class="btn btn-outline-secondary btn-sm" onclick="toggleOriginalContent()">
-                            📰 查看網頁原始內容
+                        <button class="btn btn-outline-warning btn-sm" onclick="toggleOriginalContent()">
+                            📰 對比原始網頁內容
                         </button>
                         <div id="original-content" class="mt-3 p-4 border rounded bg-warning bg-opacity-10 d-none">
-                            <h6>📰 網頁原始內容：</h6>
-                            <div class="small text-muted">{{ document.original_content[:500]|safe }}{% if document.original_content|length > 500 %}...{% endif %}</div>
+                            <h6>📰 原始網頁內容（清理前）：</h6>
+                            <small class="text-muted">以下是AI清理前的原始內容，可與上方清理後內容對比效果</small>
+                            <div class="small text-muted mt-2" style="max-height: 300px; overflow-y: auto;">{{ document.original_content[:1000]|safe }}{% if document.original_content|length > 1000 %}...<br><em>（內容過長，已截斷）</em>{% endif %}</div>
                         </div>
                     </div>
                     {% endif %}
@@ -45,13 +54,13 @@
 
                 <!-- 🆕 AI生成的重點摘要 -->
                 {% if document.key_points_summary %}
-                <div class="mb-5">
+                <div class="mb-5 content-summary">
                     <h3 class="border-bottom pb-2 mb-4">
                         ⭐ AI生成的重點摘要 
                         <small class="text-muted">(基於原始內容結構化整理)</small>
                     </h3>
                     <div class="alert alert-info">
-                        <div class="markdown-content">{{ document.key_points_summary|safe }}</div>
+                        <div class="markdown-content">{{ document.key_points_summary|markdown }}</div>
                     </div>
                 </div>
                 {% endif %}
@@ -74,12 +83,39 @@
                 </div>
                 {% endif %}
 
+                <!-- 🆕 相關問題 -->
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">📝 相關問題</h3>
+                    <div id="questions-list">
+                        <p class="text-muted">載入中...</p>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
 </div>
 
 <script>
+// 切換主文內容顯示
+function toggleMainContent() {
+    const contentPreview = document.getElementById('content-preview');
+    const mainContent = document.getElementById('main-content');
+    const button = document.querySelector('button[onclick="toggleMainContent()"]');
+    
+    if (mainContent.classList.contains('d-none')) {
+        // 顯示完整內容，隱藏預覽
+        mainContent.classList.remove('d-none');
+        contentPreview.classList.add('d-none');
+        button.textContent = '🔼 收合內容';
+    } else {
+        // 顯示預覽，隱藏完整內容
+        mainContent.classList.add('d-none');
+        contentPreview.classList.remove('d-none');
+        button.textContent = '📖 展開完整內容';
+    }
+}
+
 // 切換原始內容顯示
 function toggleOriginalContent() {
     const originalContent = document.getElementById('original-content');
@@ -87,10 +123,10 @@ function toggleOriginalContent() {
     
     if (originalContent.classList.contains('d-none')) {
         originalContent.classList.remove('d-none');
-        button.textContent = '🔼 隱藏網頁原始內容';
+        button.textContent = '🔼 隱藏原始網頁內容';
     } else {
         originalContent.classList.add('d-none');
-        button.textContent = '📰 查看網頁原始內容';
+        button.textContent = '📰 對比原始網頁內容';
     }
 }
 
@@ -221,6 +257,32 @@ document.getElementById('reset-quick-quiz').addEventListener('click', function()
     document.querySelectorAll('input[type="radio"]').forEach(input => input.checked = false);
 });
 {% endif %}
+
+// 載入相關問題
+fetch(`/api/questions?document_id={{ document.id }}`)
+    .then(response => response.json())
+    .then(data => {
+        const questionsList = document.getElementById('questions-list');
+        if (data.questions && data.questions.length > 0) {
+            questionsList.innerHTML = data.questions.map(q => `
+                <div class="card mb-2">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <a href="/question/${q.id}" class="text-decoration-none">
+                                ${q.title || 'Q' + q.id}
+                            </a>
+                        </h6>
+                        <p class="card-text text-muted small">${q.question_text.substring(0, 100)}...</p>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            questionsList.innerHTML = '<p class="text-muted">此文件尚無相關問題</p>';
+        }
+    })
+    .catch(err => {
+        document.getElementById('questions-list').innerHTML = '<p class="text-danger">載入問題失敗</p>';
+    });
 </script>
 
 <style>
@@ -240,11 +302,6 @@ document.getElementById('reset-quick-quiz').addEventListener('click', function()
 
 #quick-quiz-container .border:hover {
     box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.1);
-}
-
-.content-display {
-    max-height: 400px;
-    overflow-y: auto;
 }
 </style>
 {% endblock %}

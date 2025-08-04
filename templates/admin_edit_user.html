@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>編輯用戶 - 本地管理介面</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/dashboard">
+                <i class="bi bi-shield-lock me-2"></i>
+                本地管理介面
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a href="/logout" class="btn btn-outline-light">
+                    <i class="bi bi-box-arrow-right me-1"></i>登出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/dashboard">儀表板</a></li>
+                <li class="breadcrumb-item"><a href="/users">用戶管理</a></li>
+                <li class="breadcrumb-item active">編輯用戶</li>
+            </ol>
+        </nav>
+
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-person-gear me-2"></i>
+                            編輯用戶 - {{ user.username }}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                        {{ message }}
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">用戶名稱 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="username" name="username" 
+                                       value="{{ user.username }}" required>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="role" class="form-label">角色 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="role" name="role" required>
+                                    <option value="viewer" {{ 'selected' if user.role == 'viewer' else '' }}>檢視者</option>
+                                    <option value="admin" {{ 'selected' if user.role == 'admin' else '' }}>管理員</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="email" class="form-label">電子郵件</label>
+                                <input type="email" class="form-control" id="email" name="email" 
+                                       value="{{ user.email or '' }}" placeholder="選填">
+                            </div>
+
+                            <div class="mb-3">
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    建立時間: {{ user.created_at }}
+                                    {% if user.last_login %}
+                                        <br>最後登入: {{ user.last_login }}
+                                    {% endif %}
+                                </small>
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-check-lg me-1"></i>儲存變更
+                                </button>
+                                <a href="/users" class="btn btn-secondary">
+                                    <i class="bi bi-arrow-left me-1"></i>返回
+                                </a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

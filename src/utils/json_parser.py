@@ -32,11 +32,29 @@ def extract_json_from_text(text: str) -> Optional[Dict[str, Any]]:
     try:
         # 清理可能的控制字元
         cleaned_str = ''.join(c for c in json_str if c.isprintable() or c in '\n\t')
-        return json.loads(cleaned_str)
+        parsed_json = json.loads(cleaned_str)
+        
+        # 確保返回的是字典格式
+        if isinstance(parsed_json, dict):
+            return parsed_json
+        elif isinstance(parsed_json, list):
+            return {'data': parsed_json}
+        else:
+            return {'value': parsed_json}
+            
     except json.JSONDecodeError:
         # 嘗試移除尾端逗號等常見格式問題後再解析
         cleaned_str = re.sub(r',\s*([}\]])', r'\1', cleaned_str)
         try:
-            return json.loads(cleaned_str)
+            parsed_json = json.loads(cleaned_str)
+            
+            # 確保返回的是字典格式
+            if isinstance(parsed_json, dict):
+                return parsed_json
+            elif isinstance(parsed_json, list):
+                return {'data': parsed_json}
+            else:
+                return {'value': parsed_json}
+                
         except json.JSONDecodeError:
             return None

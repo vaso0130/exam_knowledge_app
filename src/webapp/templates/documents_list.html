@@ -33,11 +33,13 @@
                                 {{ doc.created_at }}
                             </small>
                         </div>
+                        {% if g.current_user and g.current_user.role == 'admin' %}
                         <button type="button" class="btn btn-danger btn-sm" title="刪除文件"
                                 data-bs-toggle="modal" data-bs-target="#deleteConfirmModal"
                                 data-doc-id="{{ doc.id }}" data-doc-title="{{ doc.title }}">
                             <i class="fas fa-trash"></i>
                         </button>
+                        {% endif %}
                     </div>
                     <div class="card-body">
                         <p class="card-text text-muted">{{ doc.content }}</p>

@@ -300,10 +300,15 @@ class FileProcessor:
                 except Exception as e:
                     result_container['error'] = e
             
-            # 在獨立線程中運行異步代碼
+            # 在獨立線程中運行異步代碼，但設置較短的超時
             thread = threading.Thread(target=run_async)
             thread.start()
-            thread.join(timeout=60)  # 60秒超時
+            thread.join(timeout=60)  # 改為60秒超時，避免過度等待
+            
+            if thread.is_alive():
+                # 如果線程還在運行，表示超時了，立即使用傳統方式
+                print(f"⚠️ Playwright 擷取超時，切換到傳統方式: {url}")
+                return FileProcessor._fetch_url_fallback(url)
             
             if result_container['error']:
                 raise result_container['error']

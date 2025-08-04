@@ -59,6 +59,31 @@
             border-left: 4px solid #3182ce;
         }
         
+        /* 讓 codehilite 類也能使用 Prism.js 樣式 */
+        .codehilite {
+            background: #2d3748 !important;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-size: 14px;
+            line-height: 1.5;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow-x: auto;
+        }
+        
+        .codehilite pre {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+        }
+        
+        .codehilite code {
+            color: #e2e8f0 !important;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: transparent;
+            padding: 0;
+        }
+        
         /* 虛擬碼關鍵字高亮 */
         pre.language-pseudocode .token.keyword {
             color: #63b3ed;
@@ -230,6 +255,153 @@
             border-color: #e9ecef;
         }
         
+        /* Markdown 內容樣式 */
+        .markdown-content {
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
+        .markdown-content h6 {
+            color: #2c3e50;
+            margin-top: 1.5rem;
+            margin-bottom: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .markdown-content h1 {
+            font-size: 1.8rem;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 0.5rem;
+        }
+        
+        .markdown-content h2 {
+            font-size: 1.5rem;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 0.3rem;
+        }
+        
+        .markdown-content h3 {
+            font-size: 1.3rem;
+            color: #34495e;
+        }
+        
+        .markdown-content p {
+            margin-bottom: 1rem;
+        }
+        
+        .markdown-content ul,
+        .markdown-content ol {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }
+        
+        .markdown-content li {
+            margin-bottom: 0.3rem;
+        }
+        
+        .markdown-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .markdown-content table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.8rem;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        .markdown-content table td {
+            padding: 0.8rem;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .markdown-content table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .markdown-content blockquote {
+            border-left: 4px solid #3498db;
+            margin: 1rem 0;
+            padding: 0.5rem 1rem;
+            background-color: #f8f9fa;
+            color: #555;
+            font-style: italic;
+        }
+        
+        .markdown-content strong {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        
+        .markdown-content em {
+            color: #7f8c8d;
+        }
+        
+        /* 內容類型配色區分 */
+        /* 題目與學習資料主文 - 淺灰配色 */
+        .content-question, .content-material {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .content-question h3, .content-material h3 {
+            color: #495057;
+            border-color: #6c757d;
+        }
+        
+        /* 答案與知識摘要 - 淺藍配色 */
+        .content-answer, .content-summary {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border: 1px solid #90caf9;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            box-shadow: 0 2px 4px rgba(25,118,210,0.1);
+        }
+        
+        .content-answer h3, .content-summary h3 {
+            color: #1565c0;
+            border-color: #42a5f5;
+        }
+        
+        /* 內容框與背景融合 */
+        .content-material .content-display,
+        .content-question .content-display {
+            background: rgba(255,255,255,0.7) !important;
+            border-color: #dee2e6 !important;
+        }
+        
+        .content-summary .alert-info {
+            background: rgba(255,255,255,0.8) !important;
+            border-color: #64b5f6 !important;
+            color: #1565c0 !important;
+        }
+        
+        /* 保持表格在不同背景下的可讀性 */
+        .content-question .markdown-content table,
+        .content-material .markdown-content table,
+        .content-answer .markdown-content table,
+        .content-summary .markdown-content table {
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
         /* 響應式設計 */
         @media (max-width: 768px) {
             .upload-container {
@@ -239,6 +411,69 @@
             .upload-section, .text-input-section {
                 padding: 1rem;
             }
+        }
+        
+        /* AI 增強表單樣式 */
+        .ai-enhanced-field {
+            position: relative;
+        }
+        
+        .ai-enhanced-field .ai-enhance-btn {
+            z-index: 10;
+            border-radius: 4px;
+        }
+        
+        .ai-suggestions {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 8px;
+        }
+        
+        .ai-suggestion-tag, .suggested-tag, .existing-tag {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .ai-suggestion-tag:hover, .suggested-tag:hover, .existing-tag:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .tags-input-container {
+            position: relative;
+        }
+        
+        .tags-display {
+            min-height: 40px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 8px;
+        }
+        
+        .ai-analysis-container .card {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0f8ff 100%);
+            border: 1px solid #28a745;
+        }
+        
+        .ai-analysis-results .analysis-summary {
+            background: rgba(255,255,255,0.8);
+            border-radius: 4px;
+            padding: 8px;
+        }
+        
+        /* AI 增強按鈕動畫 */
+        .ai-enhance-btn:hover {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            border-color: #0056b3;
+        }
+        
+        /* 載入動畫 */
+        .spinner-border-sm {
+            width: 0.875rem;
+            height: 0.875rem;
         }
     </style>
     
@@ -287,6 +522,57 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/documents">📜 原始文件</a>
                     </li>
+                    {% if g.current_user and g.current_user.role == 'admin' %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('notes.note_list') }}">📝 我的筆記</a>
+                    </li>
+                    {% endif %}
+                </ul>
+                
+                <!-- 用戶狀態區域 -->
+                <ul class="navbar-nav">
+                    {% if g.current_user %}
+                        <!-- 已登入用戶 -->
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                {% if g.current_user.role == 'admin' %}
+                                    👑 {{ g.current_user.username }}
+                                {% else %}
+                                    👤 {{ g.current_user.username }}
+                                {% endif %}
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><h6 class="dropdown-header">用戶資訊</h6></li>
+                                <li><span class="dropdown-item-text">
+                                    角色: 
+                                    {% if g.current_user.role == 'admin' %}
+                                        <span class="badge bg-warning">管理者</span>
+                                    {% else %}
+                                        <span class="badge bg-info">檢視者</span>
+                                    {% endif %}
+                                </span></li>
+                                
+                                {% if g.current_user.role == 'viewer' and user_points %}
+                                    <li><span class="dropdown-item-text">
+                                        點數: <strong>{{ user_points.points }}/{{ user_points.max_points }}</strong>
+                                    </span></li>
+                                    {% if user_points.is_banned %}
+                                        <li><span class="dropdown-item-text text-danger">
+                                            ⚠️ 禁用至: {{ user_points.ban_until }}
+                                        </span></li>
+                                    {% endif %}
+                                {% endif %}
+                                
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="/logout">🚪 登出</a></li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <!-- 未登入用戶 -->
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-outline-light btn-sm" href="/login">🔑 登入</a>
+                        </li>
+                    {% endif %}
                 </ul>
             </div>
         </div>
@@ -317,6 +603,122 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-core.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/plugins/autoloader/prism-autoloader.min.js"></script>
     
+    <script>
+        // 確保 Prism.js 正確處理所有程式碼區塊
+        document.addEventListener('DOMContentLoaded', function() {
+            // 處理所有 .codehilite 區塊，為它們添加 language- 類
+            const codehiliteBlocks = document.querySelectorAll('.codehilite pre');
+            codehiliteBlocks.forEach(function(block) {
+                // 如果沒有 language- 類，添加預設的 language-pseudocode
+                if (!block.className.includes('language-')) {
+                    block.className += ' language-pseudocode';
+                }
+                
+                // 確保 code 元素也有正確的類
+                const codeElement = block.querySelector('code');
+                if (codeElement && !codeElement.className.includes('language-')) {
+                    codeElement.className += ' language-pseudocode';
+                }
+            });
+            
+            // 手動觸發 Prism.js 高亮
+            if (typeof Prism !== 'undefined') {
+                Prism.highlightAll();
+            }
+        });
+    </script>
+    
     {% block scripts %}{% endblock %}
+    
+    <!-- AI 表單增強功能 -->
+    <script>
+        // AI 表單助手功能 (內嵌版本)
+        
+        // AI 建議應用函數
+        function applySuggestion(fieldName, suggestion) {
+            const field = document.querySelector(`[name="${fieldName}"]`);
+            if (field) {
+                if (field.tagName.toLowerCase() === 'textarea') {
+                    const cursorPos = field.selectionStart;
+                    const textBefore = field.value.substring(0, cursorPos);
+                    const textAfter = field.value.substring(cursorPos);
+                    field.value = textBefore + suggestion + textAfter;
+                    field.selectionStart = field.selectionEnd = cursorPos + suggestion.length;
+                } else {
+                    field.value = field.value ? field.value + ' ' + suggestion : suggestion;
+                }
+                field.focus();
+                field.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+        
+        // 標籤相關功能
+        let currentTags = [];
+        
+        function addSuggestedTag(tag) {
+            if (!currentTags.includes(tag)) {
+                currentTags.push(tag);
+                updateTagsDisplay();
+                updateTagsInput();
+            }
+        }
+        
+        function removeTag(tag) {
+            const index = currentTags.indexOf(tag);
+            if (index > -1) {
+                currentTags.splice(index, 1);
+                updateTagsDisplay();
+                updateTagsInput();
+            }
+        }
+        
+        function updateTagsDisplay() {
+            const display = document.querySelector('.tags-display');
+            if (display) {
+                display.innerHTML = currentTags.map(tag => 
+                    `<span class="badge bg-primary me-1">
+                        ${tag} 
+                        <i class="fas fa-times ms-1" onclick="removeTag('${tag}')" style="cursor: pointer;"></i>
+                    </span>`
+                ).join('');
+            }
+        }
+        
+        function updateTagsInput() {
+            const input = document.querySelector('.tags-input');
+            if (input) {
+                input.value = currentTags.join(', ');
+            }
+        }
+        
+        // 初始化標籤輸入功能
+        function initializeTagsInput() {
+            const tagsInput = document.querySelector('.tags-input');
+            if (tagsInput) {
+                if (tagsInput.value) {
+                    currentTags = tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag);
+                    updateTagsDisplay();
+                }
+                
+                tagsInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const newTag = this.value.trim();
+                        if (newTag && !currentTags.includes(newTag)) {
+                            currentTags.push(newTag);
+                            updateTagsDisplay();
+                            updateTagsInput();
+                            this.value = '';
+                        }
+                    }
+                });
+            }
+        }
+        
+        // 頁面載入完成後初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeTagsInput();
+        });
+    </script>
 </body>
 </html>

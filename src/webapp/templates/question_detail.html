@@ -18,21 +18,42 @@
             </div>
             <div class="card-body">
                 <!-- 題目內容 -->
-                <div class="mb-4">
+                <div class="mb-4 content-question">
                     <h3 class="border-bottom pb-2 mb-3">🎯 題目內容</h3>
-                    <div class="question-content">
-                        {{ question_html|safe }}
+                    <div class="question-content markdown-content">
+                        {{ question_html|markdown }}
                     </div>
                 </div>
-                
+
                 <!-- 答案內容 -->
                 {% if answer_html %}
-                <div class="mb-4">
-                    <h3 class="border-bottom pb-2 mb-3">✅ 參考答案</h3>
-                    <div class="answer-content">
-                        {{ answer_html|safe }}
+                <div class="mb-4 content-answer">
+                    <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                        <h3 class="mb-0">✅ 參考答案</h3>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-primary btn-sm" type="button" id="regenerate-answer">
+                                <i class="fas fa-sync-alt"></i> 重新生成答案
+                            </button>
+                            {% if g.current_user and g.current_user.role == 'admin' %}
+                            <a href="{{ url_for('edit_question', q_id=question.id) }}" class="btn btn-secondary btn-sm">
+                                <i class="fas fa-edit"></i> 編輯
+                            </a>
+                            {% endif %}
+                        </div>
                     </div>
                     
+                    <!-- 重新生成進度提示 -->
+                    <div class="alert alert-info" id="answer-regenerating" style="display: none;">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-spinner fa-spin me-2"></i>
+                            <span>正在重新生成答案，請稍候...</span>
+                        </div>
+                    </div>
+                    
+                    <div class="answer-content markdown-content">
+                        {{ answer_html|markdown }}
+                    </div>
+
                     <!-- 答案來源 -->
                     {% if question.answer_sources and question.answer_sources != '[]' %}
                     <div class="mt-3 p-3 bg-light rounded">
@@ -40,46 +61,539 @@
                         <div class="sources-list">
                             {% set sources = question.answer_sources | fromjson %}
                             {% if sources %}
-                                {% for source in sources %}
-                                <div class="source-item mb-2">
-                                    <strong><a href="{{ source.url }}" target="_blank" class="text-decoration-none">{{ source.title }}</a></strong>
-                                    <p class="text-muted small mb-0">{{ source.snippet }}</p>
-                                </div>
-                                {% endfor %}
+                            {% for source in sources %}
+                            <div class="source-item mb-2">
+                                <strong><a href="{{ source.url }}" target="_blank" class="text-decoration-none">{{
+                                        source.title }}</a></strong>
+                                <p class="text-muted small mb-0">{{ source.snippet }}</p>
+                            </div>
+                            {% endfor %}
                             {% else %}
-                                <p class="text-muted small mb-0">無結構化來源資料。</p>
+                            <p class="text-muted small mb-0">無結構化來源資料。</p>
                             {% endif %}
                         </div>
                     </div>
                     {% endif %}
                 </div>
                 {% endif %}
-                
+
                 <!-- 相關知識點 -->
                 {% if question.knowledge_points %}
                 <div class="mb-4">
                     <h3 class="border-bottom pb-2 mb-3">🧠 相關知識點</h3>
                     <div class="d-flex flex-wrap gap-2">
                         {% for kp in question.knowledge_points %}
-                        <a href="{{ url_for('knowledge_detail', id=kp.id) }}" class="badge bg-primary text-decoration-none">{{kp.name}}</a>
+                        <a href="{{ url_for('knowledge_detail', id=kp.id) }}"
+                            class="badge bg-primary text-decoration-none">{{kp.name}}</a>
                         {% endfor %}
                     </div>
                 </div>
                 {% endif %}
-                
+
                 <!-- 專屬心智圖 -->
                 {% if mindmap_code %}
                 <div class="mb-4">
-                    <h3 class="border-bottom pb-2 mb-3">🧠 題目專屬心智圖</h3>
+                    <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                        <h3 class="mb-0">🌐 心智圖</h3>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-primary btn-sm" type="button" id="regenerate-mindmap">
+                                <i class="fas fa-sync-alt"></i> 重新生成心智圖
+                            </button>
+                            <button class="btn btn-info btn-sm" type="button" id="toggle-mermaid-code">
+                                <i class="fas fa-code"></i> 顯示原始碼
+                            </button>
+                            {% if g.current_user and g.current_user.role == 'admin' %}
+                            <a href="{{ url_for('edit_question', q_id=question.id) }}" class="btn btn-secondary btn-sm">
+                                <i class="fas fa-edit"></i> 編輯心智圖
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
                     <div class="mindmap-container">
                         <div class="mermaid">
                             {{ mindmap_code|safe }}
                         </div>
                     </div>
-                    <small class="text-muted">💡 這是針對此題目生成的知識關聯圖，幫助您思考相關概念！</small>
+                    <small class="text-muted">✨ 這是針對此題目生成的知識關聯圖，幫助您思考相關概念！</small>
+                    
+                    <!-- 重新生成進度提示 -->
+                        <div id="regenerate-progress" class="mt-2" style="display: none;">
+                            <div class="alert alert-info" role="alert">
+                                <i class="fas fa-spinner fa-spin"></i> 正在重新生成心智圖，請稍候...
+                            </div>
+                        </div>
+                        
+                        <!-- 原始碼顯示區塊 -->
+                        <div id="mermaid-code-block" class="mt-2" style="display: none;">
+                            <div class="card">
+                                <div class="card-header">
+                                    <small class="text-muted">心智圖原始碼</small>
+                                </div>
+                                <div class="card-body">
+                                    <pre class="mermaid-code"><code>{{ mindmap_code }}</code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function () {
+                            // 顯示/隱藏原始碼按鈕
+                            const toggleBtn = document.getElementById('toggle-mermaid-code');
+                            const codeBlock = document.getElementById('mermaid-code-block');
+                            let codeVisible = false;
+                            
+                            toggleBtn.addEventListener('click', function () {
+                                codeVisible = !codeVisible;
+                                codeBlock.style.display = codeVisible ? 'block' : 'none';
+                                toggleBtn.innerHTML = codeVisible ? 
+                                    '<i class="fas fa-code"></i> 隱藏原始碼' : 
+                                    '<i class="fas fa-code"></i> 顯示原始碼';
+                            });
+                            
+                            // 重新生成心智圖按鈕
+                            const regenerateBtn = document.getElementById('regenerate-mindmap');
+                            const progressDiv = document.getElementById('regenerate-progress');
+                            const mindmapContainer = document.querySelector('.mermaid');
+                            const codeElement = document.querySelector('.mermaid-code code');
+                            
+                            regenerateBtn.addEventListener('click', function () {
+                                // 禁用按鈕並顯示進度
+                                regenerateBtn.disabled = true;
+                                regenerateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 生成中...';
+                                progressDiv.style.display = 'block';
+                                
+                                // 發送重新生成請求
+                                fetch('/regenerate_mindmap/{{ question.id }}', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        // 更新心智圖顯示
+                                        mindmapContainer.innerHTML = data.mindmap_code;
+                                        if (codeElement) {
+                                            codeElement.textContent = data.mindmap_code;
+                                        }
+                                        
+                                        // 重新初始化 Mermaid
+                                        if (typeof mermaid !== 'undefined') {
+                                            mermaid.init(undefined, mindmapContainer);
+                                        }
+                                        
+                                        // 顯示成功消息
+                                        showAlert('success', '心智圖已重新生成！頁面將自動重新整理...');
+                                        
+                                        // 2秒後重新整理頁面以顯示更新後的心智圖
+                                        setTimeout(() => {
+                                            location.reload();
+                                        }, 2000);
+                                    } else {
+                                        showAlert('danger', '重新生成失敗: ' + data.error);
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error:', error);
+                                    showAlert('danger', '重新生成失敗: ' + error.message);
+                                })
+                                .finally(() => {
+                                    // 恢復按鈕狀態
+                                    regenerateBtn.disabled = false;
+                                    regenerateBtn.innerHTML = '<i class="fas fa-sync-alt"></i> 重新生成心智圖';
+                                    progressDiv.style.display = 'none';
+                                });
+                            });
+                            
+                            // 重新生成答案按鈕
+                            const regenerateAnswerBtn = document.getElementById('regenerate-answer');
+                            if (regenerateAnswerBtn) {
+                                regenerateAnswerBtn.addEventListener('click', function() {
+                                    // 禁用按鈕並顯示進度
+                                    regenerateAnswerBtn.disabled = true;
+                                    regenerateAnswerBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 重新生成中...';
+                                    const answerProgressDiv = document.getElementById('answer-regenerating');
+                                    answerProgressDiv.style.display = 'block';
+
+                                    // 發送重新生成請求
+                                    fetch('/regenerate_answer/{{ question.id }}', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                        },
+                                        body: JSON.stringify({})
+                                    })
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        if (data.success) {
+                                            // 顯示成功消息
+                                            showAlert('success', '答案已重新生成！頁面將自動重新整理...');
+                                            
+                                            // 2秒後重新整理頁面以顯示更新後的答案
+                                            setTimeout(() => {
+                                                location.reload();
+                                            }, 2000);
+                                        } else {
+                                            showAlert('danger', '重新生成失敗: ' + data.error);
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error('Error:', error);
+                                        showAlert('danger', '重新生成失敗: ' + error.message);
+                                    })
+                                    .finally(() => {
+                                        // 恢復按鈕狀態
+                                        regenerateAnswerBtn.disabled = false;
+                                        regenerateAnswerBtn.innerHTML = '<i class="fas fa-sync-alt"></i> 重新生成答案';
+                                        answerProgressDiv.style.display = 'none';
+                                    });
+                                });
+                            }
+                            
+                            // 顯示通知的輔助函數
+                            function showAlert(type, message) {
+                                const alertDiv = document.createElement('div');
+                                alertDiv.className = `alert alert-${type} alert-dismissible fade show mt-2`;
+                                alertDiv.innerHTML = `
+                                    ${message}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                `;
+                                progressDiv.parentNode.insertBefore(alertDiv, progressDiv.nextSibling);
+                                
+                                // 3秒後自動移除
+                                setTimeout(() => {
+                                    if (alertDiv.parentNode) {
+                                        alertDiv.parentNode.removeChild(alertDiv);
+                                    }
+                                }, 3000);
+                            }
+                        });
+                    </script>
+                    <!-- ▲▲▲ 除錯區塊結束 ▲▲▲ -->
+                </div>
+                {% else %}
+                <!-- 沒有心智圖時的提示和生成按鈕 -->
+                <div class="mb-4">
+                    <h3 class="border-bottom pb-2 mb-3">🧠 心智圖</h3>
+                    <div class="text-center py-4">
+                        <h5 class="text-muted">此題目尚未生成心智圖</h5>
+                        <p class="text-muted">心智圖可以幫助您視覺化相關知識點之間的關聯</p>
+                        
+                        <button class="btn btn-success" id="generate-mindmap">
+                            <i class="fas fa-magic"></i> 生成心智圖
+                        </button>
+                        
+                        <!-- 生成進度提示 -->
+                        <div id="generate-progress" class="mt-3" style="display: none;">
+                            <div class="alert alert-info" role="alert">
+                                <i class="fas fa-spinner fa-spin"></i> 正在生成心智圖，請稍候...
+                            </div>
+                        </div>
+                        
+                        <!-- 心智圖容器（生成後顯示） -->
+                        <div id="new-mindmap-container" class="mt-4" style="display: none;">
+                            <div class="mermaid" id="new-mindmap-content"></div>
+                            <div class="mt-3">
+                                <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">
+                                    <i class="fas fa-refresh"></i> 重新整理頁面
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function () {
+                            const generateBtn = document.getElementById('generate-mindmap');
+                            const progressDiv = document.getElementById('generate-progress');
+                            const containerDiv = document.getElementById('new-mindmap-container');
+                            const contentDiv = document.getElementById('new-mindmap-content');
+                            
+                            generateBtn.addEventListener('click', function () {
+                                // 禁用按鈕並顯示進度
+                                generateBtn.disabled = true;
+                                generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 生成中...';
+                                progressDiv.style.display = 'block';
+                                
+                                // 發送生成請求
+                                fetch('/regenerate_mindmap/{{ question.id }}', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        // 顯示新生成的心智圖
+                                        contentDiv.innerHTML = data.mindmap_code;
+                                        containerDiv.style.display = 'block';
+                                        generateBtn.style.display = 'none';
+                                        
+                                        // 初始化 Mermaid
+                                        if (typeof mermaid !== 'undefined') {
+                                            mermaid.init(undefined, contentDiv);
+                                        }
+                                        
+                                        // 顯示成功消息
+                                        showAlert('success', '心智圖已生成！頁面將自動重新整理以顯示完整功能。');
+                                        
+                                        // 3秒後重新整理頁面
+                                        setTimeout(() => {
+                                            location.reload();
+                                        }, 3000);
+                                    } else {
+                                        showAlert('danger', '生成失敗: ' + data.error);
+                                        generateBtn.disabled = false;
+                                        generateBtn.innerHTML = '<i class="fas fa-magic"></i> 生成心智圖';
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error:', error);
+                                    showAlert('danger', '生成失敗: ' + error.message);
+                                    generateBtn.disabled = false;
+                                    generateBtn.innerHTML = '<i class="fas fa-magic"></i> 生成心智圖';
+                                })
+                                .finally(() => {
+                                    progressDiv.style.display = 'none';
+                                });
+                            });
+                            
+                            // 顯示通知的輔助函數
+                            function showAlert(type, message) {
+                                const alertDiv = document.createElement('div');
+                                alertDiv.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+                                alertDiv.innerHTML = `
+                                    ${message}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                `;
+                                progressDiv.parentNode.insertBefore(alertDiv, progressDiv.nextSibling);
+                                
+                                // 5秒後自動移除
+                                setTimeout(() => {
+                                    if (alertDiv.parentNode) {
+                                        alertDiv.parentNode.removeChild(alertDiv);
+                                    }
+                                }, 5000);
+                            }
+                        });
+                    </script>
                 </div>
                 {% endif %}
-                
+
+                <!-- 解題技巧區塊 -->
+                <div class="mb-4">
+                    {% if question_summary and solving_tips %}
+                    <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                        <h3 class="mb-0">💡 解題技巧</h3>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-primary btn-sm regenerate-tips-btn">
+                                <i class="fas fa-sync-alt"></i> 重新生成
+                            </button>
+                        </div>
+                    </div>
+                    <div id="solving-tips-content">
+                        <!-- 顯示已儲存的解題技巧 -->
+                        <div id="tips-result">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-primary text-white">
+                                            <h6 class="mb-0">題目摘要</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="mb-0">{{ question_summary }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-warning text-dark">
+                                            <h6 class="mb-0">解題技巧</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="mb-0">{{ solving_tips }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                        <h3 class="mb-0">💡 解題技巧</h3>
+                        {% if not question.solving_tips %}
+                        <button class="btn btn-success btn-sm" id="generate-solving-tips">
+                            <i class="fas fa-magic"></i> 生成解題技巧
+                        </button>
+                        {% else %}
+                        <button class="btn btn-primary btn-sm regenerate-tips-btn">
+                            <i class="fas fa-sync-alt"></i> 重新生成
+                        </button>
+                        {% endif %}
+                    </div>
+                    <div id="solving-tips-content">
+                        {% if question.solving_tips %}
+                        <!-- 顯示已儲存的解題技巧 -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-header bg-primary text-white">
+                                        <h6 class="mb-0">題目摘要</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <p class="mb-0">{{ question.question_summary or '暫無摘要' }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-header bg-warning text-dark">
+                                        <h6 class="mb-0">解題技巧</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <p class="mb-0">{{ question.solving_tips }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <!-- 顯示提示訊息 -->
+                        <div class="text-center">
+                            <h5 class="text-muted">AI 解題技巧與摘要</h5>
+                            <p class="text-muted">點擊按鈕讓 AI 分析題目並提供解題技巧與重點摘要</p>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- 生成進度提示 -->
+                        <div id="tips-progress" class="mt-3 d-none">
+                            <div class="alert alert-info" role="alert">
+                                <i class="fas fa-spinner fa-spin"></i> 正在分析題目並生成解題技巧，請稍候...
+                            </div>
+                        </div>
+                        
+                        <!-- 解題技巧內容區域 -->
+                        <div id="tips-result" class="mt-4 d-none">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-primary text-white">
+                                            <h6 class="mb-0">題目摘要</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p id="question-summary" class="mb-0"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-warning text-dark">
+                                            <h6 class="mb-0">解題技巧</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p id="solving-tips" class="mb-0"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                        {% endif %}
+                    </div>
+                    
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function () {
+                            const generateTipsBtn = document.getElementById('generate-solving-tips');
+                            const regenerateTipsBtns = document.querySelectorAll('.regenerate-tips-btn');
+                            const tipsProgressDiv = document.getElementById('tips-progress');
+                            const tipsResultDiv = document.getElementById('tips-result');
+                            const questionSummaryEl = document.getElementById('question-summary');
+                            const solvingTipsEl = document.getElementById('solving-tips');
+                            
+                            function generateSolvingTips() {
+                                // 禁用按鈕並顯示進度
+                                if (generateTipsBtn) {
+                                    generateTipsBtn.disabled = true;
+                                    generateTipsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 生成中...';
+                                }
+                                regenerateTipsBtns.forEach(btn => {
+                                    btn.disabled = true;
+                                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 重新生成中...';
+                                });
+                                if (tipsProgressDiv) tipsProgressDiv.style.display = 'block';
+                                
+                                // 發送生成請求
+                                fetch('/generate_solving_tips/{{ question.id }}', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        // 如果有動態元素，更新其內容
+                                        if (questionSummaryEl) questionSummaryEl.textContent = data.summary;
+                                        if (solvingTipsEl) solvingTipsEl.textContent = data.solving_tips;
+                                        if (tipsResultDiv) tipsResultDiv.style.display = 'block';
+                                        if (generateTipsBtn) generateTipsBtn.style.display = 'none';
+                                        
+                                        // 顯示成功消息並重新整理頁面以顯示儲存的資料
+                                        showTipsAlert('success', '解題技巧已成功生成並儲存！頁面將自動重新整理...');
+                                        setTimeout(() => {
+                                            location.reload();
+                                        }, 2000);
+                                    } else {
+                                        showTipsAlert('danger', '生成失敗: ' + data.error);
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error:', error);
+                                    showTipsAlert('danger', '生成失敗: ' + error.message);
+                                })
+                                .finally(() => {
+                                    // 重置按鈕狀態
+                                    if (generateTipsBtn) {
+                                        generateTipsBtn.disabled = false;
+                                        generateTipsBtn.innerHTML = '<i class="fas fa-magic"></i> 生成解題技巧';
+                                    }
+                                    regenerateTipsBtns.forEach(btn => {
+                                        btn.disabled = false;
+                                        btn.innerHTML = '<i class="fas fa-sync-alt"></i> 重新生成';
+                                    });
+                                    if (tipsProgressDiv) tipsProgressDiv.style.display = 'none';
+                                });
+                            }
+                            
+                            if (generateTipsBtn) {
+                                generateTipsBtn.addEventListener('click', generateSolvingTips);
+                            }
+                            regenerateTipsBtns.forEach(btn => {
+                                btn.addEventListener('click', generateSolvingTips);
+                            });
+                            
+                            // 顯示通知的輔助函數
+                            function showTipsAlert(type, message) {
+                                const alertDiv = document.createElement('div');
+                                alertDiv.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+                                alertDiv.innerHTML = `
+                                    ${message}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                `;
+                                tipsProgressDiv.parentNode.insertBefore(alertDiv, tipsProgressDiv.nextSibling);
+                                
+                                // 5秒後自動移除
+                                setTimeout(() => {
+                                    if (alertDiv.parentNode) {
+                                        alertDiv.parentNode.removeChild(alertDiv);
+                                    }
+                                }, 5000);
+                            }
+                        });
+                    </script>
+                </div>
+
                 <!-- 來源資訊 -->
                 <div class="mt-4 p-3 bg-light rounded">
                     <h5 class="mb-2">📋 題目資訊</h5>
@@ -88,19 +602,21 @@
                             <strong>科目:</strong> {{ question.subject or '未分類' }}<br>
                             <strong>難度:</strong> {{ question.difficulty or '未知' }}
                             {% if question.guidance_level %}
-                                ({{ question.guidance_level }}引導)
+                            ({{ question.guidance_level }}引導)
                             {% endif %}<br>
                             <strong>來源文件:</strong>
                             {% if question.document_id %}
-                                <a href="{{ url_for('document_detail', doc_id=question.document_id) }}" class="text-decoration-none">
-                                    📄 {{ question.doc_title or '未知' }}
-                                </a>
-                                <br>
-                                <a href="{{ url_for('original_document', doc_id=question.document_id) }}" class="btn btn-sm btn-outline-info mt-1">
-                                    📜 檢視原始文件
-                                </a>
+                            <a href="{{ url_for('document_detail', doc_id=question.document_id) }}"
+                                class="text-decoration-none">
+                                📄 {{ question.doc_title or '未知' }}
+                            </a>
+                            <br>
+                            <a href="{{ url_for('original_document', doc_id=question.document_id) }}"
+                                class="btn btn-sm btn-outline-info mt-1">
+                                📜 檢視原始文件
+                            </a>
                             {% else %}
-                                未知
+                            未知
                             {% endif %}
                         </div>
                         <div class="col-md-6">
@@ -115,83 +631,97 @@
 </div>
 
 <style>
-/* 自定義樣式，改善內容顯示 */
-.question-content, .answer-content {
-    line-height: 1.6;
-    font-size: 1.1rem;
-}
+    /* 自定義樣式，改善內容顯示 */
+    .question-content,
+    .answer-content {
+        line-height: 1.6;
+        font-size: 1.1rem;
+    }
 
-.question-content h1, .question-content h2, .question-content h3,
-.answer-content h1, .answer-content h2, .answer-content h3 {
-    color: #495057;
-    margin-top: 1.5rem;
-    margin-bottom: 0.8rem;
-}
+    .question-content h1,
+    .question-content h2,
+    .question-content h3,
+    .answer-content h1,
+    .answer-content h2,
+    .answer-content h3 {
+        color: #495057;
+        margin-top: 1.5rem;
+        margin-bottom: 0.8rem;
+    }
 
-.question-content p, .answer-content p {
-    margin-bottom: 1rem;
-}
+    .question-content p,
+    .answer-content p {
+        margin-bottom: 1rem;
+    }
 
-.question-content ul, .question-content ol,
-.answer-content ul, .answer-content ol {
-    margin-bottom: 1rem;
-    padding-left: 2rem;
-}
+    .question-content ul,
+    .question-content ol,
+    .answer-content ul,
+    .answer-content ol {
+        margin-bottom: 1rem;
+        padding-left: 2rem;
+    }
 
-.question-content li, .answer-content li {
-    margin-bottom: 0.3rem;
-}
+    .question-content li,
+    .answer-content li {
+        margin-bottom: 0.3rem;
+    }
 
-.question-content blockquote, .answer-content blockquote {
-    border-left: 4px solid #007bff;
-    margin: 1rem 0;
-    padding: 0.5rem 1rem;
-    background-color: #f8f9fa;
-}
+    .question-content blockquote,
+    .answer-content blockquote {
+        border-left: 4px solid #007bff;
+        margin: 1rem 0;
+        padding: 0.5rem 1rem;
+        background-color: #f8f9fa;
+    }
 
-.question-content table, .answer-content table {
-    width: 100%;
-    margin: 1rem 0;
-    border-collapse: collapse;
-}
+    .question-content table,
+    .answer-content table {
+        width: 100%;
+        margin: 1rem 0;
+        border-collapse: collapse;
+    }
 
-.question-content th, .question-content td,
-.answer-content th, .answer-content td {
-    border: 1px solid #dee2e6;
-    padding: 0.5rem;
-    text-align: left;
-}
+    .question-content th,
+    .question-content td,
+    .answer-content th,
+    .answer-content td {
+        border: 1px solid #dee2e6;
+        padding: 0.5rem;
+        text-align: left;
+    }
 
-.question-content th, .answer-content th {
-    background-color: #f8f9fa;
-    font-weight: 600;
-}
+    .question-content th,
+    .answer-content th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+    }
 
-/* 中文編號內容格式化 - 增強可讀性 */
-.answer-content {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif;
-}
+    /* 中文編號內容格式化 - 增強可讀性 */
+    .answer-content {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif;
+    }
 
-/* 為中文編號段落提供更好的間距 */
-.answer-content p {
-    line-height: 1.8;
-    margin-bottom: 1rem;
-}
+    /* 為中文編號段落提供更好的間距 */
+    .answer-content p {
+        line-height: 1.8;
+        margin-bottom: 1rem;
+    }
 
-/* 程式碼區塊的特殊處理 */
-.answer-content pre {
-    margin: 1.5rem 0;
-    background-color: #f8f9fa;
-    border: 1px solid #e9ecef;
-    border-radius: 0.375rem;
-    padding: 1rem;
-    font-family: "Courier New", Consolas, monospace;
-    overflow-x: auto;
-}
+    /* 程式碼區塊的特殊處理 */
+    .answer-content pre {
+        margin: 1.5rem 0;
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        font-family: "Courier New", Consolas, monospace;
+        overflow-x: auto;
+    }
 
-/* 加強標題層級的視覺區分 */
-.answer-content p:first-line {
-    font-weight: 500;
-}
+    /* 加強標題層級的視覺區分 */
+    .answer-content p:first-line {
+        font-weight: 500;
+    }
 </style>
 {% endblock %}

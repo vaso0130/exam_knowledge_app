@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>資料庫維護 - 本地管理</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- 導航列 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-danger">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="bi bi-shield-lock-fill"></i> 本地管理介面
+            </a>
+            
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">
+                    <i class="bi bi-person-check"></i> {{ g.admin.username }}
+                </span>
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> 登出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 錯誤訊息 -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="container-fluid mt-3">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="fas fa-tools me-2"></i>資料庫維護</h1>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i> 返回儀表板
+        </a>
+    </div>
+    
+    <!-- 維護統計 -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-warning">
+                <div class="card-body text-center">
+                    <i class="fas fa-unlink fa-2x text-warning mb-2"></i>
+                    <h4>{{ stats.orphaned_knowledge_points or 0 }}</h4>
+                    <p class="mb-0">孤立知識點</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-info">
+                <div class="card-body text-center">
+                    <i class="fas fa-clock fa-2x text-info mb-2"></i>
+                    <h4>{{ stats.expired_sessions or 0 }}</h4>
+                    <p class="mb-0">過期會話</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-secondary">
+                <div class="card-body text-center">
+                    <i class="fas fa-tasks fa-2x text-secondary mb-2"></i>
+                    <h4>{{ stats.old_async_jobs or 0 }}</h4>
+                    <p class="mb-0">舊非同步工作</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-dark">
+                <div class="card-body text-center">
+                    <i class="fas fa-sign-in-alt fa-2x text-dark mb-2"></i>
+                    <h4>{{ stats.old_login_attempts or 0 }}</h4>
+                    <p class="mb-0">舊登入記錄</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 清理操作 -->
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-broom me-2"></i>清理操作</h5>
+                </div>
+                <div class="card-body">
+                    {% set total_items = (stats.orphaned_knowledge_points or 0) + (stats.expired_sessions or 0) + (stats.old_async_jobs or 0) + (stats.old_login_attempts or 0) %}
+                    
+                    {% if total_items > 0 %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            發現 <strong>{{ total_items }}</strong> 個項目可以清理
+                        </div>
+                        
+                        <form method="POST" action="{{ url_for('maintenance_cleanup') }}" onsubmit="return confirm('確定要執行清理操作嗎？');">
+                            <div class="mb-3">
+                                <label class="form-label">清理類型：</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="cleanup_type" id="full_cleanup" value="full" checked>
+                                    <label class="form-check-label" for="full_cleanup">
+                                        <strong>全面清理</strong> - 清理所有可清理的項目
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="cleanup_type" id="orphaned_only" value="orphaned_only">
+                                    <label class="form-check-label" for="orphaned_only">
+                                        <strong>僅清理孤立知識點</strong> - 只清理沒有關聯題目的知識點
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-warning">
+                                <i class="fas fa-broom me-1"></i> 執行清理
+                            </button>
+                        </form>
+                    {% else %}
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            資料庫很乾淨，目前沒有需要清理的項目
+                        </div>
+                    {% endif %}
+                    
+                    <hr>
+                    
+                    <button type="button" class="btn btn-outline-primary" onclick="refreshStats()">
+                        <i class="fas fa-sync-alt me-1"></i> 重新整理統計
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6><i class="fas fa-info-circle me-2"></i>維護說明</h6>
+                </div>
+                <div class="card-body">
+                    <h6>🔗 孤立知識點</h6>
+                    <p class="small text-muted">當刪除題目或文檔後，某些知識點可能失去關聯，成為孤立項目。</p>
+                    
+                    <h6>⏰ 過期會話</h6>
+                    <p class="small text-muted">超過 24 小時未活動的用戶會話將被清理。</p>
+                    
+                    <h6>📋 舊非同步工作</h6>
+                    <p class="small text-muted">超過 7 天的非同步工作記錄將被清理。</p>
+                    
+                    <h6>🔐 舊登入記錄</h6>
+                    <p class="small text-muted">超過 30 天的登入嘗試記錄將被清理。</p>
+                    
+                    <div class="alert alert-warning alert-sm mt-3">
+                        <small><i class="fas fa-exclamation-triangle me-1"></i> 清理操作無法復原，請謹慎執行</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 孤立知識點詳情 -->
+    {% if stats.orphaned_details %}
+    <div class="mt-4">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-list me-2"></i>孤立知識點詳情</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>名稱</th>
+                                <th>科目</th>
+                                <th>描述</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for kp in stats.orphaned_details %}
+                            <tr>
+                                <td>{{ kp.id }}</td>
+                                <td>{{ kp.name }}</td>
+                                <td><span class="badge bg-secondary">{{ kp.subject }}</span></td>
+                                <td>{{ kp.description or '無描述' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if stats.orphaned_knowledge_points > 20 %}
+                <p class="text-muted small">顯示前 20 個，總共 {{ stats.orphaned_knowledge_points }} 個孤立知識點</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function refreshStats() {
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> 更新中...';
+    btn.disabled = true;
+    
+    fetch('/api/maintenance/stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('更新失敗: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('更新失敗: ' + error.message);
+        })
+        .finally(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
+}
+</script>
+</body>
+</html>

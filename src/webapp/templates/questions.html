@@ -58,7 +58,9 @@
                     <button type="button" class="btn btn-outline-success btn-sm" onclick="selectAll()">全選</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="selectNone()">取消全選</button>
                     <button type="button" class="btn btn-outline-primary btn-sm" onclick="batchExport()">批次匯出</button>
+                    {% if g.current_user and g.current_user.role == 'admin' %}
                     <button type="button" class="btn btn-outline-danger btn-sm" onclick="batchDelete()">批次刪除</button>
+                    {% endif %}
                 </div>
             </div>
             <div class="table-responsive">
@@ -105,9 +107,13 @@
                                 <td>
                                     <div class="btn-group" role="group">
                                         <a href="/question/{{ q.id }}" class="btn btn-outline-primary btn-sm">查看</a>
+                                        {% if g.current_user and g.current_user.role == 'admin' %}
                                         <a href="/edit_question/{{ q.id }}" class="btn btn-outline-secondary btn-sm">編輯</a>
+                                        {% endif %}
                                         <a href="/export_question/{{ q.id }}" class="btn btn-outline-success btn-sm">匯出</a>
+                                        {% if g.current_user and g.current_user.role == 'admin' %}
                                         <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteQuestion({{ q.id }})">刪除</button>
+                                        {% endif %}
                                     </div>
                                 </td>
                             </tr>

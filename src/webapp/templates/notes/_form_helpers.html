@@ -1,0 +1,150 @@
+
+
+{# 基本表單欄位渲染器 #}
+{% macro render_field(field, label_visible=True, help_text=None, extra_classes="") %}
+    <div class="mb-3 {{ extra_classes }}">
+        {% if label_visible and field.label %}
+            {{ field.label(class="form-label") }}
+        {% endif %}
+        
+        {% if field.type == 'TextAreaField' %}
+            {{ field(class="form-control", rows=field.render_kw.get('rows', 3)) }}
+        {% elif field.type == 'SelectField' %}
+            {{ field(class="form-select") }}
+        {% elif field.type == 'BooleanField' %}
+            <div class="form-check">
+                {{ field(class="form-check-input") }}
+                {{ field.label(class="form-check-label") }}
+            </div>
+        {% elif field.type == 'FileField' %}
+            {{ field(class="form-control", accept=field.render_kw.get('accept', '')) }}
+        {% else %}
+            {{ field(class="form-control") }}
+        {% endif %}
+        
+        {% if help_text %}
+            <div class="form-text">{{ help_text }}</div>
+        {% endif %}
+        
+        {% if field.errors %}
+            {% for error in field.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+{% endmacro %}
+
+{# AI 增強表單欄位 - 支援 AI 建議和自動完成 #}
+{% macro render_ai_field(field, ai_suggestions=None, auto_enhance=False, label_visible=True) %}
+    <div class="mb-3 ai-enhanced-field">
+        {% if label_visible and field.label %}
+            {{ field.label(class="form-label") }}
+            {% if ai_suggestions %}
+                <span class="badge bg-info ms-2"><i class="fas fa-robot"></i> AI 建議</span>
+            {% endif %}
+        {% endif %}
+        
+        <div class="position-relative">
+            {% if field.type == 'TextAreaField' %}
+                {{ field(class="form-control ai-textarea", 
+                         data_ai_enhance=auto_enhance|lower,
+                         rows=field.render_kw.get('rows', 5)) }}
+            {% else %}
+                {{ field(class="form-control ai-input", 
+                         data_ai_enhance=auto_enhance|lower) }}
+            {% endif %}
+            
+            {% if auto_enhance %}
+                <button type="button" class="btn btn-outline-secondary btn-sm ai-enhance-btn" 
+                        style="position: absolute; top: 5px; right: 5px;">
+                    <i class="fas fa-magic"></i> AI 增強
+                </button>
+            {% endif %}
+        </div>
+        
+        {% if ai_suggestions %}
+            <div class="ai-suggestions mt-2">
+                <small class="text-muted">AI 建議：</small>
+                <div class="ai-suggestion-list">
+                    {% for suggestion in ai_suggestions %}
+                        <span class="badge bg-light text-dark me-1 ai-suggestion-tag" 
+                              onclick="applySuggestion('{{ field.name }}', '{{ suggestion }}')">
+                            {{ suggestion }}
+                        </span>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+        
+        {% if field.errors %}
+            {% for error in field.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+{% endmacro %}
+
+{# 標籤輸入欄位 - 支援自動完成和 AI 建議 #}
+{% macro render_tags_field(field, existing_tags=[], ai_suggested_tags=[]) %}
+    <div class="mb-3">
+        {{ field.label(class="form-label") }}
+        <div class="tags-input-container">
+            {{ field(class="form-control tags-input", 
+                     placeholder="輸入標籤，按 Enter 新增") }}
+            <div class="tags-display mt-2"></div>
+        </div>
+        
+        {% if ai_suggested_tags %}
+            <div class="ai-tag-suggestions mt-2">
+                <small class="text-muted"><i class="fas fa-robot"></i> AI 建議標籤：</small>
+                <div>
+                    {% for tag in ai_suggested_tags %}
+                        <span class="badge bg-info me-1 suggested-tag" 
+                              onclick="addSuggestedTag('{{ tag }}')">
+                            {{ tag }}
+                        </span>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+        
+        {% if existing_tags %}
+            <div class="existing-tags mt-2">
+                <small class="text-muted">常用標籤：</small>
+                <div>
+                    {% for tag in existing_tags %}
+                        <span class="badge bg-secondary me-1 existing-tag" 
+                              onclick="addSuggestedTag('{{ tag }}')">
+                            {{ tag }}
+                        </span>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+{% endmacro %}
+
+{# AI 內容分析欄位 #}
+{% macro render_ai_analysis_field(content_field_id) %}
+    <div class="mb-3">
+        <label class="form-label">
+            <i class="fas fa-brain"></i> AI 內容分析
+        </label>
+        <div class="ai-analysis-container">
+            <button type="button" class="btn btn-info btn-sm" 
+                    onclick="performAIAnalysis('{{ content_field_id }}')">
+                <i class="fas fa-magic"></i> 分析內容
+            </button>
+            <div class="ai-analysis-results mt-3 d-none">
+                <div class="card">
+                    <div class="card-body">
+                        <h6>分析結果：</h6>
+                        <div class="analysis-summary"></div>
+                        <div class="analysis-keywords mt-2"></div>
+                        <div class="analysis-categories mt-2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endmacro %}

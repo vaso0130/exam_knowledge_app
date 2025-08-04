@@ -191,16 +191,40 @@ def guess_programming_language(code: str) -> str:
 
 def format_summary_to_markdown(summary_data: Dict[str, Any]) -> str:
     """
-    將AI生成的摘要JSON數據轉換為結構化的Markdown格式。
+    處理AI生成的摘要數據，支援新舊兩種格式。
+    新格式：summary 欄位已經是完整的 Markdown 文本
+    舊格式：包含 key_concepts, technical_terms 等欄位的 JSON 結構
     """
-    markdown_output = []
-
     if not summary_data:
         return ""
+    
+    # 新格式：summary 欄位是完整的 Markdown 文本
+    if "summary" in summary_data and isinstance(summary_data["summary"], str):
+        # 檢查是否為 Markdown 格式（包含標題符號）
+        summary_content = summary_data["summary"]
+        if summary_content.strip().startswith("#") or "##" in summary_content:
+            # 已經是 Markdown 格式，但還需要檢查是否有 bullets 需要添加
+            result = summary_content
+            
+            # 檢查是否有 bullets 需要額外添加
+            if "bullets" in summary_data and isinstance(summary_data["bullets"], list) and summary_data["bullets"]:
+                # 檢查 summary 中是否已經包含 bullets 內容
+                bullets_section_exists = "條列式重點" in result or "重點摘要" in result or any(bullet in result for bullet in summary_data["bullets"][:2])
+                
+                if not bullets_section_exists:
+                    # 如果沒有包含 bullets，則添加
+                    result += "\n\n## 條列式重點\n\n"
+                    for bullet in summary_data["bullets"]:
+                        result += f"- {bullet}\n"
+            
+            return result
+    
+    # 舊格式：轉換 JSON 結構為 Markdown（保持向後兼容）
+    markdown_output = []
 
     # 總結 (summary)
     if "summary" in summary_data and summary_data["summary"]:
-        markdown_output.append(f"## 總結\n\n{summary_data["summary"]}\n")
+        markdown_output.append(f"## 總結\n\n{summary_data['summary']}\n")
 
     # 核心概念 (key_concepts)
     if "key_concepts" in summary_data and isinstance(summary_data["key_concepts"], list):
@@ -208,7 +232,7 @@ def format_summary_to_markdown(summary_data: Dict[str, Any]) -> str:
             markdown_output.append("## 核心概念\n")
             for concept in summary_data["key_concepts"]:
                 if isinstance(concept, dict) and "name" in concept and "description" in concept:
-                    markdown_output.append(f"- **{concept["name"]}**: {concept["description"]}")
+                    markdown_output.append(f"- **{concept['name']}**: {concept['description']}")
                 elif isinstance(concept, str):
                     markdown_output.append(f"- {concept}")
             markdown_output.append("") # Add a newline for spacing
@@ -219,7 +243,7 @@ def format_summary_to_markdown(summary_data: Dict[str, Any]) -> str:
             markdown_output.append("## 技術術語\n")
             for term in summary_data["technical_terms"]:
                 if isinstance(term, dict) and "name" in term and "description" in term:
-                    markdown_output.append(f"- **{term["name"]}**: {term["description"]}")
+                    markdown_output.append(f"- **{term['name']}**: {term['description']}")
                 elif isinstance(term, str):
                     markdown_output.append(f"- {term}")
             markdown_output.append("")
@@ -230,7 +254,7 @@ def format_summary_to_markdown(summary_data: Dict[str, Any]) -> str:
             markdown_output.append("## 分類資訊\n")
             for info in summary_data["classification_info"]:
                 if isinstance(info, dict) and "name" in info and "description" in info:
-                    markdown_output.append(f"- **{info["name"]}**: {info["description"]}")
+                    markdown_output.append(f"- **{info['name']}**: {info['description']}")
                 elif isinstance(info, str):
                     markdown_output.append(f"- {info}")
             markdown_output.append("")
@@ -241,7 +265,7 @@ def format_summary_to_markdown(summary_data: Dict[str, Any]) -> str:
             markdown_output.append("## 實務應用\n")
             for app in summary_data["practical_applications"]:
                 if isinstance(app, dict) and "name" in app and "description" in app:
-                    markdown_output.append(f"- **{app["name"]}**: {app["description"]}")
+                    markdown_output.append(f"- **{app['name']}**: {app['description']}")
                 elif isinstance(app, str):
                     markdown_output.append(f"- {app}")
             markdown_output.append("")
@@ -254,4 +278,4 @@ def format_summary_to_markdown(summary_data: Dict[str, Any]) -> str:
                 markdown_output.append(f"- {bullet}")
             markdown_output.append("")
 
-    return "\n".join(markdown_output).strip()
+    return "\n".join(markdown_output).strip() if markdown_output else ""

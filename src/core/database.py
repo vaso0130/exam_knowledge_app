@@ -1,11 +1,12 @@
 
 import os
 import json
+import uuid  # Add uuid import here at the top
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Float
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base, joinedload
 from sqlalchemy.pool import StaticPool
 from dotenv import load_dotenv
@@ -14,6 +15,10 @@ from dotenv import load_dotenv
 load_dotenv()
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./db.sqlite3")
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
+
+def get_db_connection_string():
+    """獲取資料庫連接字串"""
+    return DATABASE_URL
 
 engine_args = {"echo": False}
 if IS_SQLITE:
@@ -31,7 +36,7 @@ Base = declarative_base()
 
 class Document(Base):
     __tablename__ = "documents"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, index=True)  # Changed to UUID
     title = Column(String(512), index=True)
     content = Column(Text)  # Extracted text, can be long
     original_content = Column(Text, nullable=True) # Deprecated but kept for compatibility
@@ -44,14 +49,21 @@ class Document(Base):
     key_points_summary = Column(Text, nullable=True)
     quick_quiz = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # v3.1 上傳者追蹤
+    uploader_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    uploader_name = Column(String(50), nullable=True)  # 快照，避免 JOIN
+    
+    # 關聯
     questions = relationship("Question", back_populates="document", cascade="all, delete-orphan")
+    uploader = relationship("User", back_populates="uploads")
 
-import uuid # Import uuid module
+# Note: uuid import moved to top of file
 
 class Question(Base):
     __tablename__ = "questions"
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), unique=True) # Changed to String(36) for UUID
-    document_id = Column(Integer, ForeignKey("documents.id"))
+    document_id = Column(String(36), ForeignKey("documents.id"))  # Changed to String(36)
     title = Column(String(512))
     question_text = Column(Text)
     answer_text = Column(Text, nullable=True)
@@ -60,6 +72,8 @@ class Question(Base):
     difficulty = Column(String(50), nullable=True)
     guidance_level = Column(String(50), nullable=True)
     mindmap_code = Column(Text, nullable=True)
+    question_summary = Column(Text, nullable=True)  # 新增：題目摘要
+    solving_tips = Column(Text, nullable=True)      # 新增：解題技巧
     created_at = Column(DateTime, default=datetime.utcnow)
     
     document = relationship("Document", back_populates="questions")
@@ -86,6 +100,131 @@ class QuestionKnowledgeLink(Base):
     __tablename__ = "question_knowledge_links"
     question_id = Column(String(36), ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True) # Changed to String(36)
     knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
+
+class AsyncJob(Base):
+    __tablename__ = "async_jobs"
+    id = Column(String(36), primary_key=True, index=True)  # UUID
+    job_type = Column(String(50), nullable=False)
+    status = Column(String(20), default="pending")  # pending, running, completed, failed
+    progress = Column(Integer, default=0)
+    message = Column(Text, nullable=True)
+    result_json = Column(Text, nullable=True)  # JSON 格式的結果
+    error_message = Column(Text, nullable=True)
+    kwargs_json = Column(Text, nullable=True)  # JSON 格式的參數
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+# === v3.0 安全與權限管理模型 ===
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(20), default="viewer")  # admin, viewer
+    email = Column(String(100), nullable=True)
+    full_name = Column(String(100), nullable=True)  # 完整姓名
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+    is_active = Column(Integer, default=1)  # SQLite 不支援 BOOLEAN，使用 INTEGER
+    
+    # v3.1 點數系統
+    points = Column(Integer, default=100)  # 當前點數
+    points_updated_at = Column(DateTime, default=datetime.utcnow)  # 點數最後更新時間
+    is_banned = Column(Integer, default=0)  # 是否被禁用（違規上傳）
+    ban_until = Column(DateTime, nullable=True)  # 禁用到期時間
+    
+    # 關聯
+    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+    login_attempts = relationship("LoginAttempt", back_populates="user", cascade="all, delete-orphan")
+    uploads = relationship("Document", back_populates="uploader", cascade="all, delete-orphan")
+    point_transactions = relationship("PointTransaction", back_populates="user", cascade="all, delete-orphan")
+
+class LoginAttempt(Base):
+    __tablename__ = "login_attempts"
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String(45), nullable=False, index=True)
+    username = Column(String(50), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    success = Column(Integer, default=0)  # 0=失敗, 1=成功
+    attempt_time = Column(DateTime, default=datetime.utcnow, index=True)
+    user_agent = Column(Text, nullable=True)
+    
+    # 關聯
+    user = relationship("User", back_populates="login_attempts")
+
+class IPBlacklist(Base):
+    __tablename__ = "ip_blacklist"
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String(45), unique=True, nullable=False, index=True)
+    reason = Column(String(255), default="Too many failed login attempts")
+    blocked_at = Column(DateTime, default=datetime.utcnow)
+    blocked_by = Column(String(50), nullable=True)  # 操作者用戶名
+    is_active = Column(Integer, default=1)  # 0=已解除, 1=生效中
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    id = Column(String(255), primary_key=True)  # session ID
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    session_token = Column(String(255), nullable=True, index=True)  # 會話 token
+    ip_address = Column(String(45), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    last_activity = Column(DateTime, default=datetime.utcnow)
+    last_accessed = Column(DateTime, nullable=True)  # 最後訪問時間
+    is_active = Column(Integer, default=1)  # 0=已失效, 1=活躍中
+    user_agent = Column(Text, nullable=True)  # 用戶代理字串
+    
+    # 關聯
+    user = relationship("User", back_populates="sessions")
+
+
+# v3.1 點數系統相關模型
+
+class PointTransaction(Base):
+    """點數交易記錄"""
+    __tablename__ = "point_transactions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action_type = Column(String(50), nullable=False)  # upload, generate_quiz, regenerate_answer, mindmap, etc.
+    points_change = Column(Integer, nullable=False)  # 正數=獲得，負數=消耗
+    points_before = Column(Integer, nullable=False)
+    points_after = Column(Integer, nullable=False)
+    description = Column(String(255), nullable=True)
+    related_document_id = Column(String(36), ForeignKey("documents.id"), nullable=True)  # Changed to String(36)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 關聯
+    user = relationship("User", back_populates="point_transactions")
+    related_document = relationship("Document")
+
+
+class ContentValidation(Base):
+    """內容驗證記錄"""
+    __tablename__ = "content_validations"
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(String(36), ForeignKey("documents.id"), nullable=False)  # Changed to String(36)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    is_valid_content = Column(Integer, nullable=False)  # 1=合法內容, 0=違規內容
+    confidence_score = Column(Float, nullable=True)  # AI 信心分數
+    validation_details = Column(Text, nullable=True)  # AI 回傳的詳細說明
+    
+    # 關聯
+    document = relationship("Document")
+    user = relationship("User")
+
+
+
+class InviteCodeAttempt(Base):
+    """邀請碼嘗試記錄"""
+    __tablename__ = "invite_code_attempts"
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String(45), nullable=False, index=True)
+    invite_code = Column(String(255), nullable=False)
+    success = Column(Integer, default=0)  # 0=失敗, 1=成功
+    attempt_time = Column(DateTime, default=datetime.utcnow, index=True)
+    user_agent = Column(Text, nullable=True)
+    username_attempted = Column(String(50), nullable=True)  # 嘗試註冊的用戶名
 
 
 # --- Database Manager ---
@@ -114,7 +253,8 @@ class DatabaseManager:
     def add_document(self, title: str, content: str, subject: str = None, 
                      tags: str = None, file_path: str = None, source: str = None, 
                      key_points_summary: str = None, 
-                     quick_quiz: str = None, doc_type: str = "info") -> int:
+                     quick_quiz: str = None, doc_type: str = "info",
+                     uploader_id: int = None, uploader_name: str = None) -> str:  # Changed return type to str
         with self._session_scope() as session:
             new_doc = Document(
                 title=title,
@@ -126,13 +266,36 @@ class DatabaseManager:
                 source=source,
                 key_points_summary=key_points_summary,
                 quick_quiz=quick_quiz,
-                type=doc_type
+                type=doc_type,
+                uploader_id=uploader_id,
+                uploader_name=uploader_name
             )
             session.add(new_doc)
             session.flush()
             return new_doc.id
 
-    def insert_question(self, document_id: int, title: str, question_text: str, answer_text: str = None,
+    def update_document_content(self, doc_id: str, cleaned_content: str, original_content: str = None):  # Changed doc_id type to str
+        """
+        更新文件內容，可選擇保存原始內容備份
+        
+        Args:
+            doc_id: 文件ID (UUID string)
+            cleaned_content: AI清理後的內容
+            original_content: 原始內容（可選，用於備份）
+        """
+        with self._session_scope() as session:
+            document = session.query(Document).filter_by(id=doc_id).first()
+            if document:
+                # 如果提供了原始內容且文件中還沒有備份，則保存備份
+                if original_content and not document.original_content:
+                    document.original_content = original_content
+                # 更新為清理後的內容
+                document.content = cleaned_content
+                session.commit()
+                return True
+            return False
+
+    def insert_question(self, document_id: str, title: str, question_text: str, answer_text: str = None,  # Changed document_id type to str
                         subject: str = None, answer_sources: str = None,
                         difficulty: str = None, guidance_level: str = None, mindmap_code: str = None) -> str:
         with self._session_scope() as session:
@@ -181,12 +344,13 @@ class DatabaseManager:
                 "answer_sources": q.answer_sources, "subject": q.subject,
                 "difficulty": q.difficulty, "guidance_level": q.guidance_level,
                 "created_at": q.created_at, "mindmap_code": q.mindmap_code,
+                "question_summary": q.question_summary, "solving_tips": q.solving_tips,
                 "doc_title": q.document.title if q.document else None,
                 "knowledge_points": [{"id": kp.id, "name": kp.name, "subject": kp.subject} for kp in q.knowledge_points]
             }
             return question_data
 
-    def get_document_by_id(self, document_id: int) -> Optional[Dict[str, Any]]:
+    def get_document_by_id(self, document_id: str) -> Optional[Dict[str, Any]]:  # Changed parameter type to str
         with self._session_scope() as session:
             doc = session.query(Document).filter(Document.id == document_id).first()
             if not doc:
@@ -218,7 +382,15 @@ class DatabaseManager:
         with self._session_scope() as session:
             session.query(Question).filter(Question.id == question_id).update({"mindmap_code": mindmap_code})
 
-    def update_document_summary_and_quiz(self, document_id: int, summary: str, quiz: str):
+    def update_question_solving_tips(self, question_id: str, summary: str, solving_tips: str):
+        """更新題目的摘要與解題技巧"""
+        with self._session_scope() as session:
+            session.query(Question).filter(Question.id == question_id).update({
+                "question_summary": summary,
+                "solving_tips": solving_tips
+            })
+
+    def update_document_summary_and_quiz(self, document_id: str, summary: str, quiz: str):  # Changed parameter type to str
         with self._session_scope() as session:
             session.query(Document).filter(Document.id == document_id).update({
                 "key_points_summary": summary,
@@ -302,7 +474,7 @@ class DatabaseManager:
                 })
             return results
             
-    def get_questions_by_document_id(self, document_id: int) -> List[Dict[str, Any]]:
+    def get_questions_by_document_id(self, document_id: str) -> List[Dict[str, Any]]:  # Changed parameter type to str
         with self._session_scope() as session:
             questions = session.query(Question).filter(Question.document_id == document_id).order_by(Question.created_at.desc()).all()
             return [
@@ -319,26 +491,902 @@ class DatabaseManager:
             kps = session.query(KnowledgePoint).order_by(KnowledgePoint.subject, KnowledgePoint.name).all()
             return [{c.name: getattr(kp, c.name) for c in kp.__table__.columns} for kp in kps]
 
+    def clean_orphaned_knowledge_points(self) -> int:
+        """清理沒有關聯問題的孤立知識點"""
+        with self._session_scope() as session:
+            # 查找所有沒有關聯問題的知識點
+            orphaned_kps = session.query(KnowledgePoint).filter(
+                ~KnowledgePoint.id.in_(
+                    session.query(QuestionKnowledgeLink.knowledge_point_id).distinct()
+                )
+            ).all()
+            
+            deleted_count = len(orphaned_kps)
+            for kp in orphaned_kps:
+                session.delete(kp)
+            
+            return deleted_count
+
+    def get_orphaned_knowledge_points_count(self) -> int:
+        """取得孤立知識點的數量（不刪除，僅統計）"""
+        with self._session_scope() as session:
+            count = session.query(KnowledgePoint).filter(
+                ~KnowledgePoint.id.in_(
+                    session.query(QuestionKnowledgeLink.knowledge_point_id).distinct()
+                )
+            ).count()
+            return count
+
+    def get_orphaned_knowledge_points_details(self) -> List[Dict[str, Any]]:
+        """取得孤立知識點的詳細資訊"""
+        with self._session_scope() as session:
+            orphaned_kps = session.query(KnowledgePoint).filter(
+                ~KnowledgePoint.id.in_(
+                    session.query(QuestionKnowledgeLink.knowledge_point_id).distinct()
+                )
+            ).all()
+            
+            return [{
+                'id': kp.id,
+                'name': kp.name,
+                'subject': kp.subject,
+                'description': kp.description
+            } for kp in orphaned_kps]
+
+    def comprehensive_cleanup(self, dry_run: bool = False) -> Dict[str, Any]:
+        """
+        全面清理資料庫中的孤立資料
+        
+        Args:
+            dry_run: 如果為 True，只統計不實際刪除
+            
+        Returns:
+            清理統計資訊
+        """
+        stats = {
+            'orphaned_knowledge_points': 0,
+            'expired_sessions': 0,
+            'old_async_jobs': 0,
+            'old_login_attempts': 0
+        }
+        
+        if dry_run:
+            # 只統計，不刪除
+            stats['orphaned_knowledge_points'] = self.get_orphaned_knowledge_points_count()
+            
+            with self._session_scope() as session:
+                # 統計過期會話
+                cutoff_time = datetime.utcnow() - timedelta(hours=24)
+                stats['expired_sessions'] = session.query(UserSession).filter(
+                    UserSession.is_active == 1
+                ).filter(
+                    (UserSession.last_accessed != None) & (UserSession.last_accessed < cutoff_time) |
+                    (UserSession.last_accessed == None) & (UserSession.created_at < cutoff_time)
+                ).count()
+                
+                # 統計舊的非同步工作
+                cutoff_date = datetime.utcnow() - timedelta(days=7)
+                stats['old_async_jobs'] = session.query(AsyncJob).filter(
+                    AsyncJob.created_at < cutoff_date
+                ).count()
+                
+                # 統計舊的登入記錄
+                cutoff_date = datetime.utcnow() - timedelta(days=30)
+                stats['old_login_attempts'] = session.query(LoginAttempt).filter(
+                    LoginAttempt.attempt_time < cutoff_date
+                ).count()
+        else:
+            # 實際執行清理
+            stats['orphaned_knowledge_points'] = self.clean_orphaned_knowledge_points()
+            stats['expired_sessions'] = self.cleanup_expired_sessions(hours=24)
+            stats['old_async_jobs'] = self.cleanup_old_async_jobs(days=7)
+            
+            # 清理舊的登入記錄（30天前）
+            with self._session_scope() as session:
+                cutoff_date = datetime.utcnow() - timedelta(days=30)
+                stats['old_login_attempts'] = session.query(LoginAttempt).filter(
+                    LoginAttempt.attempt_time < cutoff_date
+                ).delete()
+        
+        return stats
+
     def delete_question(self, q_id: str):
         with self._session_scope() as session:
             q = session.query(Question).filter(Question.id == q_id).first()
             if q:
                 session.delete(q)
+                session.flush()  # 確保刪除操作完成
+                # 自動清理孤立的知識點
+                self.clean_orphaned_knowledge_points()
 
     def batch_delete_questions(self, question_ids: List[str]):
         with self._session_scope() as session:
             session.query(Question).filter(Question.id.in_(question_ids)).delete(synchronize_session=False)
+            session.flush()  # 確保刪除操作完成
+            # 自動清理孤立的知識點
+            self.clean_orphaned_knowledge_points()
 
-    def delete_document(self, doc_id: int):
+    def delete_document(self, doc_id: str):  # Changed parameter type to str
         with self._session_scope() as session:
             doc = session.query(Document).filter(Document.id == doc_id).first()
             if doc:
                 session.delete(doc)
+                session.flush()  # 確保刪除操作完成
+                # 自動清理孤立的知識點
+                self.clean_orphaned_knowledge_points()
 
-    def edit_question(self, q_id: str, new_subject: str, new_question: str, new_answer: str):
+    def edit_question(self, q_id: str, new_subject: str, new_question: str, new_answer: str, 
+                     new_mindmap: str = None, new_knowledge_points: List[str] = None):
         with self._session_scope() as session:
-            session.query(Question).filter(Question.id == q_id).update({
+            # 更新題目基本資訊
+            update_data = {
                 "subject": new_subject,
                 "question_text": new_question,
                 "answer_text": new_answer
+            }
+            
+            # 如果提供了心智圖，則更新
+            if new_mindmap is not None:
+                update_data["mindmap_code"] = new_mindmap
+            
+            session.query(Question).filter(Question.id == q_id).update(update_data)
+            
+            # 如果提供了知識點列表，則更新知識點關聯
+            if new_knowledge_points is not None:
+                # 先刪除現有的知識點關聯
+                session.query(QuestionKnowledgeLink).filter(
+                    QuestionKnowledgeLink.question_id == q_id
+                ).delete()
+                
+                # 添加新的知識點關聯
+                for kp_name in new_knowledge_points:
+                    if kp_name.strip():  # 確保不是空字串
+                        # 查找或創建知識點
+                        kp = session.query(KnowledgePoint).filter(
+                            KnowledgePoint.name == kp_name.strip(),
+                            KnowledgePoint.subject == new_subject
+                        ).first()
+                        
+                        if not kp:
+                            # 創建新的知識點
+                            kp = KnowledgePoint(name=kp_name.strip(), subject=new_subject)
+                            session.add(kp)
+                            session.flush()  # 確保獲得 ID
+                        
+                        # 創建關聯
+                        link = QuestionKnowledgeLink(
+                            question_id=q_id,
+                            knowledge_point_id=kp.id
+                        )
+                        session.add(link)
+
+    # === AsyncJob 相關方法 ===
+    
+    def create_async_job(self, job_id: str, job_type: str, kwargs_dict: Dict[str, Any]) -> None:
+        """創建新的非同步工作記錄"""
+        with self._session_scope() as session:
+            job = AsyncJob(
+                id=job_id,
+                job_type=job_type,
+                status="pending",
+                progress=0,
+                message="等待處理中...",
+                kwargs_json=json.dumps(kwargs_dict, ensure_ascii=False)
+            )
+            session.add(job)
+    
+    def update_async_job_status(self, job_id: str, status: str, progress: int, 
+                               message: str, result: Any = None, error: str = None) -> None:
+        """更新非同步工作狀態"""
+        with self._session_scope() as session:
+            job = session.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                job.status = status
+                job.progress = progress
+                job.message = message
+                job.updated_at = datetime.utcnow()
+                
+                if result is not None:
+                    job.result_json = json.dumps(result, ensure_ascii=False)
+                if error is not None:
+                    job.error_message = error
+    
+    def get_async_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """取得非同步工作狀態"""
+        with self._session_scope() as session:
+            job = session.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                result = {
+                    'id': job.id,
+                    'type': job.job_type,
+                    'status': job.status,
+                    'progress': job.progress,
+                    'message': job.message,
+                    'created_at': job.created_at.isoformat(),
+                    'updated_at': job.updated_at.isoformat()
+                }
+                
+                if job.result_json:
+                    try:
+                        result['result'] = json.loads(job.result_json)
+                    except json.JSONDecodeError:
+                        result['result'] = None
+                
+                if job.error_message:
+                    result['error'] = job.error_message
+                
+                if job.kwargs_json:
+                    try:
+                        result['kwargs'] = json.loads(job.kwargs_json)
+                    except json.JSONDecodeError:
+                        result['kwargs'] = {}
+                
+                return result
+        return None
+    
+    def cleanup_old_async_jobs(self, days: int = 7) -> int:
+        """清理舊的非同步工作記錄"""
+        with self._session_scope() as session:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            deleted_count = session.query(AsyncJob).filter(
+                AsyncJob.created_at < cutoff_date
+            ).delete()
+            return deleted_count
+
+    # === v3.0 安全與權限管理方法 ===
+    
+    def create_user(self, username: str, password_hash: str, role: str = "viewer", email: str = None) -> int:
+        """創建新用戶"""
+        with self._session_scope() as session:
+            user = User(
+                username=username,
+                password_hash=password_hash,
+                role=role,
+                email=email
+            )
+            session.add(user)
+            session.flush()
+            return user.id
+    
+    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        """根據用戶名獲取用戶資訊"""
+        with self._session_scope() as session:
+            user = session.query(User).filter(User.username == username, User.is_active == 1).first()
+            if user:
+                return {
+                    'id': user.id,
+                    'username': user.username,
+                    'password_hash': user.password_hash,
+                    'role': user.role,
+                    'email': user.email,
+                    'created_at': user.created_at.isoformat(),
+                    'last_login': user.last_login.isoformat() if user.last_login else None,
+                    'is_active': bool(user.is_active)
+                }
+            return None
+    
+    def get_user_by_id(self, user_id: int, include_inactive: bool = False) -> Optional[Dict[str, Any]]:
+        """根據 ID 獲取用戶資訊"""
+        with self._session_scope() as session:
+            query = session.query(User).filter(User.id == user_id)
+            if not include_inactive:
+                query = query.filter(User.is_active == 1)
+            user = query.first()
+            if user:
+                return {
+                    'id': user.id,
+                    'username': user.username,
+                    'role': user.role,
+                    'email': user.email,
+                    'created_at': user.created_at.isoformat(),
+                    'last_login': user.last_login.isoformat() if user.last_login else None,
+                    'is_active': bool(user.is_active)
+                }
+            return None
+    
+    def update_user_last_login(self, user_id: int) -> None:
+        """更新用戶最後登入時間"""
+        with self._session_scope() as session:
+            session.query(User).filter(User.id == user_id).update({
+                'last_login': datetime.utcnow()
             })
+    
+    def update_user_password(self, user_id: int, new_password_hash: str) -> None:
+        """更新用戶密碼"""
+        with self._session_scope() as session:
+            session.query(User).filter(User.id == user_id).update({
+                'password_hash': new_password_hash
+            })
+    
+    def disable_user(self, user_id: int) -> None:
+        """停用用戶"""
+        with self._session_scope() as session:
+            session.query(User).filter(User.id == user_id).update({
+                'is_active': 0
+            })
+    
+    def enable_user(self, user_id: int) -> None:
+        """啟用用戶"""
+        with self._session_scope() as session:
+            session.query(User).filter(User.id == user_id).update({
+                'is_active': 1
+            })
+    
+    def get_all_users(self) -> List[Dict[str, Any]]:
+        """獲取所有用戶列表"""
+        with self._session_scope() as session:
+            users = session.query(User).all()
+            return [{
+                'id': user.id,
+                'username': user.username,
+                'role': user.role,
+                'email': user.email,
+                'created_at': user.created_at.isoformat(),
+                'last_login': user.last_login.isoformat() if user.last_login else None,
+                'is_active': bool(user.is_active)
+            } for user in users]
+    
+    def delete_user(self, user_id: int) -> bool:
+        """刪除用戶"""
+        with self._session_scope() as session:
+            try:
+                user = session.query(User).filter(User.id == user_id).first()
+                if not user:
+                    return False
+                
+                # MySQL 需要按正確順序刪除，避免外鍵約束問題
+                
+                # 1. 先刪除相關的會話記錄
+                session.query(UserSession).filter(UserSession.user_id == user_id).delete(synchronize_session=False)
+                
+                # 2. 刪除登入記錄
+                session.query(LoginAttempt).filter(LoginAttempt.user_id == user_id).delete(synchronize_session=False)
+                
+                # 3. 刪除點數交易記錄
+                session.query(PointTransaction).filter(PointTransaction.user_id == user_id).delete(synchronize_session=False)
+                
+                # 4. 刪除內容驗證記錄
+                session.query(ContentValidation).filter(ContentValidation.user_id == user_id).delete(synchronize_session=False)
+                
+                # 5. 對於 Documents 表中的 uploader_id，設為 NULL 而不是刪除文件
+                # 因為文件內容可能對系統有價值，只是失去上傳者追蹤
+                session.query(Document).filter(Document.uploader_id == user_id).update({
+                    'uploader_id': None,
+                    'uploader_name': None
+                }, synchronize_session=False)
+                
+                # 6. 最後刪除用戶
+                session.delete(user)
+                session.flush()  # 確保所有操作在提交前執行
+                
+                return True
+            except Exception as e:
+                session.rollback()
+                print(f"刪除用戶失敗: {e}")
+                raise e
+    
+    def update_user_info(self, user_id: int, username: str, role: str, email: str = None) -> bool:
+        """更新用戶資訊"""
+        with self._session_scope() as session:
+            result = session.query(User).filter(User.id == user_id).update({
+                'username': username,
+                'role': role,
+                'email': email
+            })
+            return result > 0
+    
+    # === 登入記錄管理 ===
+    
+    def record_login_attempt(self, ip_address: str, username: str = None, user_id: int = None, 
+                           success: bool = False, user_agent: str = None) -> None:
+        """記錄登入嘗試"""
+        with self._session_scope() as session:
+            attempt = LoginAttempt(
+                ip_address=ip_address,
+                username=username,
+                user_id=user_id,
+                success=1 if success else 0,
+                user_agent=user_agent
+            )
+            session.add(attempt)
+    
+    def get_failed_attempts_count(self, ip_address: str, time_window_minutes: int = 60) -> int:
+        """獲取指定 IP 在時間窗口內的失敗嘗試次數"""
+        with self._session_scope() as session:
+            cutoff_time = datetime.utcnow() - timedelta(minutes=time_window_minutes)
+            count = session.query(LoginAttempt).filter(
+                LoginAttempt.ip_address == ip_address,
+                LoginAttempt.success == 0,
+                LoginAttempt.attempt_time >= cutoff_time
+            ).count()
+            return count
+    
+    def get_login_attempts(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """獲取登入記錄"""
+        with self._session_scope() as session:
+            attempts = session.query(LoginAttempt).order_by(
+                LoginAttempt.attempt_time.desc()
+            ).limit(limit).all()
+            
+            return [{
+                'id': attempt.id,
+                'ip_address': attempt.ip_address,
+                'username': attempt.username,
+                'success': bool(attempt.success),
+                'attempt_time': attempt.attempt_time.isoformat(),
+                'user_agent': attempt.user_agent
+            } for attempt in attempts]
+    
+    # === IP 黑名單管理 ===
+    
+    def add_ip_to_blacklist(self, ip_address: str, reason: str = "Too many failed login attempts", 
+                          blocked_by: str = None) -> None:
+        """將 IP 加入黑名單"""
+        with self._session_scope() as session:
+            # 檢查是否已存在
+            existing = session.query(IPBlacklist).filter(
+                IPBlacklist.ip_address == ip_address
+            ).first()
+            
+            if existing:
+                # 更新現有記錄
+                existing.reason = reason
+                existing.blocked_at = datetime.utcnow()
+                existing.blocked_by = blocked_by
+                existing.is_active = 1
+            else:
+                # 創建新記錄
+                blacklist_entry = IPBlacklist(
+                    ip_address=ip_address,
+                    reason=reason,
+                    blocked_by=blocked_by
+                )
+                session.add(blacklist_entry)
+    
+    def remove_ip_from_blacklist(self, ip_address: str) -> bool:
+        """從黑名單移除 IP"""
+        with self._session_scope() as session:
+            result = session.query(IPBlacklist).filter(
+                IPBlacklist.ip_address == ip_address,
+                IPBlacklist.is_active == 1
+            ).update({'is_active': 0})
+            return result > 0
+    
+    def is_ip_blacklisted(self, ip_address: str) -> bool:
+        """檢查 IP 是否在黑名單中"""
+        with self._session_scope() as session:
+            count = session.query(IPBlacklist).filter(
+                IPBlacklist.ip_address == ip_address,
+                IPBlacklist.is_active == 1
+            ).count()
+            return count > 0
+    
+    def get_blacklisted_ips(self) -> List[Dict[str, Any]]:
+        """獲取黑名單 IP 列表"""
+        with self._session_scope() as session:
+            blacklist = session.query(IPBlacklist).filter(
+                IPBlacklist.is_active == 1
+            ).order_by(IPBlacklist.blocked_at.desc()).all()
+            
+            return [{
+                'id': entry.id,
+                'ip_address': entry.ip_address,
+                'reason': entry.reason,
+                'blocked_at': entry.blocked_at.isoformat(),
+                'blocked_by': entry.blocked_by
+            } for entry in blacklist]
+    
+    # === 用戶會話管理 ===
+    
+    def create_user_session(self, user_id: int, session_token: str, ip_address: str = None, 
+                          user_agent: str = None) -> str:
+        """創建用戶會話"""
+        from datetime import timedelta
+        with self._session_scope() as session:
+            # 設定會話過期時間（預設 24 小時）
+            expires_at = datetime.utcnow() + timedelta(hours=24)
+            
+            user_session = UserSession(
+                id=session_token,  # 使用 session_token 作為主鍵
+                user_id=user_id,
+                session_token=session_token,
+                ip_address=ip_address or '127.0.0.1',
+                expires_at=expires_at,
+                user_agent=user_agent,
+                is_active=1
+            )
+            session.add(user_session)
+            return session_token
+    
+    def get_session(self, session_token: str) -> Optional[Dict[str, Any]]:
+        """根據 token 獲取會話資訊"""
+        with self._session_scope() as session:
+            user_session = session.query(UserSession).filter(
+                UserSession.session_token == session_token,
+                UserSession.is_active == 1
+            ).first()
+            
+            if user_session:
+                return {
+                    'id': user_session.id,
+                    'user_id': user_session.user_id,
+                    'session_token': user_session.session_token,
+                    'ip_address': user_session.ip_address,
+                    'created_at': user_session.created_at.isoformat(),
+                    'last_accessed': user_session.last_accessed.isoformat() if user_session.last_accessed else None,
+                    'user_agent': user_session.user_agent
+                }
+            return None
+    
+    def update_session_access(self, session_token: str) -> None:
+        """更新會話最後訪問時間"""
+        with self._session_scope() as session:
+            session.query(UserSession).filter(
+                UserSession.session_token == session_token
+            ).update({'last_accessed': datetime.utcnow()})
+    
+    def invalidate_session(self, session_token: str) -> bool:
+        """使會話失效"""
+        with self._session_scope() as session:
+            result = session.query(UserSession).filter(
+                UserSession.session_token == session_token
+            ).update({'is_active': 0})
+            return result > 0
+    
+    def invalidate_user_sessions(self, user_id: int) -> int:
+        """使用戶所有會話失效"""
+        with self._session_scope() as session:
+            result = session.query(UserSession).filter(
+                UserSession.user_id == user_id,
+                UserSession.is_active == 1
+            ).update({'is_active': 0})
+            return result
+    
+    def cleanup_expired_sessions(self, hours: int = 24) -> int:
+        """清理過期會話"""
+        with self._session_scope() as session:
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            # 清理過期會話：基於 last_accessed 或 created_at（如果 last_accessed 為 NULL）
+            result = session.query(UserSession).filter(
+                UserSession.is_active == 1
+            ).filter(
+                # 如果 last_accessed 不為空則使用它，否則使用 created_at
+                (UserSession.last_accessed != None) & (UserSession.last_accessed < cutoff_time) |
+                (UserSession.last_accessed == None) & (UserSession.created_at < cutoff_time)
+            ).update({'is_active': 0})
+            return result
+    
+    def get_active_sessions(self, user_id: int = None) -> List[Dict[str, Any]]:
+        """獲取活躍會話列表"""
+        with self._session_scope() as session:
+            query = session.query(UserSession).filter(UserSession.is_active == 1)
+            if user_id:
+                query = query.filter(UserSession.user_id == user_id)
+            
+            sessions = query.order_by(UserSession.created_at.desc()).all()
+            
+            return [{
+                'id': s.id,
+                'user_id': s.user_id,
+                'ip_address': s.ip_address,
+                'created_at': s.created_at.isoformat(),
+                'last_accessed': s.last_accessed.isoformat() if s.last_accessed else None,
+                'user_agent': s.user_agent
+            } for s in sessions]
+
+    # === 邀請碼嘗試管理 ===
+    
+    def record_invite_code_attempt(self, ip_address: str, invite_code: str, success: bool = False, 
+                                 user_agent: str = None, username_attempted: str = None) -> None:
+        """記錄邀請碼嘗試"""
+        with self._session_scope() as session:
+            attempt = InviteCodeAttempt(
+                ip_address=ip_address,
+                invite_code=invite_code,
+                success=1 if success else 0,
+                user_agent=user_agent,
+                username_attempted=username_attempted
+            )
+            session.add(attempt)
+    
+    def get_failed_invite_attempts(self, ip_address: str, time_window_minutes: int = 60) -> int:
+        """獲取指定時間窗口內的邀請碼失敗次數"""
+        with self._session_scope() as session:
+            cutoff_time = datetime.utcnow() - timedelta(minutes=time_window_minutes)
+            
+            count = session.query(InviteCodeAttempt).filter(
+                InviteCodeAttempt.ip_address == ip_address,
+                InviteCodeAttempt.success == 0,
+                InviteCodeAttempt.attempt_time >= cutoff_time
+            ).count()
+            
+            return count
+    
+    def get_invite_code_attempts(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """獲取邀請碼嘗試記錄"""
+        with self._session_scope() as session:
+            attempts = session.query(InviteCodeAttempt).order_by(
+                InviteCodeAttempt.attempt_time.desc()
+            ).limit(limit).all()
+            
+            return [{
+                'id': attempt.id,
+                'ip_address': attempt.ip_address,
+                'invite_code': attempt.invite_code[:10] + "..." if len(attempt.invite_code) > 10 else attempt.invite_code,  # 隱藏完整邀請碼
+                'success': bool(attempt.success),
+                'attempt_time': attempt.attempt_time.isoformat(),
+                'user_agent': attempt.user_agent,
+                'username_attempted': attempt.username_attempted
+            } for attempt in attempts]
+
+    # === v3.1 個人筆記系統管理方法 ===
+    
+    def create_note(self, user_id: int, title: str, content: str, 
+                   content_type: str = 'markdown', tags: List[str] = None) -> str:
+        """創建新筆記"""
+        with self._session_scope() as session:
+            note_id = str(uuid.uuid4())
+            note = UserNote(
+                id=note_id,
+                user_id=user_id,
+                title=title,
+                content=content,
+                content_type=content_type,
+                tags=json.dumps(tags or [], ensure_ascii=False)
+            )
+            session.add(note)
+            session.flush()
+            return note_id
+    
+    def get_note_by_id(self, note_id: str, user_id: int = None) -> Optional[Dict[str, Any]]:
+        """根據ID獲取筆記"""
+        with self._session_scope() as session:
+            query = session.query(UserNote).filter(UserNote.id == note_id)
+            if user_id:
+                query = query.filter(UserNote.user_id == user_id)
+            
+            note = query.first()
+            if note:
+                return {
+                    'id': note.id,
+                    'user_id': note.user_id,
+                    'title': note.title,
+                    'content': note.content,
+                    'content_type': note.content_type,
+                    'tags': json.loads(note.tags) if note.tags else [],
+                    'ai_summary': note.ai_summary,
+                    'ai_keywords': json.loads(note.ai_keywords) if note.ai_keywords else [],
+                    'created_at': note.created_at.isoformat(),
+                    'updated_at': note.updated_at.isoformat(),
+                    'is_archived': bool(note.is_archived)
+                }
+            return None
+    
+    def get_user_notes(self, user_id: int, include_archived: bool = False, 
+                      category_id: int = None, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        """獲取用戶筆記列表"""
+        with self._session_scope() as session:
+            query = session.query(UserNote).filter(UserNote.user_id == user_id)
+            
+            if not include_archived:
+                query = query.filter(UserNote.is_archived == 0)
+            
+            if category_id:
+                query = query.join(NoteCategoryLink).filter(
+                    NoteCategoryLink.category_id == category_id
+                )
+            
+            notes = query.order_by(UserNote.updated_at.desc()).offset(offset).limit(limit).all()
+            
+            return [{
+                'id': note.id,
+                'title': note.title,
+                'content': note.content[:200] + "..." if len(note.content) > 200 else note.content,  # 預覽內容
+                'content_type': note.content_type,
+                'tags': json.loads(note.tags) if note.tags else [],
+                'ai_summary': note.ai_summary,
+                'created_at': note.created_at.isoformat(),
+                'updated_at': note.updated_at.isoformat(),
+                'is_archived': bool(note.is_archived)
+            } for note in notes]
+    
+    def update_note(self, note_id: str, user_id: int, title: str = None, 
+                   content: str = None, tags: List[str] = None) -> bool:
+        """更新筆記"""
+        with self._session_scope() as session:
+            note = session.query(UserNote).filter(
+                UserNote.id == note_id, 
+                UserNote.user_id == user_id
+            ).first()
+            
+            if note:
+                if title is not None:
+                    note.title = title
+                if content is not None:
+                    note.content = content
+                if tags is not None:
+                    note.tags = json.dumps(tags, ensure_ascii=False)
+                note.updated_at = datetime.utcnow()
+                return True
+            return False
+    
+    def update_note_ai_analysis(self, note_id: str, ai_summary: str = None, 
+                               ai_keywords: List[str] = None) -> bool:
+        """更新筆記的AI分析結果"""
+        with self._session_scope() as session:
+            note = session.query(UserNote).filter(UserNote.id == note_id).first()
+            if note:
+                if ai_summary is not None:
+                    note.ai_summary = ai_summary
+                if ai_keywords is not None:
+                    note.ai_keywords = json.dumps(ai_keywords, ensure_ascii=False)
+                note.updated_at = datetime.utcnow()
+                return True
+            return False
+    
+    def delete_note(self, note_id: str, user_id: int) -> bool:
+        """刪除筆記"""
+        with self._session_scope() as session:
+            note = session.query(UserNote).filter(
+                UserNote.id == note_id,
+                UserNote.user_id == user_id
+            ).first()
+            
+            if note:
+                # 先刪除相關的分析記錄
+                session.query(NoteAIAnalysis).filter(
+                    NoteAIAnalysis.note_id == note_id
+                ).delete()
+                
+                # 刪除分類關聯
+                session.query(NoteCategoryLink).filter(
+                    NoteCategoryLink.note_id == note_id
+                ).delete()
+                
+                # 刪除知識點關聯
+                session.query(NoteKnowledgeLink).filter(
+                    NoteKnowledgeLink.note_id == note_id
+                ).delete()
+                
+                # 刪除筆記關係
+                session.query(NoteRelationship).filter(
+                    (NoteRelationship.source_note_id == note_id) |
+                    (NoteRelationship.target_note_id == note_id)
+                ).delete()
+                
+                # 最後刪除筆記本身
+                session.delete(note)
+                return True
+            return False
+    
+    def archive_note(self, note_id: str, user_id: int, archived: bool = True) -> bool:
+        """歸檔/取消歸檔筆記"""
+        with self._session_scope() as session:
+            result = session.query(UserNote).filter(
+                UserNote.id == note_id,
+                UserNote.user_id == user_id
+            ).update({
+                'is_archived': 1 if archived else 0,
+                'updated_at': datetime.utcnow()
+            })
+            return result > 0
+    
+    def search_notes(self, user_id: int, keyword: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """搜尋筆記"""
+        with self._session_scope() as session:
+            notes = session.query(UserNote).filter(
+                UserNote.user_id == user_id,
+                UserNote.is_archived == 0,
+                (UserNote.title.contains(keyword) | UserNote.content.contains(keyword))
+            ).order_by(UserNote.updated_at.desc()).limit(limit).all()
+            
+            return [{
+                'id': note.id,
+                'title': note.title,
+                'content': note.content[:200] + "..." if len(note.content) > 200 else note.content,
+                'tags': json.loads(note.tags) if note.tags else [],
+                'created_at': note.created_at.isoformat(),
+                'updated_at': note.updated_at.isoformat()
+            } for note in notes]
+    
+    # === 筆記分類管理 ===
+    
+    def create_note_category(self, user_id: int, name: str, description: str = None,
+                           color: str = None, icon: str = None, parent_id: int = None) -> int:
+        """創建筆記分類"""
+        with self._session_scope() as session:
+            category = NoteCategory(
+                user_id=user_id,
+                name=name,
+                description=description,
+                color=color,
+                icon=icon,
+                parent_id=parent_id
+            )
+            session.add(category)
+            session.flush()
+            return category.id
+    
+    def get_user_categories(self, user_id: int) -> List[Dict[str, Any]]:
+        """獲取用戶的筆記分類"""
+        with self._session_scope() as session:
+            categories = session.query(NoteCategory).filter(
+                NoteCategory.user_id == user_id
+            ).order_by(NoteCategory.name).all()
+            
+            return [{
+                'id': cat.id,
+                'name': cat.name,
+                'description': cat.description,
+                'color': cat.color,
+                'icon': cat.icon,
+                'parent_id': cat.parent_id,
+                'created_at': cat.created_at.isoformat()
+            } for cat in categories]
+    
+    def add_note_to_category(self, note_id: str, category_id: int, user_id: int) -> bool:
+        """將筆記加入分類"""
+        with self._session_scope() as session:
+            # 驗證筆記屬於該用戶
+            note = session.query(UserNote).filter(
+                UserNote.id == note_id,
+                UserNote.user_id == user_id
+            ).first()
+            
+            # 驗證分類屬於該用戶
+            category = session.query(NoteCategory).filter(
+                NoteCategory.id == category_id,
+                NoteCategory.user_id == user_id
+            ).first()
+            
+            if note and category:
+                # 檢查關聯是否已存在
+                existing = session.query(NoteCategoryLink).filter(
+                    NoteCategoryLink.note_id == note_id,
+                    NoteCategoryLink.category_id == category_id
+                ).first()
+                
+                if not existing:
+                    link = NoteCategoryLink(note_id=note_id, category_id=category_id)
+                    session.add(link)
+                    return True
+            return False
+    
+    # === 筆記AI分析管理 ===
+    
+    def save_note_ai_analysis(self, note_id: str, analysis_type: str, result: Dict[str, Any]) -> int:
+        """保存筆記AI分析結果"""
+        with self._session_scope() as session:
+            analysis = NoteAIAnalysis(
+                note_id=note_id,
+                analysis_type=analysis_type,
+                result=json.dumps(result, ensure_ascii=False)
+            )
+            session.add(analysis)
+            session.flush()
+            return analysis.id
+    
+    def get_note_ai_analysis(self, note_id: str, analysis_type: str = None) -> List[Dict[str, Any]]:
+        """獲取筆記AI分析結果"""
+        with self._session_scope() as session:
+            query = session.query(NoteAIAnalysis).filter(NoteAIAnalysis.note_id == note_id)
+            
+            if analysis_type:
+                query = query.filter(NoteAIAnalysis.analysis_type == analysis_type)
+            
+            analyses = query.order_by(NoteAIAnalysis.created_at.desc()).all()
+            
+            return [{
+                'id': analysis.id,
+                'analysis_type': analysis.analysis_type,
+                'result': json.loads(analysis.result),
+                'created_at': analysis.created_at.isoformat()
+            } for analysis in analyses]
+    
+    def delete_note_ai_analysis(self, analysis_id: int) -> bool:
+        """刪除筆記AI分析結果"""
+        with self._session_scope() as session:
+            result = session.query(NoteAIAnalysis).filter(
+                NoteAIAnalysis.id == analysis_id
+            ).delete()
+            return result > 0

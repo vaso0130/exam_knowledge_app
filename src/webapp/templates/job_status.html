@@ -28,11 +28,26 @@
                                 <i class="fas fa-file-alt"></i> 學習內容處理
                             {% elif job.type == 'question_processing' %}
                                 <i class="fas fa-question-circle"></i> 考題處理
+                            {% elif job.type == 'url_processing' %}
+                                <i class="fas fa-globe"></i> 網路擷取處理
                             {% else %}
                                 {{ job.type }}
                             {% endif %}
                         </div>
                     </div>
+                    
+                    <!-- URL 信息 (針對 URL 處理任務) -->
+                    {% if job.type == 'url_processing' and job.input_data and job.input_data.url %}
+                    <div class="row mb-3">
+                        <div class="col-sm-3"><strong>處理 URL:</strong></div>
+                        <div class="col-sm-9">
+                            <a href="{{ job.input_data.url }}" target="_blank" class="text-break">
+                                {{ job.input_data.url }}
+                            </a>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
                     <div class="row mb-3">
                         <div class="col-sm-3"><strong>開始時間:</strong></div>
                         <div class="col-sm-9">{{ job.created_at[:19].replace('T', ' ') }}</div>

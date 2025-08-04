@@ -46,16 +46,18 @@
             </div>
             
             <!-- 個人筆記 -->
+            {% if g.current_user and g.current_user.role == 'admin' %}
             <div class="col-md-6">
                 <div class="card h-100">
                     <div class="card-body text-center">
                         <div class="display-1 mb-3">📝</div>
                         <h3 class="card-title">個人筆記</h3>
                         <p class="card-text text-muted">整理您的個人學習筆記，建立專屬知識庫</p>
-                        <a href="/personal_notes" class="btn" style="background: linear-gradient(135deg, #ADD8E6 0%, #87CEEB 100%); border: none; color: white;">前往筆記</a>
+                        <a href="{{ url_for('notes.note_list') }}" class="btn" style="background: linear-gradient(135deg, #ADD8E6 0%, #87CEEB 100%); border: none; color: white;">前往筆記</a>
                     </div>
                 </div>
             </div>
+            {% endif %}
             
             <!-- 知識圖譜 -->
             <div class="col-md-6">

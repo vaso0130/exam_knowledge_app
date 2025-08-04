@@ -1,0 +1,191 @@
+
+{% extends "layout.html" %}
+{% from "_form_helpers.html" import render_field, render_ai_field, render_tags_field %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="fas fa-edit me-2"></i>{{ title }}</h1>
+        <a href="{{ url_for('notes.note_list') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i> 返回列表
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="POST" action="">
+                <div class="mb-3">
+                    <label for="title" class="form-label"><strong>標題</strong></label>
+                    <input type="text" class="form-control" id="title" name="title" value="{{ note.title if note else '' }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="content" class="form-label"><strong>內容 (支援 Markdown)</strong></label>
+                    <textarea class="form-control" id="content" name="content" rows="15" required>{{ note.content if note else '' }}</textarea>
+                </div>
+
+                <!-- AI 功能選項 -->
+                <div class="card bg-light mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-robot me-2"></i>AI 智慧功能設定</h6>
+                    </div>
+                    <div class="card-body">
+                        {% if not note %}
+                        <!-- 新建筆記時的設定 -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="enable_ai_analysis" name="enable_ai_analysis" checked>
+                                    <label class="form-check-label" for="enable_ai_analysis">
+                                        <strong>AI 智慧助理</strong>
+                                        <small class="text-muted d-block">自動生成摘要、關鍵字、相關建議</small>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="enable_ai_organization" name="enable_ai_organization">
+                                    <label class="form-check-label" for="enable_ai_organization">
+                                        <strong>AI 整理功能</strong>
+                                        <small class="text-muted d-block">預先生成6種整理方式</small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <!-- 編輯現有筆記時的設定 -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="enable_ai_reanalysis" name="enable_ai_reanalysis">
+                                    <label class="form-check-label" for="enable_ai_reanalysis">
+                                        <strong>重新分析內容</strong>
+                                        <small class="text-muted d-block">重新生成摘要、關鍵字、相關建議</small>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                {% if note.ai_summary or note.ai_keywords %}
+                                <div class="alert alert-success mb-2">
+                                    <i class="fas fa-check-circle me-1"></i>
+                                    <small>此筆記已啟用AI智慧助理</small>
+                                </div>
+                                {% else %}
+                                <div class="alert alert-warning mb-2">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>
+                                    <small>此筆記尚未啟用AI功能，勾選重新分析即可啟用</small>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if not note %}
+                        <!-- AI 整理方式選擇（僅在新建筆記時顯示） -->
+                        <div id="organization-options" class="mt-3" style="display: none;">
+                            <h6 class="text-muted">選擇要預先生成的整理方式：</h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="org_mindmap" name="organization_types" value="mindmap" checked>
+                                        <label class="form-check-label" for="org_mindmap">
+                                            <small><i class="fas fa-sitemap me-1"></i>心智圖結構化</small>
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="org_hierarchical" name="organization_types" value="hierarchical" checked>
+                                        <label class="form-check-label" for="org_hierarchical">
+                                            <small><i class="fas fa-list me-1"></i>層次化整理</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="org_feynman" name="organization_types" value="feynman">
+                                        <label class="form-check-label" for="org_feynman">
+                                            <small><i class="fas fa-lightbulb me-1"></i>費曼技巧</small>
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="org_qa_learning" name="organization_types" value="qa_learning">
+                                        <label class="form-check-label" for="org_qa_learning">
+                                            <small><i class="fas fa-question me-1"></i>問答式學習</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="org_comparison" name="organization_types" value="comparison">
+                                        <label class="form-check-label" for="org_comparison">
+                                            <small><i class="fas fa-balance-scale me-1"></i>對比分析</small>
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="org_memory_palace" name="organization_types" value="memory_palace">
+                                        <label class="form-check-label" for="org_memory_palace">
+                                            <small><i class="fas fa-home me-1"></i>記憶宮殿法</small>
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="org_format_enhance" name="organization_types" value="format_enhance">
+                                        <label class="form-check-label" for="org_format_enhance">
+                                            <small><i class="fas fa-magic me-1"></i>格式化與補強</small>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="alert alert-info mt-2">
+                                <i class="fas fa-info-circle me-1"></i>
+                                <small>選擇的整理方式會在筆記建立後自動生成，這可能需要一些時間。</small>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Simple live preview (optional, can be enhanced with JS) -->
+                <div class="mb-4">
+                    <h5 class="mb-2">即時預覽</h5>
+                    <div id="preview" class="border p-3 bg-light markdown-body" style="min-height: 100px;"></div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-1"></i> 儲存筆記
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const contentEl = document.getElementById('content');
+        const previewEl = document.getElementById('preview');
+
+        function updatePreview() {
+            previewEl.innerHTML = marked.parse(contentEl.value);
+        }
+
+        contentEl.addEventListener('input', updatePreview);
+        
+        // Initial preview
+        updatePreview();
+
+        // AI 整理功能選項控制
+        const enableOrgCheckbox = document.getElementById('enable_ai_organization');
+        const orgOptionsDiv = document.getElementById('organization-options');
+        
+        if (enableOrgCheckbox && orgOptionsDiv) {
+            enableOrgCheckbox.addEventListener('change', function() {
+                orgOptionsDiv.style.display = this.checked ? 'block' : 'none';
+            });
+        }
+    });
+</script>
+{% endblock %}

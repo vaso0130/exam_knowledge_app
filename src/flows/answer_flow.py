@@ -6,7 +6,7 @@ from typing import Dict, Any, List
 from ..core.gemini_client import GeminiClient
 from ..core.database import DatabaseManager
 from ..utils.file_processor import FileProcessor
-from ..utils.markdown_utils import format_code_blocks, format_answer_text
+from ..utils.markdown_utils import detect_and_fence_indented_code
 
 class AnswerFlow:
     """
@@ -107,9 +107,20 @@ class AnswerFlow:
             mindmap_code = None
             if knowledge_points:
                 try:
-                    mindmap_code = await self.gemini.generate_mindmap(subject, knowledge_points)
+                    mindmap_result = await self.gemini.generate_mindmap(subject, knowledge_points, question_text)
+                    mindmap_code = mindmap_result.get('mindmap_code', '')
+                    question_summary = mindmap_result.get('question_summary')
+                    
                     if mindmap_code:
                         self.db.update_question_mindmap(result['question_id'], mindmap_code)
+                    
+                    # 如果有題目摘要，也一併儲存
+                    if question_summary and question_summary.get('summary') and question_summary.get('solving_tips'):
+                        self.db.update_question_solving_tips(
+                            result['question_id'], 
+                            question_summary.get('summary', ''),
+                            question_summary.get('solving_tips', '')
+                        )
                 except Exception as e:
                     print(f"生成心智圖失敗: {e}")
 
@@ -152,8 +163,8 @@ class AnswerFlow:
 
         question_id = self.db.add_question(
             document_id=doc_id,
-            question_text=format_code_blocks(question_text),
-            answer_text=format_code_blocks(format_answer_text(answer_text)),
+            question_text=question_text,  # 直接使用原始題目，不做二次加工
+            answer_text=answer_text,      # 直接使用 AI 回傳的答案，不做二次加工
             answer_sources=json.dumps(answer_sources, ensure_ascii=False),
             subject=subject
         )

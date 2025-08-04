@@ -39,17 +39,17 @@
                 <div class="mb-4">
                     <h3 class="border-bottom pb-2 mb-3">� 原始全文</h3>
                     <div class="content-display p-3 border rounded bg-light">
-                        <div class="markdown-content">{{ document.content|safe }}</div>
+                        <div class="markdown-content">{{ document.content|markdown }}</div>
                     </div>
                 </div>
                 {% endif %}
 
                 <!-- 🆕 重點摘要 -->
                 {% if document.key_points_summary %}
-                <div class="mb-4">
+                <div class="mb-4 content-summary">
                     <h3 class="border-bottom pb-2 mb-3">⭐ 重點摘要</h3>
                     <div class="alert alert-info">
-                        <div class="markdown-content">{{ document.key_points_summary|safe }}</div>
+                        <div class="markdown-content">{{ document.key_points_summary|markdown }}</div>
                     </div>
                 </div>
                 {% endif %}
