@@ -247,10 +247,10 @@ def note_edit(note_id):
 <!-- 在 src/webapp/templates/layout.html 中加入筆記系統導航 -->
 <nav class="navbar navbar-expand-lg">
     <div class="navbar-nav">
-        <a class="nav-link" href="{{ url_for('main.index') }}">首頁</a>
-        <a class="nav-link" href="{{ url_for('main.knowledge') }}">知識管理</a>
+        <a class="nav-link" href="{{ url_for('main.index') }}">🏠 首頁</a>
+        其他導航連結 ......
         <a class="nav-link" href="{{ url_for('notes.note_list') }}">📝 我的筆記</a>
-        <a class="nav-link" href="{{ url_for('main.documents_list') }}">文件庫</a>
+        其他導航連結 ......
     </div>
 </nav>
 ```
