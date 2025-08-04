@@ -16,9 +16,24 @@
     <div class="card shadow-sm">
         <div class="card-body">
             <form method="POST" action="">
+                {% if source_question %}
+                <div class="mb-3">
+                    <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#source-question" aria-expanded="false" aria-controls="source-question">
+                        顯示/隱藏來源題目
+                    </button>
+                    <div class="collapse mt-2" id="source-question">
+                        <div class="card card-body">
+                            <h6 class="fw-bold">題目</h6>
+                            <p class="mb-3">{{ source_question.text }}</p>
+                            <h6 class="fw-bold">答案</h6>
+                            <p class="mb-0">{{ source_question.answer }}</p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
                 <div class="mb-3">
                     <label for="title" class="form-label"><strong>標題</strong></label>
-                    <input type="text" class="form-control" id="title" name="title" value="{{ note.title if note else '' }}" required>
+                    <input type="text" class="form-control" id="title" name="title" value="{{ note.title if note else (default_title if default_title is defined else '') }}" required>
                 </div>
 
                 <div class="mb-3">
@@ -154,6 +169,11 @@
                 <button type="submit" class="btn btn-primary">
                     <i class="fas fa-save me-1"></i> 儲存筆記
                 </button>
+                {% if source_question %}
+                <button type="submit" name="ai_generate" class="btn btn-outline-success ms-2">
+                    🚀 AI 自動生成筆記
+                </button>
+                {% endif %}
             </form>
         </div>
     </div>
