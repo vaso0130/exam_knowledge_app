@@ -435,6 +435,59 @@ class NoteManager:
             print(f"Error creating note from questions: {e}")
             return None
 
+    def generate_smart_note_content(self, user_id: int, context: Dict[str, Any]) -> str:
+        """
+        智能生成筆記內容，結合題目、答案、使用者現有內容和AI提示
+        
+        Args:
+            user_id: 使用者ID
+            context: 包含以下鍵值的字典
+                - question_text: 題目文字
+                - answer_text: 答案文字
+                - user_content: 使用者已輸入的內容
+                - user_prompt: 使用者給AI的額外指示
+                - title: 筆記標題
+        
+        Returns:
+            生成的筆記內容
+        """
+        try:
+            # 呼叫AI客戶端的智能生成方法
+            generated_content = self.ai_client.generate_smart_note_content(context)
+            return generated_content
+        except Exception as e:
+            print(f"Error generating smart note content: {e}")
+            # 如果AI生成失敗，返回一個基本的模板
+            fallback_content = self._create_fallback_content(context)
+            return fallback_content
+
+    def _create_fallback_content(self, context: Dict[str, Any]) -> str:
+        """創建備用內容模板，當AI生成失敗時使用"""
+        question_text = context.get('question_text', '')
+        answer_text = context.get('answer_text', '')
+        user_content = context.get('user_content', '')
+        user_prompt = context.get('user_prompt', '')
+        
+        fallback = f"""# {context.get('title', '筆記')}
+
+## 📚 原始題目
+{question_text}
+
+## ✅ 參考答案
+{answer_text}
+
+## 📝 筆記內容
+{user_content if user_content else '（請在此處添加您的筆記內容）'}
+
+## 💡 學習要點
+- 請仔細分析題目要求
+- 理解答案的關鍵概念
+- 總結重要知識點
+
+{f"## 🎯 特別提醒\\n{user_prompt}" if user_prompt else ""}
+"""
+        return fallback
+
     def create_note_from_materials(self, user_id: int, materials_content: str, material_type: str = "教材", title: str = None) -> Optional[str]:
         """從教材內容生成筆記"""
         try:

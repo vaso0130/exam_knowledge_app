@@ -62,7 +62,7 @@
                         <div class="tab-content" id="content-tab-content">
                             <!-- 原始內容 -->
                             <div class="tab-pane fade show active" id="original-content" role="tabpanel">
-                                <div class="note-content markdown-body mt-3">
+                                <div class="note-content markdown-content mt-3">
                                     {{ note.content | markdown }}
                                 </div>
                             </div>
@@ -90,11 +90,11 @@
                         <div class="collapse mt-2" id="source-question-block">
                             <div class="card card-body">
                                 <h6 class="mb-2">題目</h6>
-                                <div class="markdown-body">{{ note.source_question.question_text | markdown }}</div>
+                                <div class="markdown-content">{{ note.source_question.question_text | markdown }}</div>
                                 {% if note.source_question.answer_text %}
                                 <hr>
                                 <h6 class="mb-2">答案</h6>
-                                <div class="markdown-body">{{ note.source_question.answer_text | markdown }}</div>
+                                <div class="markdown-content">{{ note.source_question.answer_text | markdown }}</div>
                                 {% endif %}
                             </div>
                         </div>
@@ -280,6 +280,22 @@ document.addEventListener('DOMContentLoaded', function() {
     // 初始化 loading modal
     loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
     
+    // 全域錯誤處理
+    window.addEventListener('error', function(event) {
+        console.error('全域錯誤捕獲:', event.error);
+        
+        // 檢查是否為 JSON 解析錯誤
+        if (event.error instanceof SyntaxError && event.error.message.includes('JSON')) {
+            console.warn('偵測到 JSON 解析錯誤，可能是 AI 回傳的資料格式有問題');
+            showAlert('偵測到資料格式錯誤，系統將嘗試自動修復', 'warning');
+            
+            // 如果修復函數存在，嘗試運行
+            if (typeof window.fixFeynmanParsing === 'function') {
+                window.fixFeynmanParsing();
+            }
+        }
+    });
+    
     loadPreGeneratedResults();
     initializeContentTabs();
 });
@@ -361,26 +377,44 @@ function showOrganizationSelector() {
     
     // 顯示 modal
     const modal = new bootstrap.Modal(document.getElementById('organizationModal'));
-    modal.show();
     
-    // 為新按鈕添加事件處理器
-    setTimeout(() => {
-        document.querySelectorAll('.organization-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const type = this.getAttribute('data-type');
-                const name = this.getAttribute('data-name');
-                const icon = this.getAttribute('data-icon');
-                selectOrganizationType(type, name, icon);
-            });
-        });
-    }, 100);
+    // 使用事件委派方式處理按鈕點擊
+    const modalElement = document.getElementById('organizationModal');
+    modalElement.addEventListener('click', function(event) {
+        // 檢查點擊的是否是組織按鈕
+        if (event.target.closest('.organization-btn')) {
+            const btn = event.target.closest('.organization-btn');
+            const type = btn.getAttribute('data-type');
+            const name = btn.getAttribute('data-name');
+            const icon = btn.getAttribute('data-icon');
+            selectOrganizationType(type, name, icon);
+        }
+    });
+    
+    modal.show();
 }
 
 // 選擇組織方式並生成
 function selectOrganizationType(type, name, icon) {
-    // 關閉 modal
-    const modal = bootstrap.Modal.getInstance(document.getElementById('organizationModal'));
-    modal.hide();
+    console.log(`選擇整理類型: ${type}, 名稱: ${name}`);
+    
+    // 關閉 modal - 使用更健壯的方式
+    try {
+        const modalElement = document.getElementById('organizationModal');
+        if (modalElement) {
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) {
+                modal.hide();
+            } else {
+                // 如果無法獲取實例，直接移除modal的show類和backdrop
+                modalElement.classList.remove('show');
+                const backdrop = document.querySelector('.modal-backdrop');
+                if (backdrop) backdrop.remove();
+            }
+        }
+    } catch (e) {
+        console.error("關閉模態框時出錯:", e);
+    }
     
     // 開始生成
     loadingModal.show();
@@ -394,71 +428,176 @@ function selectOrganizationType(type, name, icon) {
             organization_type: type
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`伺服器回應錯誤，狀態碼: ${response.status}`);
+        }
+        
+        // 嘗試解析為JSON，如果失敗則返回原始文本以進行調試
+        return response.json().catch(err => {
+            console.error("JSON解析失敗:", err);
+            return response.text().then(text => {
+                return {
+                    success: false,
+                    error: "JSON解析失敗",
+                    raw_text: text,
+                    parse_error: err.toString()
+                };
+            });
+        });
+    })
     .then(data => {
         loadingModal.hide();
+        
+        // 特殊處理JSON解析失敗的情況
+        if (data.raw_text) {
+            console.error("API回傳的資料無法解析為JSON:", data.parse_error);
+            console.log("原始回應:", data.raw_text.substring(0, 500) + "...");
+            
+            if (type === 'feynman' && window.fixFeynmanParsing) {
+                // 對於費曼類型，嘗試自動修復並重試
+                showAlert('正在嘗試修復費曼技巧的 JSON 格式...', 'warning');
+                window.fixFeynmanParsing();
+                
+                // 嘗試使用專門的恢復機制
+                if (window.recoverFeynmanData && type === 'feynman') {
+                    try {
+                        let recoveredData = window.recoverFeynmanData(data.raw_text);
+                        if (recoveredData) {
+                            console.log("成功恢復 feynman 資料:", recoveredData);
+                            
+                            // 創建臨時 ID 並添加標籤頁
+                            organizationAnalysisIds[type] = Date.now();
+                            addOrganizationTab(type, name, icon, recoveredData);
+                            showAlert(`${name} 整理資料已成功修復！`, 'success');
+                            return;
+                        }
+                    } catch (recoverErr) {
+                        console.error("恢復 feynman 資料失敗:", recoverErr);
+                    }
+                }
+                
+                try {
+                    // 通用的 JSON 修復嘗試
+                    let rawText = data.raw_text;
+                    // 尋找 JSON 部分
+                    let jsonStart = rawText.indexOf('{');
+                    let jsonEnd = rawText.lastIndexOf('}');
+                    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                        let jsonText = rawText.substring(jsonStart, jsonEnd + 1);
+                        // 替換控制字符
+                        jsonText = jsonText.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+                        let result = JSON.parse(jsonText);
+                        
+                        // 成功解析，創建模擬的API成功回應
+                        organizationAnalysisIds[type] = Date.now(); // 臨時ID
+                        addOrganizationTab(type, name, icon, result);
+                        showAlert(`${name} 整理成功修復！`, 'success');
+                        return;
+                    }
+                } catch (e) {
+                    console.error("自動修復失敗:", e);
+                }
+            }
+            
+            showAlert(`解析 ${name} 回應資料失敗，請查看控制台獲取詳細信息`, 'danger');
+            return;
+        }
+        
+        // 正常處理成功的API回應
         if (data.success) {
             // 儲存新生成的 analysis_id
             if (data.analysis_id) {
                 organizationAnalysisIds[type] = data.analysis_id;
             }
             
-            addOrganizationTab(type, name, icon, data.result);
-            showAlert(`${name} 整理完成！`, 'success');
+            try {
+                addOrganizationTab(type, name, icon, data.result);
+                showAlert(`${name} 整理完成！`, 'success');
+            } catch (tabError) {
+                console.error("創建標籤頁時出錯:", tabError);
+                showAlert(`創建 ${name} 標籤頁失敗: ${tabError.message}`, 'danger');
+            }
         } else {
-            showAlert('AI 整理失敗：' + data.error, 'danger');
+            showAlert('AI 整理失敗：' + (data.error || '未知錯誤'), 'danger');
         }
     })
     .catch(error => {
         loadingModal.hide();
+        console.error("整理過程中出錯:", error);
         showAlert('發生錯誤：' + error.message, 'danger');
     });
 }
 
 // 添加新的組織標籤頁
 function addOrganizationTab(type, name, icon, result) {
-    console.log(`嘗試添加 ${type} 標籤頁...`, { name, icon, result });
+    console.log(`嘗試添加 ${type} 標籤頁...`, { name, icon });
+    console.log(`結果數據類型: ${typeof result}, 是否為空: ${!result}`);
     
     // 檢查是否已經存在相同類型的標籤頁
     const existingTab = document.getElementById(`${type}-tab`);
     if (existingTab) {
-        console.log(`標籤頁 ${type} 已存在，跳過創建`);
+        console.log(`標籤頁 ${type} 已存在，更新內容而非重新創建`);
+        // 更新現有標籤頁的內容
+        const existingContent = document.getElementById(`${type}-content`);
+        if (existingContent) {
+            const formattedContent = formatOrganizationResult(result, type);
+            existingContent.querySelector('.note-content').innerHTML = formattedContent;
+            console.log(`${type} 標籤頁內容已更新`);
+        }
         return;
     }
     
-    // 添加標籤按鈕
-    const addTabButton = document.getElementById('add-organization-tab').parentElement;
-    const newTabHtml = `
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="${type}-tab" data-bs-toggle="tab" data-bs-target="#${type}-content" type="button" role="tab">
-                <i class="fas fa-${icon} me-1"></i>${name}
-                <button class="btn btn-sm ms-2" onclick="removeOrganizationTab('${type}')" title="移除">
-                    <i class="fas fa-times" style="font-size: 0.8em;"></i>
-                </button>
-            </button>
-        </li>
-    `;
-    addTabButton.insertAdjacentHTML('beforebegin', newTabHtml);
-    
-    // 添加標籤內容
+    // 驗證必要的DOM元素
+    const addTabButton = document.getElementById('add-organization-tab');
     const tabContent = document.getElementById('content-tab-content');
-    const formattedContent = formatOrganizationResult(result, type);
-    console.log(`格式化後的內容:`, formattedContent);
     
-    const newContentHtml = `
-        <div class="tab-pane fade" id="${type}-content" role="tabpanel">
-            <div class="note-content markdown-body mt-3">
-                ${formattedContent}
+    if (!addTabButton || !tabContent) {
+        console.error('找不到必要的DOM元素來創建標籤頁');
+        return;
+    }
+    
+    try {
+        // 添加標籤按鈕
+        const newTabHtml = `
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="${type}-tab" data-bs-toggle="tab" data-bs-target="#${type}-content" type="button" role="tab">
+                    <i class="fas fa-${icon} me-1"></i>${name}
+                    <button class="btn btn-sm ms-2" onclick="removeOrganizationTab('${type}')" title="移除" style="background:none;border:none;color:inherit;">
+                        <i class="fas fa-times" style="font-size: 0.8em;"></i>
+                    </button>
+                </button>
+            </li>
+        `;
+        addTabButton.parentElement.insertAdjacentHTML('beforebegin', newTabHtml);
+        
+        // 格式化內容
+        const formattedContent = formatOrganizationResult(result, type);
+        console.log(`${type} 格式化後的內容長度: ${formattedContent.length}`);
+        
+        // 添加標籤內容
+        const newContentHtml = `
+            <div class="tab-pane fade" id="${type}-content" role="tabpanel">
+                <div class="note-content markdown-content mt-3">
+                    ${formattedContent}
+                </div>
             </div>
-        </div>
-    `;
-    tabContent.insertAdjacentHTML('beforeend', newContentHtml);
-    
-    // 啟動新標籤
-    const newTab = new bootstrap.Tab(document.getElementById(`${type}-tab`));
-    newTab.show();
-    
-    console.log(`${type} 標籤頁創建完成！`);
+        `;
+        tabContent.insertAdjacentHTML('beforeend', newContentHtml);
+        
+        // 啟動新標籤（僅在第一個標籤頁時自動切換）
+        const existingTabs = document.querySelectorAll('#content-tabs .nav-link:not(#add-organization-tab)');
+        if (existingTabs.length === 2) { // 原始標籤 + 這個新標籤
+            const newTab = new bootstrap.Tab(document.getElementById(`${type}-tab`));
+            newTab.show();
+        }
+        
+        console.log(`${type} 標籤頁創建完成！`);
+        
+    } catch (error) {
+        console.error(`創建 ${type} 標籤頁時發生錯誤:`, error);
+        showAlert(`創建 ${name} 標籤頁失敗`, 'danger');
+    }
 }
 
 // 移除組織標籤頁
@@ -515,50 +654,93 @@ function loadPreGeneratedResults() {
     console.log('開始載入預先生成的 AI 整理結果...');
     
     fetch(`/notes/${currentNoteId}/pre-generated-results`)
-        .then(response => response.json())
+        .then(response => {
+            console.log('API 回應狀態:', response.status);
+            return response.json();
+        })
         .then(data => {
-            console.log('API 回應:', data);
+            console.log('API 回應完整數據:', data);
             
-            if (data.success && Object.keys(data.results).length > 0) {
-                console.log('找到預先生成的結果，準備創建標籤頁...');
+            if (data.success) {
+                const resultsCount = Object.keys(data.results || {}).length;
+                console.log(`找到 ${resultsCount} 個預先生成的結果`);
                 
-                // 為每個預先生成的結果創建標籤頁
-                const typeNames = {
-                    'mindmap': {name: '心智圖結構化', icon: 'sitemap'},
-                    'hierarchical': {name: '層次化重點整理', icon: 'list'},
-                    'feynman': {name: '費曼技巧解析', icon: 'lightbulb'},
-                    'qa_learning': {name: '問答式學習', icon: 'question'},
-                    'comparison': {name: '對比分析整理', icon: 'balance-scale'},
-                    'memory_palace': {name: '記憶宮殿法', icon: 'home'},
-                    'format_enhance': {name: '格式化與補強', icon: 'magic'}
-                };
-                
-                for (const [type, resultWrapper] of Object.entries(data.results)) {
-                    const typeInfo = typeNames[type];
-                    if (typeInfo) {
-                        console.log(`創建 ${type} 標籤頁...`, resultWrapper);
-                        
-                        // 儲存 analysis_id 以供刪除時使用
-                        organizationAnalysisIds[type] = resultWrapper.analysis_id;
-                        
-                        // 確保正確傳遞結果數據，保留珍貴的 AI 整理內容！
-                        addOrganizationTab(type, typeInfo.name, typeInfo.icon, resultWrapper.result);
+                if (resultsCount > 0) {
+                    console.log('結果詳情:', data.results);
+                    
+                    // 為每個預先生成的結果創建標籤頁
+                    const typeNames = {
+                        'mindmap': {name: '心智圖結構化', icon: 'sitemap'},
+                        'hierarchical': {name: '層次化重點整理', icon: 'list'},
+                        'feynman': {name: '費曼技巧解析', icon: 'lightbulb'},
+                        'qa_learning': {name: '問答式學習', icon: 'question'},
+                        'comparison': {name: '對比分析整理', icon: 'balance-scale'},
+                        'memory_palace': {name: '記憶宮殿法', icon: 'home'},
+                        'format_enhance': {name: '格式化與補強', icon: 'magic'}
+                    };
+                    
+                    let successCount = 0;
+                    let errorCount = 0;
+                    
+                    for (const [type, resultWrapper] of Object.entries(data.results)) {
+                        const typeInfo = typeNames[type];
+                        if (typeInfo) {
+                            try {
+                                console.log(`創建 ${type} 標籤頁...`);
+                                console.log(`- Analysis ID: ${resultWrapper.analysis_id}`);
+                                console.log(`- Result 格式:`, typeof resultWrapper.result);
+                                console.log(`- Result 內容預覽:`, Object.keys(resultWrapper.result || {}));
+                                
+                                // 驗證結果數據
+                                if (!resultWrapper.result) {
+                                    console.warn(`${type} 的結果數據為空`);
+                                    errorCount++;
+                                    continue;
+                                }
+                                
+                                // 儲存 analysis_id 以供刪除時使用
+                                organizationAnalysisIds[type] = resultWrapper.analysis_id;
+                                
+                                // 創建標籤頁
+                                addOrganizationTab(type, typeInfo.name, typeInfo.icon, resultWrapper.result);
+                                successCount++;
+                                
+                            } catch (error) {
+                                console.error(`創建 ${type} 標籤頁失敗:`, error);
+                                errorCount++;
+                            }
+                        } else {
+                            console.warn(`未知的整理類型: ${type}`);
+                            errorCount++;
+                        }
                     }
+                    
+                    console.log(`標籤頁創建完成！成功: ${successCount}, 失敗: ${errorCount}`);
+                    
+                    // 如果有成功創建的標籤頁，隱藏舊的顯示區域
+                    if (successCount > 0) {
+                        const container = document.getElementById('pre-generated-results');
+                        if (container) {
+                            container.style.display = 'none';
+                        }
+                    }
+                    
+                    // 如果有錯誤，顯示提示
+                    if (errorCount > 0) {
+                        showAlert(`已載入 ${successCount} 個AI整理結果，${errorCount} 個載入失敗`, 'warning');
+                    }
+                    
+                } else {
+                    console.log('沒有找到預先生成的結果');
                 }
-                
-                // 隱藏舊的預先生成結果顯示區域（因為現在用標籤頁了）
-                const container = document.getElementById('pre-generated-results');
-                if (container) {
-                    container.style.display = 'none';
-                }
-                
-                console.log('所有 AI 整理標籤頁已創建完成！');
             } else {
-                console.log('沒有找到預先生成的結果');
+                console.error('API 回應失敗:', data.error);
+                showAlert('載入AI整理結果失敗：' + (data.error || '未知錯誤'), 'danger');
             }
         })
         .catch(error => {
             console.error('載入預先生成結果時發生錯誤:', error);
+            showAlert('載入AI整理結果時發生網路錯誤', 'danger');
         });
 }
 
@@ -613,9 +795,83 @@ function formatOrganizationResult(result, type) {
     }
     
     // 根據不同的整理類型顯示特定內容
-    if (type === 'mindmap' && result.mindmap_structure) {
-        html += '<h6>心智圖結構：</h6>';
-        html += '<div class="small"><pre class="bg-light p-2">' + JSON.stringify(result.mindmap_structure, null, 2) + '</pre></div>';
+    if (type === 'mindmap') {
+        if (result.mindmap_data) {
+            // 為圖表容器創建一個唯一的 ID
+            const chartId = `echart-mindmap-${Date.now()}`;
+            
+            // 創建容器 div，並設定一個高度
+            html += `<h6><i class="fas fa-project-diagram me-2 text-primary"></i>心智圖視覺化</h6>`;
+            html += `<div id="${chartId}" style="width: 100%; height: 500px; border: 1px solid #eee; margin-bottom: 15px;"></div>`;
+
+            // 延遲執行 ECharts 初始化，確保 DOM 元素已渲染
+            setTimeout(() => {
+                try {
+                    const chartDom = document.getElementById(chartId);
+                    if (!chartDom) return;
+                    
+                    const myChart = echarts.init(chartDom);
+                    
+                    const option = {
+                        tooltip: {
+                            trigger: 'item',
+                            triggerOn: 'mousemove'
+                        },
+                        series: [
+                            {
+                                type: 'tree',
+                                data: [result.mindmap_data], // ECharts 需要一個陣列
+                                top: '5%',
+                                left: '10%',
+                                bottom: '5%',
+                                right: '20%',
+                                symbolSize: 10, // 節點大小
+                                label: {
+                                    position: 'left',
+                                    verticalAlign: 'middle',
+                                    align: 'right',
+                                    fontSize: 14
+                                },
+                                leaves: {
+                                    label: {
+                                        position: 'right',
+                                        verticalAlign: 'middle',
+                                        align: 'left'
+                                    }
+                                },
+                                emphasis: {
+                                    focus: 'descendant'
+                                },
+                                expandAndCollapse: true,
+                                animationDuration: 550,
+                                animationDurationUpdate: 750
+                            }
+                        ]
+                    };
+                    
+                    myChart.setOption(option);
+                    // 讓圖表隨視窗大小變動
+                    window.addEventListener('resize', () => myChart.resize());
+                    
+                    console.log("心智圖渲染成功");
+                } catch (e) {
+                    console.error("ECharts 初始化失敗:", e);
+                    const chartNode = document.getElementById(chartId);
+                    if (chartNode) {
+                        chartNode.innerHTML = `<div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            圖表渲染失敗，請檢查資料格式或重新整理頁面。
+                            <br><small class="text-muted">${e.message}</small>
+                        </div>`;
+                    }
+                }
+            }, 100);
+        }
+        // 向下相容：顯示舊版的 mindmap_structure
+        else if (result.mindmap_structure) {
+            html += '<h6>心智圖結構：</h6>';
+            html += '<div class="small"><pre class="bg-light p-2">' + JSON.stringify(result.mindmap_structure, null, 2) + '</pre></div>';
+        }
     } else if (type === 'hierarchical' && result.main_points) {
         html += '<h6>主要重點：</h6>';
         if (Array.isArray(result.main_points)) {
@@ -638,24 +894,101 @@ function formatOrganizationResult(result, type) {
         } else {
             html += `<div class="mb-3">${renderMarkdown(result.basic_questions)}</div>`;
         }
+    } else if (type === 'feynman') {
+        // 費曼技巧解析的特殊顯示
+        html += '<div class="feynman-technique-container p-3 border rounded">';
+        
+        if (result.simple_explanation) {
+            html += '<h6><i class="fas fa-lightbulb me-2 text-warning"></i>簡單解釋</h6>';
+            html += `<div class="alert alert-light border-start border-4 border-warning p-3 mb-3">${renderMarkdown(result.simple_explanation)}</div>`;
+        }
+        
+        if (result.analogies && Array.isArray(result.analogies)) {
+            html += '<h6><i class="fas fa-exchange-alt me-2 text-info"></i>類比</h6>';
+            html += '<ul class="list-group mb-3">';
+            result.analogies.forEach(analogy => {
+                html += `<li class="list-group-item">${renderMarkdown(analogy)}</li>`;
+            });
+            html += '</ul>';
+        }
+        
+        if (result.step_by_step && Array.isArray(result.step_by_step)) {
+            html += '<h6><i class="fas fa-tasks me-2 text-success"></i>步驟說明</h6>';
+            html += '<ol class="list-group list-group-numbered mb-3">';
+            result.step_by_step.forEach(step => {
+                html += `<li class="list-group-item">${renderMarkdown(step)}</li>`;
+            });
+            html += '</ol>';
+        }
+        
+        if (result.examples && Array.isArray(result.examples)) {
+            html += '<h6><i class="fas fa-flask me-2 text-primary"></i>實例</h6>';
+            html += '<div class="card mb-3">';
+            result.examples.forEach((example, index) => {
+                html += `<div class="card-body border-bottom ${index > 0 ? 'pt-3' : ''}">${renderMarkdown(example)}</div>`;
+            });
+            html += '</div>';
+        }
+        
+        if (result.potential_gaps && Array.isArray(result.potential_gaps)) {
+            html += '<h6><i class="fas fa-exclamation-circle me-2 text-danger"></i>可能的盲點</h6>';
+            html += '<ul class="list-group mb-3">';
+            result.potential_gaps.forEach(gap => {
+                html += `<li class="list-group-item list-group-item-warning">${renderMarkdown(gap)}</li>`;
+            });
+            html += '</ul>';
+        }
+        
+        if (result.teaching_points && Array.isArray(result.teaching_points)) {
+            html += '<h6><i class="fas fa-chalkboard-teacher me-2 text-success"></i>教學重點</h6>';
+            html += '<ul class="list-group mb-3">';
+            result.teaching_points.forEach(point => {
+                html += `<li class="list-group-item list-group-item-success">${renderMarkdown(point)}</li>`;
+            });
+            html += '</ul>';
+        }
+        
+        html += '</div>';
     } else if (type === 'memory_palace') {
         // 記憶宮殿法的特殊顯示
+        html += `<div class="memory-palace-container p-3 border rounded">`;
+        
         if (result.memory_story) {
-            html += '<h6><i class="fas fa-book me-2"></i>記憶故事：</h6>';
-            html += `<div class="alert alert-info mb-3">${renderMarkdown(result.memory_story)}</div>`;
+            html += '<h6><i class="fas fa-book me-2 text-primary"></i>記憶故事</h6>';
+            html += `<div class="alert alert-light border-start border-4 border-primary p-3 mb-3">${renderMarkdown(result.memory_story)}</div>`;
         }
         
         if (result.spatial_layout) {
-            html += '<h6><i class="fas fa-map me-2"></i>空間佈局：</h6>';
-            html += `<div class="mb-3">${renderMarkdown(result.spatial_layout)}</div>`;
+            html += '<h6><i class="fas fa-map-signs me-2 text-info"></i>空間佈局</h6>';
+            html += `<div class="card mb-3">
+                      <div class="card-body">
+                        ${renderMarkdown(result.spatial_layout)}
+                      </div>
+                     </div>`;
         }
         
         if (result.key_anchors) {
-            html += '<h6><i class="fas fa-anchor me-2"></i>關鍵記憶錨點：</h6>';
-            if (Array.isArray(result.key_anchors)) {
-                html += '<ul>';
+            html += '<h6><i class="fas fa-anchor me-2 text-success"></i>關鍵記憶錨點</h6>';
+            
+            // 新格式：key_anchors 是對象數組
+            if (Array.isArray(result.key_anchors) && typeof result.key_anchors[0] === 'object') {
+                html += '<div class="list-group mb-3">';
                 result.key_anchors.forEach(anchor => {
-                    html += `<li>${anchor}</li>`;
+                    html += `<div class="list-group-item list-group-item-action flex-column align-items-start">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1">${anchor.anchor || '未命名錨點'}</h6>
+                                </div>
+                                <p class="mb-1">${anchor.content || anchor.anchor || '無內容'}</p>
+                                ${anchor.visual ? `<small class="text-muted"><em><i class="fas fa-eye me-1"></i>${anchor.visual}</em></small>` : ''}
+                             </div>`;
+                });
+                html += '</div>';
+            }
+            // 舊格式：key_anchors 是字符串數組
+            else if (Array.isArray(result.key_anchors)) {
+                html += '<ul class="list-group list-group-flush mb-3">';
+                result.key_anchors.forEach(anchor => {
+                    html += `<li class="list-group-item">${anchor}</li>`;
                 });
                 html += '</ul>';
             } else {
@@ -665,23 +998,37 @@ function formatOrganizationResult(result, type) {
         }
         
         if (result.visual_imagery) {
-            html += '<h6><i class="fas fa-eye me-2"></i>視覺想像：</h6>';
-            html += `<div class="mb-3">${renderMarkdown(result.visual_imagery)}</div>`;
+            html += '<h6><i class="fas fa-image me-2 text-warning"></i>視覺想像</h6>';
+            html += `<div class="card mb-3 bg-light">
+                      <div class="card-body">
+                        <em>${renderMarkdown(result.visual_imagery)}</em>
+                      </div>
+                     </div>`;
         }
         
         if (result.memory_cues) {
-            html += '<h6><i class="fas fa-lightbulb me-2"></i>記憶提示：</h6>';
+            html += '<h6><i class="fas fa-lightbulb me-2 text-warning"></i>記憶提示</h6>';
             if (Array.isArray(result.memory_cues)) {
-                html += '<ul>';
+                html += '<div class="d-flex flex-wrap mb-3">';
                 result.memory_cues.forEach(cue => {
-                    html += `<li>${cue}</li>`;
+                    html += `<span class="badge bg-warning text-dark m-1 p-2">${cue}</span>`;
                 });
-                html += '</ul>';
+                html += '</div>';
             } else {
                 // 如果不是數組，可能是字符串
                 html += `<div class="mb-3">${renderMarkdown(result.memory_cues)}</div>`;
             }
         }
+        
+        if (result.practice_routine) {
+            html += '<h6><i class="fas fa-calendar-check me-2 text-info"></i>練習建議</h6>';
+            html += `<div class="alert alert-light border-start border-4 border-info mb-3">
+                        ${renderMarkdown(result.practice_routine)}
+                     </div>`;
+        }
+        
+        // 關閉記憶宮殿容器
+        html += `</div>`;
         
         if (result.practice_routine) {
             html += '<h6><i class="fas fa-dumbbell me-2"></i>練習建議：</h6>';
@@ -718,7 +1065,52 @@ function formatOrganizationResult(result, type) {
         }
     }
     
-    return html || '<p class="text-muted">內容正在生成中...</p>';
+    // 如果沒有任何HTML內容，嘗試從其他欄位生成內容
+    if (!html) {
+        // 檢查是否有任何可用的內容欄位
+        const possibleContentFields = [
+            'organized_content', 'formatted_content', 'content', 
+            'summary', 'description', 'text', 'data'
+        ];
+        
+        for (const field of possibleContentFields) {
+            if (result[field]) {
+                console.log(`使用 ${field} 欄位作為備用內容`);
+                if (typeof result[field] === 'string') {
+                    html = `<div class="ai-organized-content markdown-content mb-3">${renderMarkdown(result[field])}</div>`;
+                    break;
+                } else if (typeof result[field] === 'object') {
+                    html = `<div class="mb-3"><pre class="bg-light p-2">${JSON.stringify(result[field], null, 2)}</pre></div>`;
+                    break;
+                }
+            }
+        }
+        
+        // 如果仍然沒有內容，顯示調試信息
+        if (!html) {
+            console.warn(`${type} 類型的結果沒有可用內容，可用欄位:`, Object.keys(result));
+            html = `
+                <div class="alert alert-warning">
+                    <h6><i class="fas fa-exclamation-triangle me-2"></i>內容格式問題</h6>
+                    <p class="mb-2">AI 整理結果格式異常，可能的原因：</p>
+                    <ul class="mb-2">
+                        <li>AI 回應格式不完整</li>
+                        <li>JSON 解析錯誤</li>
+                        <li>網路連線問題</li>
+                    </ul>
+                    <button class="btn btn-sm btn-outline-primary" onclick="regenerateOrganization('${type}', '${type}')">
+                        <i class="fas fa-sync me-1"></i>重新生成
+                    </button>
+                    <details class="mt-2">
+                        <summary class="small text-muted">調試信息</summary>
+                        <pre class="small mt-2">${JSON.stringify(result, null, 2)}</pre>
+                    </details>
+                </div>
+            `;
+        }
+    }
+    
+    return html;
 }
 
 // 重新生成特定類型的整理
@@ -1284,4 +1676,13 @@ function showAlert(message, type) {
         border-bottom: 1px solid #1e7e34;
     }
 </style>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<!-- 引入 ECharts 初始化和工具函數 -->
+<script src="{{ url_for('static', filename='notes/echarts_init.js') }}"></script>
+<!-- 引入 feynman 修復腳本 -->
+<script src="{{ url_for('static', filename='js/recover_feynman_data.js') }}"></script>
+<script src="{{ url_for('static', filename='js/fix_feynman_parsing.js') }}"></script>
 {% endblock %}

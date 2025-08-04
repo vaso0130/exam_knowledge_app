@@ -23,11 +23,11 @@
                 <div class="collapse mt-2" id="source-question">
                     <div class="card card-body">
                         <h6 class="mb-2">題目</h6>
-                        <div class="markdown-body">{{ source_question.question_text | markdown }}</div>
+                        <div class="markdown-content">{{ source_question.question_text | markdown }}</div>
                         {% if source_question.answer_text %}
                         <hr>
                         <h6 class="mb-2">答案</h6>
-                        <div class="markdown-body">{{ source_question.answer_text | markdown }}</div>
+                        <div class="markdown-content">{{ source_question.answer_text | markdown }}</div>
                         {% endif %}
                     </div>
                 </div>
@@ -41,7 +41,37 @@
 
                 <div class="mb-3">
                     <label for="content" class="form-label"><strong>內容 (支援 Markdown)</strong></label>
-                    <textarea class="form-control" id="content" name="content" rows="15" required>{{ note.content if note else default_content }}</textarea>
+                    {% if source_question %}
+                    <div class="mb-2">
+                        <div class="d-flex align-items-center">
+                            <div class="form-check form-switch me-3">
+                                <input class="form-check-input" type="checkbox" id="smart_ai_mode" name="smart_ai_mode" checked>
+                                <label class="form-check-label" for="smart_ai_mode">
+                                    <small><i class="fas fa-magic me-1"></i>智能AI輔助模式</small>
+                                </label>
+                            </div>
+                            <div id="ai-assist-controls" class="flex-grow-1">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text"><i class="fas fa-robot"></i></span>
+                                    <input type="text" class="form-control" id="ai_prompt" name="ai_prompt" 
+                                           placeholder="給AI的額外指示（例如：請特別關注重點概念、請用簡單易懂的方式說明...）">
+                                    <button type="button" class="btn btn-warning" id="generate-smart-content">
+                                        <i class="fas fa-magic me-1"></i>🚀 AI生成筆記
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle me-1"></i>
+                                AI將結合題目、答案和您的指示來生成筆記內容。即使內容區為空也能生成！
+                            </small>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <textarea class="form-control" id="content" name="content" rows="15"
+                              {% if not source_question %}required{% endif %}
+                              {% if source_question %}placeholder="在此輸入您的筆記內容，或留空讓AI為您生成..."{% endif %}>{{ note.content if note else default_content }}</textarea>
                 </div>
 
                 <!-- AI 功能選項 -->
@@ -166,16 +196,18 @@
                 <!-- Simple live preview (optional, can be enhanced with JS) -->
                 <div class="mb-4">
                     <h5 class="mb-2">即時預覽</h5>
-                    <div id="preview" class="border p-3 bg-light markdown-body" style="min-height: 100px;"></div>
+                    <div id="preview" class="border p-3 bg-light markdown-content" style="min-height: 100px;"></div>
                 </div>
 
                 <button type="submit" name="action" value="save" class="btn btn-primary">
                     <i class="fas fa-save me-1"></i> 儲存筆記
                 </button>
                 {% if source_question %}
-                <button type="submit" name="action" value="ai_generate" class="btn btn-warning ms-2">
-                    🚀 AI 自動生成筆記
-                </button>
+                <div class="btn-group ms-2" role="group">
+                    <button type="button" class="btn btn-outline-info" data-bs-toggle="collapse" data-bs-target="#source-question" aria-expanded="false">
+                        <i class="fas fa-eye me-1"></i> 查看題目
+                    </button>
+                </div>
                 {% endif %}
             </form>
         </div>
@@ -208,6 +240,86 @@
             enableOrgCheckbox.addEventListener('change', function() {
                 orgOptionsDiv.style.display = this.checked ? 'block' : 'none';
             });
+        }
+
+        // 智能AI輔助控制
+        const smartAiMode = document.getElementById('smart_ai_mode');
+        const aiAssistControls = document.getElementById('ai-assist-controls');
+        const generateBtn = document.getElementById('generate-smart-content');
+        
+        if (smartAiMode && aiAssistControls) {
+            smartAiMode.addEventListener('change', function() {
+                aiAssistControls.style.display = this.checked ? 'block' : 'none';
+            });
+        }
+
+        // AI智能生成按鈕
+        if (generateBtn) {
+            generateBtn.addEventListener('click', function() {
+                const aiPrompt = document.getElementById('ai_prompt').value;
+                const currentContent = contentEl.value;
+                
+                // 顯示載入狀態
+                generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>AI生成中...';
+                generateBtn.disabled = true;
+                
+                // 發送AJAX請求到後端
+                fetch(window.location.href, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        'action': 'smart_ai_generate',
+                        'ai_prompt': aiPrompt,
+                        'current_content': currentContent,
+                        'title': document.getElementById('title').value
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // 更新內容區域
+                        contentEl.value = data.generated_content;
+                        updatePreview();
+                        
+                        // 顯示成功提示
+                        showAlert('success', 'AI已成功生成筆記內容！');
+                    } else {
+                        showAlert('error', 'AI生成失敗：' + data.error);
+                    }
+                })
+                .catch(error => {
+                    showAlert('error', '發生錯誤：' + error.message);
+                })
+                .finally(() => {
+                    // 恢復按鈕狀態
+                    generateBtn.innerHTML = '<i class="fas fa-magic me-1"></i>🚀 AI生成筆記';
+                    generateBtn.disabled = false;
+                });
+            });
+        }
+        
+        // 顯示提示訊息的功能
+        function showAlert(type, message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // 插入到表單前面
+            const form = document.querySelector('form');
+            form.parentNode.insertBefore(alertDiv, form);
+            
+            // 3秒後自動消失
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 3000);
         }
     });
 </script>

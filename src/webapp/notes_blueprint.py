@@ -63,13 +63,36 @@ def create_note():
             if enable_ai_organization and organization_types:
                 # 啟動背景任務來生成 AI 整理結果
                 from threading import Thread
+                import time
                 
                 def generate_organizations():
-                    for org_type in organization_types:
+                    """背景生成AI整理結果"""
+                    success_count = 0
+                    error_count = 0
+                    
+                    print(f"開始為筆記 {note_id} 生成 {len(organization_types)} 種整理方式...")
+                    
+                    for i, org_type in enumerate(organization_types):
                         try:
-                            note_manager.organize_note_with_ai(user_id, note_id, org_type)
+                            print(f"生成 {org_type} ({i+1}/{len(organization_types)})...")
+                            result = note_manager.organize_note_with_ai(user_id, note_id, org_type)
+                            
+                            if result.get('success'):
+                                success_count += 1
+                                print(f"✅ {org_type} 生成成功")
+                            else:
+                                error_count += 1
+                                print(f"❌ {org_type} 生成失敗: {result.get('error', '未知錯誤')}")
+                                
+                            # 在每個整理類型之間稍作延遲，避免API限制
+                            if i < len(organization_types) - 1:
+                                time.sleep(2)
+                                
                         except Exception as e:
-                            print(f"Warning: Failed to generate {org_type} organization: {e}")
+                            error_count += 1
+                            print(f"❌ 生成 {org_type} 時發生異常: {e}")
+                    
+                    print(f"背景任務完成！成功: {success_count}, 失敗: {error_count}")
                 
                 # 在背景執行 AI 整理
                 thread = Thread(target=generate_organizations)
@@ -93,7 +116,7 @@ def create_note():
     return render_template('notes/note_edit.html', title="新增筆記", note=None)
 
 
-@notes_bp.route('/from-question/<int:question_id>', methods=['GET', 'POST'])
+@notes_bp.route('/from-question/<string:question_id>', methods=['GET', 'POST'])
 def create_note_from_question(question_id):
     """Create a note referencing a question."""
     user_id = g.current_user['id']
@@ -101,39 +124,81 @@ def create_note_from_question(question_id):
     question = main_db.get_question_by_id(question_id)
     if not question:
         flash("找不到指定的題目。", "danger")
-        return redirect(url_for('questions'))
+        return redirect(url_for('main.questions'))
 
     if request.method == 'POST':
         action = request.form.get('action')
-        if action == 'ai_generate':
-            note_id = note_manager.create_note_from_questions(
-                user_id=user_id,
-                questions_data=[{
+        
+        # 處理智能AI生成請求 (AJAX)
+        if action == 'smart_ai_generate':
+            try:
+                ai_prompt = request.form.get('ai_prompt', '')
+                current_content = request.form.get('current_content', '')
+                title = request.form.get('title', '')
+                
+                # 準備生成筆記的資料
+                generation_context = {
                     'question_text': question.get('question_text', ''),
-                    'answer_text': question.get('answer_text', '')
-                }]
-            )
-            if note_id:
-                note_manager.db_manager.save_ai_analysis(user_id, note_id, 'source_question', {
-                    'id': question['id'],
-                    'question_text': question.get('question_text', ''),
-                    'answer_text': question.get('answer_text', '')
+                    'answer_text': question.get('answer_text', ''),
+                    'user_content': current_content,
+                    'user_prompt': ai_prompt,
+                    'title': title
+                }
+                
+                # 呼叫智能筆記生成方法
+                generated_content = note_manager.generate_smart_note_content(
+                    user_id=user_id,
+                    context=generation_context
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'generated_content': generated_content
                 })
-                flash("筆記已成功建立！", "success")
-                return redirect(url_for('.note_detail', note_id=note_id))
-            else:
-                flash("建立筆記時發生錯誤。", "danger")
+                
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
+        # 處理一般的保存和智能AI生成
         else:
             title = request.form.get('title')
             content = request.form.get('content')
+            smart_ai_mode = request.form.get('smart_ai_mode') == 'on'
 
             enable_ai_analysis = request.form.get('enable_ai_analysis') == 'on'
             enable_ai_organization = request.form.get('enable_ai_organization') == 'on'
             organization_types = request.form.getlist('organization_types')
 
-            if not title or not content:
+            # 如果啟用智能AI模式且內容為空，則不要求必填
+            if not title or (not content and not smart_ai_mode):
                 flash("標題和內容不能為空。", "danger")
             else:
+                # 如果內容為空但啟用了智能AI模式，先生成內容
+                if not content and smart_ai_mode:
+                    try:
+                        ai_prompt = request.form.get('ai_prompt', '')
+                        generation_context = {
+                            'question_text': question.get('question_text', ''),
+                            'answer_text': question.get('answer_text', ''),
+                            'user_content': '',
+                            'user_prompt': ai_prompt,
+                            'title': title
+                        }
+                        content = note_manager.generate_smart_note_content(user_id=user_id, context=generation_context)
+                    except Exception as e:
+                        flash(f"AI生成內容失敗：{str(e)}", "danger")
+                        return render_template(
+                            'notes/note_edit.html',
+                            title="新增筆記",
+                            note=None,
+                            default_title=default_title,
+                            default_content=request.form.get('content', ''),
+                            source_question=question
+                        )
+                
                 note_id = note_manager.create_new_note(
                     user_id,
                     title,
