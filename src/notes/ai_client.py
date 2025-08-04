@@ -57,14 +57,29 @@ class NoteAIClient:
             # Try to parse as JSON
             if raw_response.strip().startswith('{') or raw_response.strip().startswith('['):
                 try:
-                    return json.loads(raw_response)
+                    parsed_json = json.loads(raw_response)
+                    # 確保返回的是字典格式
+                    if isinstance(parsed_json, dict):
+                        return parsed_json
+                    elif isinstance(parsed_json, list):
+                        # 如果是列表，包裝成字典
+                        return {'data': parsed_json}
+                    else:
+                        # 其他類型，包裝成字典
+                        return {'value': parsed_json}
                 except json.JSONDecodeError:
                     pass
             
             # Use the main app's JSON extraction utility
             extracted_json = extract_json_from_text(raw_response)
             if extracted_json:
-                return extracted_json
+                # 確保返回的是字典格式
+                if isinstance(extracted_json, dict):
+                    return extracted_json
+                elif isinstance(extracted_json, list):
+                    return {'data': extracted_json}
+                else:
+                    return {'value': extracted_json}
                 
             # If all fails, return error structure
             return {'error': 'Failed to parse JSON response', 'raw_response': raw_response}
@@ -457,6 +472,17 @@ class NoteAIClient:
                 }
             response_data['success'] = True
             response_data['model_used'] = 'simple' if use_simple_model else 'primary'
+            
+            # 確保格式化功能有有效的 organized_content
+            if operation_type == "format_enhance" and not response_data.get('organized_content'):
+                if response_data.get('formatted_content'):
+                    response_data['organized_content'] = response_data['formatted_content']
+                elif response_data.get('data'):
+                    # 如果AI返回的是包裝在data中的內容
+                    response_data['organized_content'] = str(response_data['data'])
+                else:
+                    response_data['organized_content'] = '格式化處理完成，但缺少整理後的內容。'
+            
             return response_data
         except Exception as e:
             print(f"Error during {operation_type} operation: {e}")

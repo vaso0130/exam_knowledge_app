@@ -271,10 +271,17 @@ def edit_note(note_id):
             'title': request.form.get('title'),
             'content': request.form.get('content')
         }
+        
+        # 檢查是否需要重新分析
+        enable_ai_reanalysis = request.form.get('enable_ai_reanalysis') == 'on'
+        
         if not updates['title'] or not updates['content']:
             flash("標題和內容不能為空。", "danger")
-        elif note_manager.update_existing_note(user_id, note_id, **updates):
-            flash("筆記已更新。", "success")
+        elif note_manager.update_existing_note(user_id, note_id, enable_ai_reanalysis=enable_ai_reanalysis, **updates):
+            if enable_ai_reanalysis:
+                flash("筆記已更新並重新分析AI智慧助理內容。", "success")
+            else:
+                flash("筆記已更新。", "success")
             return redirect(url_for('.note_detail', note_id=note_id))
         else:
             flash("更新筆記失敗。", "danger")

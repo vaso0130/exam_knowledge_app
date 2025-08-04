@@ -84,65 +84,72 @@ class NoteManager:
             'has_ai_analysis': bool(note.get('ai_summary') or ai_keywords)
         }
 
-        # 智慧快取：嘗試從資料庫讀取 AI 建議
-        try:
-            # 檢查是否有快取的相關筆記建議
-            cached_related_notes = self.db_manager.get_ai_analysis(user_id, note_id, 'related_notes_suggestions')
-            if cached_related_notes:
-                note_details['related_notes'] = cached_related_notes[0]['result'].get('related_notes', [])
-            else:
-                # 沒有快取，生成新的相關筆記建議
-                related_notes = self._get_related_notes_fast(user_id, note_id, note)
-                # 存回資料庫
-                self.db_manager.save_ai_analysis(user_id, note_id, 'related_notes_suggestions', {
-                    'related_notes': related_notes,
-                    'generated_at': note['updated_at']
-                })
-                note_details['related_notes'] = related_notes
-
-            # 檢查是否有快取的相關知識點建議
-            cached_knowledge_points = self.db_manager.get_ai_analysis(user_id, note_id, 'knowledge_points_suggestions')
-            if cached_knowledge_points:
-                note_details['related_knowledge_points'] = cached_knowledge_points[0]['result'].get('knowledge_points', [])
-            else:
-                # 沒有快取，生成新的知識點建議
-                knowledge_points = self._get_related_knowledge_points_fast(note)
-                # 存回資料庫
-                self.db_manager.save_ai_analysis(user_id, note_id, 'knowledge_points_suggestions', {
-                    'knowledge_points': knowledge_points,
-                    'generated_at': note['updated_at']
-                })
-                note_details['related_knowledge_points'] = knowledge_points
-
-            # 檢查是否有快取的 AI 學習建議
-            cached_study_suggestions = self.db_manager.get_ai_analysis(user_id, note_id, 'study_suggestions')
-            if cached_study_suggestions:
-                note_details['study_suggestions'] = cached_study_suggestions[0]['result'].get('suggestions', [])
-            else:
-                # 沒有快取，呼叫 AI 生成學習建議
-                try:
-                    ai_suggestions = self.ai_client.suggest_related_content(
-                        note_content=note['content'],
-                        existing_notes=[n['title'] for n in self.get_all_notes_for_user(user_id) if n['id'] != note_id],
-                        all_knowledge_points=self._get_knowledge_points_from_main_db()
-                    )
-                    study_suggestions = ai_suggestions.get('study_suggestions', [])
+        # 只有當筆記啟用了 AI 分析時，才生成智慧建議
+        if note_details['has_ai_analysis']:
+            # 智慧快取：嘗試從資料庫讀取 AI 建議
+            try:
+                # 檢查是否有快取的相關筆記建議
+                cached_related_notes = self.db_manager.get_ai_analysis(user_id, note_id, 'related_notes_suggestions')
+                if cached_related_notes:
+                    note_details['related_notes'] = cached_related_notes[0]['result'].get('related_notes', [])
+                else:
+                    # 沒有快取，生成新的相關筆記建議
+                    related_notes = self._get_related_notes_fast(user_id, note_id, note)
                     # 存回資料庫
-                    self.db_manager.save_ai_analysis(user_id, note_id, 'study_suggestions', {
-                        'suggestions': study_suggestions,
-                        'full_ai_response': ai_suggestions,
+                    self.db_manager.save_ai_analysis(user_id, note_id, 'related_notes_suggestions', {
+                        'related_notes': related_notes,
                         'generated_at': note['updated_at']
                     })
-                    note_details['study_suggestions'] = study_suggestions
-                except Exception as e:
-                    print(f"Warning: Failed to generate AI study suggestions: {e}")
-                    note_details['study_suggestions'] = []
+                    note_details['related_notes'] = related_notes
 
-        except Exception as e:
-            print(f"Warning: Error in smart caching for note {note_id}: {e}")
-            # 降級處理：提供基本的相關資訊
-            note_details['related_notes'] = self._get_related_notes_fast(user_id, note_id, note)
-            note_details['related_knowledge_points'] = self._get_related_knowledge_points_fast(note)
+                # 檢查是否有快取的相關知識點建議
+                cached_knowledge_points = self.db_manager.get_ai_analysis(user_id, note_id, 'knowledge_points_suggestions')
+                if cached_knowledge_points:
+                    note_details['related_knowledge_points'] = cached_knowledge_points[0]['result'].get('knowledge_points', [])
+                else:
+                    # 沒有快取，生成新的知識點建議
+                    knowledge_points = self._get_related_knowledge_points_fast(note)
+                    # 存回資料庫
+                    self.db_manager.save_ai_analysis(user_id, note_id, 'knowledge_points_suggestions', {
+                        'knowledge_points': knowledge_points,
+                        'generated_at': note['updated_at']
+                    })
+                    note_details['related_knowledge_points'] = knowledge_points
+
+                # 檢查是否有快取的 AI 學習建議
+                cached_study_suggestions = self.db_manager.get_ai_analysis(user_id, note_id, 'study_suggestions')
+                if cached_study_suggestions:
+                    note_details['study_suggestions'] = cached_study_suggestions[0]['result'].get('suggestions', [])
+                else:
+                    # 沒有快取，呼叫 AI 生成學習建議
+                    try:
+                        ai_suggestions = self.ai_client.suggest_related_content(
+                            note_content=note['content'],
+                            existing_notes=[n['title'] for n in self.get_all_notes_for_user(user_id) if n['id'] != note_id],
+                            all_knowledge_points=self._get_knowledge_points_from_main_db()
+                        )
+                        study_suggestions = ai_suggestions.get('study_suggestions', [])
+                        # 存回資料庫
+                        self.db_manager.save_ai_analysis(user_id, note_id, 'study_suggestions', {
+                            'suggestions': study_suggestions,
+                            'full_ai_response': ai_suggestions,
+                            'generated_at': note['updated_at']
+                        })
+                        note_details['study_suggestions'] = study_suggestions
+                    except Exception as e:
+                        print(f"Warning: Failed to generate AI study suggestions: {e}")
+                        note_details['study_suggestions'] = []
+
+            except Exception as e:
+                print(f"Warning: Error in smart caching for note {note_id}: {e}")
+                # 降級處理：提供基本的相關資訊
+                note_details['related_notes'] = self._get_related_notes_fast(user_id, note_id, note)
+                note_details['related_knowledge_points'] = self._get_related_knowledge_points_fast(note)
+                note_details['study_suggestions'] = []
+        else:
+            # 用戶關掉了 AI 功能，不生成智慧建議
+            note_details['related_notes'] = []
+            note_details['related_knowledge_points'] = []
             note_details['study_suggestions'] = []
 
         return note_details
@@ -456,6 +463,23 @@ class NoteManager:
         note = self.db_manager.get_note_by_id(user_id, note_id)
         if not note:
             return {}
+
+        # 檢查筆記是否啟用AI功能（使用與 get_note_details 相同的邏輯）
+        ai_keywords = note.get('ai_keywords', '[]')
+        if isinstance(ai_keywords, str):
+            try:
+                ai_keywords = eval(ai_keywords) if ai_keywords else []
+            except:
+                ai_keywords = []
+        
+        has_ai_analysis = bool(note.get('ai_summary') or ai_keywords)
+        
+        if not has_ai_analysis:
+            return {
+                'related_notes': [],
+                'knowledge_points': [],
+                'suggested_topics': []
+            }
 
         # 獲取用戶的其他筆記標題
         all_other_note_titles = [n['title'] for n in self.db_manager.get_all_notes_for_user(user_id) if n['id'] != note_id]
