@@ -964,14 +964,14 @@ function formatOrganizationResult(result, type) {
         if (result.intermediate_questions && result.intermediate_questions.length > 0) {
             html += '<h6><i class="fas fa-graduation-cap me-2 text-success"></i>中級問題</h6>';
             html += '<div class="accordion mb-3" id="qa-intermediate-accordion">';
-            
+
             if (Array.isArray(result.intermediate_questions)) {
                 result.intermediate_questions.forEach((question, index) => {
                     const qId = `interm-q-${index}`;
                     const answerId = `interm-a-${index}`;
-                    const answer = result.answers && result.answers[question] ? 
+                    const answer = result.answers && result.answers[question] ?
                         result.answers[question] : '查看答案功能準備中...';
-                    
+
                     html += `
                     <div class="accordion-item">
                         <h2 class="accordion-header" id="${qId}-header">
@@ -986,6 +986,8 @@ function formatOrganizationResult(result, type) {
                         </div>
                     </div>`;
                 });
+            } else {
+                html += `<div class="alert alert-info">${renderMarkdown(result.intermediate_questions)}</div>`;
             }
             html += '</div>'; // 關閉 accordion
         }
@@ -994,14 +996,14 @@ function formatOrganizationResult(result, type) {
         if (result.advanced_questions && result.advanced_questions.length > 0) {
             html += '<h6><i class="fas fa-brain me-2 text-danger"></i>高級問題</h6>';
             html += '<div class="accordion mb-3" id="qa-advanced-accordion">';
-            
+
             if (Array.isArray(result.advanced_questions)) {
                 result.advanced_questions.forEach((question, index) => {
                     const qId = `adv-q-${index}`;
                     const answerId = `adv-a-${index}`;
-                    const answer = result.answers && result.answers[question] ? 
+                    const answer = result.answers && result.answers[question] ?
                         result.answers[question] : '查看答案功能準備中...';
-                    
+
                     html += `
                     <div class="accordion-item">
                         <h2 class="accordion-header" id="${qId}-header">
@@ -1016,6 +1018,40 @@ function formatOrganizationResult(result, type) {
                         </div>
                     </div>`;
                 });
+            } else {
+                html += `<div class="alert alert-info">${renderMarkdown(result.advanced_questions)}</div>`;
+            }
+            html += '</div>'; // 關閉 accordion
+        }
+
+        // 批判性思考問題
+        if (result.critical_thinking && result.critical_thinking.length > 0) {
+            html += '<h6><i class="fas fa-lightbulb me-2 text-warning"></i>批判性思考</h6>';
+            html += '<div class="accordion mb-3" id="qa-critical-accordion">';
+
+            if (Array.isArray(result.critical_thinking)) {
+                result.critical_thinking.forEach((question, index) => {
+                    const qId = `crit-q-${index}`;
+                    const answerId = `crit-a-${index}`;
+                    const answer = result.answers && result.answers[question] ?
+                        result.answers[question] : '查看答案功能準備中...';
+
+                    html += `
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="${qId}-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${answerId}" aria-expanded="false" aria-controls="${answerId}">
+                                ${question}
+                            </button>
+                        </h2>
+                        <div id="${answerId}" class="accordion-collapse collapse" aria-labelledby="${qId}-header">
+                            <div class="accordion-body">
+                                ${renderMarkdown(answer)}
+                            </div>
+                        </div>
+                    </div>`;
+                });
+            } else {
+                html += `<div class="alert alert-info">${renderMarkdown(result.critical_thinking)}</div>`;
             }
             html += '</div>'; // 關閉 accordion
         }
