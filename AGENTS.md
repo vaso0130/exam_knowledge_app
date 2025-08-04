@@ -1,164 +1,75 @@
+重大工程：題庫與筆記系統整合計畫
+目標：
+在題庫的「問題列表」和「問題詳情」頁面加入「加入筆記」功能，允許使用者為特定題目創建個人化筆記，並可選擇手動編輯或由 AI 自動生成。
 
-# 🚀 AI 智慧考題知識整理系統 v3.1 開發計畫
+Phase 1: 前端介面修改 (UI)
+修改 questions.html (問題列表頁)
 
-## 🎯 v3.1 主要目標：AI 驅動的個人筆記系統
+位置: f:\exam_knowledge_app\src\webapp\templates\questions.html
+任務: 在每一題的迴圈中，於「查看詳情」按鈕旁，新增一個「✍️ 加入筆記」按鈕或連結。
+連結指向: 這個按鈕將指向一個新的路由，例如：url_for('notes.create_note_from_question', question_id=question.id)。
+修改 question_detail.html (問題詳情頁)
 
-### 📝 優先任務：個人筆記功能架構
+位置: f:\exam_knowledge_app\src\webapp\templates\question_detail.html
+任務: 在頁面上的顯眼位置（例如問題卡片的頂部或底部）新增一個更明確的「為此題建立筆記」按鈕。
+連結指向: 同上，指向 url_for('notes.create_note_from_question', question_id=question.id)。
+Phase 2: 後端路由與邏輯 (Backend)
+在 notes_blueprint.py 中建立新路由
 
-**背景**：v3.0 已完成完整的安全與權限管理系統，現在要實現個人化學習筆記功能，打造真正的個人學習助手。
+位置: f:\exam_knowledge_app\src\webapp\notes_blueprint.py
+任務: 建立一個新的 Flask 路由來處理來自前端的請求。
+路由定義:
+def create_note_from_question(question_id):
+    # ... 路由的邏輯將在這裡實現 ...
+實現 GET 請求邏輯 (載入筆記編輯器)
 
-### 核心設計理念
-1. **模組化架構**：個人筆記系統與主程式適度解耦，便於獨立維護
-2. **AI 驅動**：利用 Gemini AI 提供智慧筆記整理、關聯分析、知識提取
-3. **用戶隔離**：每個用戶的筆記完全隔離，確保資料安全
-4. **知識整合**：可調用主程式的知識點、題庫資源，形成學習閉環
+目的: 當使用者點擊「加入筆記」時，顯示一個預先填充好來源資訊的筆記編輯頁面。
+步驟:
+使用 question_id 從主資料庫 (DatabaseManager) 中查詢對應的題目和答案。
+渲染 note_edit.html 模板。
+將查詢到的 question 物件傳遞給模板，以便在頁面上顯示「來源題目」。
+筆記標題可以預設為：「筆記：[題目文字前30個字]...」。
+筆記內容預設為空，讓使用者可以開始編輯。
+實現 POST 請求邏輯 (AI 生成筆記)
 
----
+目的: 當使用者在編輯頁面點擊「AI 自動生成筆記」按鈕時，觸發後端生成筆記。
+步驟:
+同樣的路由 create_note_from_question 將處理這個 POST 請求。
+從請求中獲取 question_id。
+再次查詢題目資料。
+呼叫 NoteManager 中現有的 create_note_from_questions 方法。這個方法非常適合這個場景，我們只需要將單一題目資料包裝成一個列表傳入即可。
+# 在路由函式中
+question_data = main_db.get_question_by_id(question_id)
+note_id = note_manager.create_note_from_questions(
+    user_id=current_user.id,
+    questions_data=[{'question_text': question_data['text'], 'answer_text': question_data['answer']}]
+)
+筆記成功建立後，將使用者重導向到新建立的筆記詳情頁面：redirect(url_for('notes.note_detail', note_id=note_id))。
+Phase 3: 筆記編輯器增強 (UI/UX)
+修改 note_edit.html (筆記編輯頁)
+位置: f:\exam_knowledge_app\src\webapp\templates\notes\note_edit.html
+任務:
+新增一個區塊，使用 {% if source_question %} 判斷式來顯示傳入的題目資訊。
+在這個區塊中，美觀地展示 source_question.text (題目) 和 source_question.answer (答案)，作為使用者撰寫筆記時的參考。
+在標準的「儲存筆記」按鈕旁，新增一個「🚀 AI 自動生成筆記」按鈕。這個按鈕會觸發到 create_note_from_question 路由的 POST 請求。
+使用者手動填寫內容並點擊「儲存筆記」的流程將維持不變，但後端儲存邏輯需要確保能正確處理從題目建立的筆記。
+實施順序
+我將依照以下順序開始實作：
 
-## 📋 v3.1 開發任務清單
+從後端開始：先在 notes_blueprint.py 建立好路由和基本的 GET 邏輯。
+修改前端模板：接著修改 questions.html 和 question_detail.html，將按鈕加上去，確保它們能正確連結到新路由。
+增強筆記編輯器：修改 note_edit.html 以顯示來源題目和 AI 生成按鈕。
+完成後端 POST 邏輯：實現 AI 生成筆記的功能並完成重導向。
+測試：進行完整的功能測試。
 
-### ✅ Phase 1: 個人筆記系統架構設計 - 已完成
+Phase 4: 筆記編輯與檢視頁面增強 (UI/UX)
 
-#### 1.1 模組化架構設計 - ✅ 完成
-```text
-exam_knowledge_app/
-├── 🧠 主程式（現有系統）
-│   ├── web_app.py                    # 主應用入口
-│   └── src/                          # 現有核心模組
-│       ├── core/                     # 核心模組（共用）
-│       │   └── database.py           # ✅ 已移除筆記Model，保持主程式專純
-│       ├── flows/                    # 處理流程（現有）
-│       ├── utils/                    # 工具函式（現有）
-│       ├── webapp/                   # Web 介面
-│       │   ├── templates/            # 主程式模板（共用入口）
-│       │   │   ├── notes/            # 📝 筆記系統模板（待建立）
-│       │   │   └── ...existing templates...
-│       │   └── notes_blueprint.py   # 📝 筆記系統路由（待建立）
-│       └── notes/                    # ✅ 個人筆記系統模組（已建立）
-│           ├── __init__.py
-│           ├── database.py           # ✅ 筆記專用資料庫操作（已完成）
-│           ├── ai_client.py          # ✅ 筆記專用 AI 客戶端（已完成）
-│           └── note_manager.py       # ✅ 筆記核心管理邏輯（已完成）
-```
-
-#### 1.2 資料庫設計 - ✅ 完成
-- ✅ UserNote - 個人筆記主表（UUID主鍵）
-- ✅ NoteCategory - 筆記分類表
-- ✅ NoteCategoryLink - 筆記與分類關聯表
-- ✅ NoteKnowledgeLink - 筆記與知識點關聯表
-- ✅ NoteRelationship - 筆記間關聯表
-- ✅ NoteAIAnalysis - AI 筆記分析記錄表
-
-#### 1.3 權限與隔離設計 - ✅ 完成
-- ✅ 完全用戶隔離：每個用戶只能存取自己的筆記
-- ✅ 繼承主程式權限：基於現有的 admin/viewer 角色系統
-
-### ✅ Phase 2: AI 驅動功能設計 - 已完成
-
-#### 2.1 AI 筆記整理功能 - ✅ 完成（6種方式）
-1. ✅ **心智圖結構化** - 將內容轉換成視覺化的心智圖格式
-2. ✅ **層次化重點整理** - 按重要性和邏輯關係分層整理
-3. ✅ **費曼技巧解析** - 用簡單易懂的方式重新解釋概念
-4. ✅ **問答式學習** - 生成一系列漸進式問題來加深理解
-5. ✅ **對比分析整理** - 找出關鍵概念間的異同和關聯
-6. ✅ **記憶宮殿法** - 將內容轉換成故事或空間記憶結構
-
-#### 2.2 其他 AI 功能 - ✅ 完成
-- ✅ **互動式選擇題生成** - 根據筆記內容生成測試題
-- ✅ **從題庫生成筆記** - 基於題目和答案生成學習筆記
-- ✅ **從教材生成筆記** - 將教材內容整理成筆記
-- ✅ **智慧內容分析** - 自動摘要、關鍵字提取、標籤建議
-- ✅ **智慧關聯建議** - 相關筆記、知識點、學習建議
-
-### � Phase 3: 使用者介面開發 - 進行中
-
-#### 3.1 筆記編輯器 - 🚧 待建立
-- 📝 多格式支援：Markdown、富文本、程式碼、混合模式
-- 📝 AI 輔助功能整合
-- 📝 即時預覽功能
-
-#### 3.2 知識整合介面 - 🚧 待建立
-- 📝 知識點瀏覽
-- 📝 題目練習連結
-- 📝 學習進度顯示
-
-#### 3.3 組織與搜尋 - 🚧 待建立
-- 📝 階層分類系統
-- 📝 標籤系統
-- 📝 全文搜尋
-
-### � Phase 4: 主程式整合 - 進行中
-
-#### 4.1 Web 路由整合 - 🚧 待建立
-- 📝 建立 `notes_blueprint.py`
-- 📝 註冊到主程式
-
-#### 4.2 模板系統 - 🚧 待建立
-- 📝 筆記列表頁面
-- 📝 筆記編輯頁面
-- 📝 筆記詳情頁面
-- 📝 AI 整理結果頁面
-
-#### 4.3 導航整合 - 🚧 待建立
-- 📝 更新主程式導航選單
-- 📝 權限控制（僅管理員可用）
-
----
-
-## 🚀 下一步實作重點
-
-### 立即任務
-1. 🔨 建立 Web 介面（Blueprint 和 Templates）
-2. 🔨 整合到主程式的路由系統
-3. 🔨 實作筆記編輯器
-4. 🔨 實作 AI 整理功能介面
-5. 🔨 測試完整功能
-
-### 功能優先級
-1. **基本筆記 CRUD** - 創建、編輯、刪除、列表
-2. **AI 整理功能** - 6種整理方式的介面實作
-3. **選擇題生成** - 互動式測驗功能
-4. **知識點整合** - 與主程式的知識點系統整合
-5. **搜尋與分類** - 完整的組織功能
-
----
-
-## 📚 v3.1 技術需求
-
-### 新增依賴套件
-```requirements
-# 筆記編輯相關
-markdown>=3.7.0              # Markdown 解析
-bleach>=6.0.0                # HTML 清理（安全性）
-python-slugify>=8.0.0        # 生成 URL 友善的 slug
-
-# 文字分析
-jieba>=0.42.1                # 中文分詞
-scikit-learn>=1.3.0          # 文字相似性計算
-textdistance>=4.6.0          # 文字距離計算
-
-# 匯出功能
-reportlab>=4.0.0             # PDF 生成
-openpyxl>=3.1.0              # Excel 匯出
-```
-
----
-
-## ⚠️ 開發注意事項
-
-1. **模組化原則**：
-   - ✅ 筆記系統已獨立於主程式，便於維護
-   - ✅ 通過明確的介面與主程式整合
-   - ✅ 避免過度耦合，確保系統穩定性
-
-2. **權限控制**：
-   - 🔨 限定只有管理員可以使用筆記功能
-   - 🔨 檢視者無法看到筆記相關區域和按鈕
-
-3. **AI 功能**：
-   - ✅ AI 分析結果會保存到資料庫，避免重複計算
-   - 🔨 需要實作 AI 功能的前端介面
-
----
-
-**當前狀態**：核心架構已完成，正在進行 Web 介面開發
+修改 note_edit.html (筆記編輯頁)：
+新增一個可收合的 (collapsible) 區塊。
+預設收合，標題為「顯示/隱藏來源題目」。
+區塊內顯示傳入的 source_question 的題目和答案。
+提供「AI 自動生成筆記」按鈕。
+修改 note_detail.html (筆記檢視頁)：
+使用 {% if note.source_question %} 判斷。
+如果為真，則顯示一個返回按鈕/連結，文字為「返回原始題目」，連結指向 url_for('main.question_detail', question_id=note.source_question.id)。
+同樣新增一個可收合的區塊，預設收合，用於顯示來源題目和答案。
