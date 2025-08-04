@@ -460,7 +460,48 @@ function selectOrganizationType(type, name, icon) {
                 window.fixFeynmanParsing();
                 
                 // 嘗試使用專門的恢復機制
-                if (window.recoverFeynmanData && type === 'feynman') {
+                if (window.recoverOrganizationData) {
+                    try {
+                        // 這裡特別處理 qa_learning 類型
+                        let recoveredData;
+                        if (type === 'qa_learning') {
+                            // 對於問答式學習，嘗試直接從原始文本中提取JSON
+                            try {
+                                console.log("嘗試為問答式學習解析JSON...");
+                                // 找到 JSON 的開始和結束
+                                const jsonStart = data.raw_text.indexOf('{');
+                                const jsonEnd = data.raw_text.lastIndexOf('}') + 1;
+                                if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                                    const jsonText = data.raw_text.substring(jsonStart, jsonEnd);
+                                    // 清理控制字符
+                                    const cleanedJson = jsonText.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+                                    recoveredData = JSON.parse(cleanedJson);
+                                    console.log("成功直接解析問答式學習數據:", recoveredData);
+                                }
+                            } catch (jsonErr) {
+                                console.error("直接解析JSON失敗，將使用恢復機制:", jsonErr);
+                                recoveredData = window.recoverOrganizationData(data.raw_text, type);
+                            }
+                        } else {
+                            // 其他類型使用標準恢復機制
+                            recoveredData = window.recoverOrganizationData(data.raw_text, type);
+                        }
+                        
+                        if (recoveredData) {
+                            console.log(`成功恢復 ${type} 資料:`, recoveredData);
+                            
+                            // 創建臨時 ID 並添加標籤頁
+                            organizationAnalysisIds[type] = Date.now();
+                            addOrganizationTab(type, name, icon, recoveredData);
+                            showAlert(`${name} 整理資料已成功修復！`, 'success');
+                            return;
+                        }
+                    } catch (recoverErr) {
+                        console.error(`恢復 ${type} 資料失敗:`, recoverErr);
+                    }
+                } 
+                // 向下相容支援舊版恢復函數
+                else if (window.recoverFeynmanData && type === 'feynman') {
                     try {
                         let recoveredData = window.recoverFeynmanData(data.raw_text);
                         if (recoveredData) {
@@ -883,17 +924,111 @@ function formatOrganizationResult(result, type) {
         } else {
             html += `<div class="mb-3">${renderMarkdown(result.main_points)}</div>`;
         }
-    } else if (type === 'qa_learning' && result.basic_questions) {
-        html += '<h6>基礎問題：</h6>';
-        if (Array.isArray(result.basic_questions)) {
-            html += '<ul>';
-            result.basic_questions.forEach(q => {
-                html += `<li>${q}</li>`;
-            });
-            html += '</ul>';
-        } else {
-            html += `<div class="mb-3">${renderMarkdown(result.basic_questions)}</div>`;
+    } else if (type === 'qa_learning') {
+        // 問答式學習的增強顯示
+        html += '<div class="qa-learning-container p-3 border rounded">';
+        
+        // 基礎問題部分
+        if (result.basic_questions && result.basic_questions.length > 0) {
+            html += '<h6><i class="fas fa-question-circle me-2 text-primary"></i>基礎問題</h6>';
+            html += '<div class="accordion mb-3" id="qa-basic-accordion">';
+            
+            if (Array.isArray(result.basic_questions)) {
+                result.basic_questions.forEach((question, index) => {
+                    const qId = `basic-q-${index}`;
+                    const answerId = `basic-a-${index}`;
+                    const answer = result.answers && result.answers[question] ? 
+                        result.answers[question] : '查看答案功能準備中...';
+                    
+                    html += `
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="${qId}-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${answerId}" aria-expanded="false" aria-controls="${answerId}">
+                                ${question}
+                            </button>
+                        </h2>
+                        <div id="${answerId}" class="accordion-collapse collapse" aria-labelledby="${qId}-header">
+                            <div class="accordion-body">
+                                ${renderMarkdown(answer)}
+                            </div>
+                        </div>
+                    </div>`;
+                });
+            } else {
+                html += `<div class="alert alert-info">${renderMarkdown(result.basic_questions)}</div>`;
+            }
+            html += '</div>'; // 關閉 accordion
         }
+        
+        // 中級問題部分
+        if (result.intermediate_questions && result.intermediate_questions.length > 0) {
+            html += '<h6><i class="fas fa-graduation-cap me-2 text-success"></i>中級問題</h6>';
+            html += '<div class="accordion mb-3" id="qa-intermediate-accordion">';
+            
+            if (Array.isArray(result.intermediate_questions)) {
+                result.intermediate_questions.forEach((question, index) => {
+                    const qId = `interm-q-${index}`;
+                    const answerId = `interm-a-${index}`;
+                    const answer = result.answers && result.answers[question] ? 
+                        result.answers[question] : '查看答案功能準備中...';
+                    
+                    html += `
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="${qId}-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${answerId}" aria-expanded="false" aria-controls="${answerId}">
+                                ${question}
+                            </button>
+                        </h2>
+                        <div id="${answerId}" class="accordion-collapse collapse" aria-labelledby="${qId}-header">
+                            <div class="accordion-body">
+                                ${renderMarkdown(answer)}
+                            </div>
+                        </div>
+                    </div>`;
+                });
+            }
+            html += '</div>'; // 關閉 accordion
+        }
+        
+        // 高級問題部分
+        if (result.advanced_questions && result.advanced_questions.length > 0) {
+            html += '<h6><i class="fas fa-brain me-2 text-danger"></i>高級問題</h6>';
+            html += '<div class="accordion mb-3" id="qa-advanced-accordion">';
+            
+            if (Array.isArray(result.advanced_questions)) {
+                result.advanced_questions.forEach((question, index) => {
+                    const qId = `adv-q-${index}`;
+                    const answerId = `adv-a-${index}`;
+                    const answer = result.answers && result.answers[question] ? 
+                        result.answers[question] : '查看答案功能準備中...';
+                    
+                    html += `
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="${qId}-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${answerId}" aria-expanded="false" aria-controls="${answerId}">
+                                ${question}
+                            </button>
+                        </h2>
+                        <div id="${answerId}" class="accordion-collapse collapse" aria-labelledby="${qId}-header">
+                            <div class="accordion-body">
+                                ${renderMarkdown(answer)}
+                            </div>
+                        </div>
+                    </div>`;
+                });
+            }
+            html += '</div>'; // 關閉 accordion
+        }
+        
+        // 學習建議
+        if (result.learning_progression) {
+            html += `<div class="alert alert-light border-start border-4 border-info mb-3">
+                <h6><i class="fas fa-route me-2 text-info"></i>學習路徑</h6>
+                ${renderMarkdown(result.learning_progression)}
+            </div>`;
+        }
+        
+        html += '</div>'; // 關閉容器
     } else if (type === 'feynman') {
         // 費曼技巧解析的特殊顯示
         html += '<div class="feynman-technique-container p-3 border rounded">';
@@ -1089,24 +1224,46 @@ function formatOrganizationResult(result, type) {
         // 如果仍然沒有內容，顯示調試信息
         if (!html) {
             console.warn(`${type} 類型的結果沒有可用內容，可用欄位:`, Object.keys(result));
-            html = `
-                <div class="alert alert-warning">
-                    <h6><i class="fas fa-exclamation-triangle me-2"></i>內容格式問題</h6>
-                    <p class="mb-2">AI 整理結果格式異常，可能的原因：</p>
-                    <ul class="mb-2">
-                        <li>AI 回應格式不完整</li>
-                        <li>JSON 解析錯誤</li>
-                        <li>網路連線問題</li>
-                    </ul>
-                    <button class="btn btn-sm btn-outline-primary" onclick="regenerateOrganization('${type}', '${type}')">
-                        <i class="fas fa-sync me-1"></i>重新生成
-                    </button>
-                    <details class="mt-2">
-                        <summary class="small text-muted">調試信息</summary>
-                        <pre class="small mt-2">${JSON.stringify(result, null, 2)}</pre>
-                    </details>
-                </div>
-            `;
+            
+            // 使用診斷工具（如果存在）
+            if (window.showOrganizationDebugInfo) {
+                html = window.showOrganizationDebugInfo(type, result);
+            } else {
+                html = `
+                    <div class="alert alert-warning">
+                        <h6><i class="fas fa-exclamation-triangle me-2"></i>內容格式問題</h6>
+                        <p class="mb-2">AI 整理結果格式異常，可能的原因：</p>
+                        <ul class="mb-2">
+                            <li>AI 回應格式不完整</li>
+                            <li>JSON 解析錯誤</li>
+                            <li>網路連線問題</li>
+                        </ul>
+                        <button class="btn btn-sm btn-outline-primary" onclick="regenerateOrganization('${type}', '${type}')">
+                            <i class="fas fa-sync me-1"></i>重新生成
+                        </button>
+                        <details class="mt-2">
+                            <summary class="small text-muted">調試信息</summary>
+                            <pre class="small mt-2">${JSON.stringify(result, null, 2)}</pre>
+                        </details>
+                    </div>
+                `;
+            }
+        }
+        
+        // 添加除錯按鈕（只有開發模式才顯示）
+        if (window.diagnoseOrganizationIssue) {
+            const diagnosis = window.diagnoseOrganizationIssue(type, result);
+            if (diagnosis.status !== 'ok') {
+                html += `
+                    <div class="text-end mb-3">
+                        <button class="btn btn-sm btn-outline-dark" 
+                                onclick="console.log('診斷 ${type}:', diagnoseOrganizationIssue('${type}', ${JSON.stringify(result).replace(/"/g, '\\"')}))"
+                                title="在控制台查看詳細診斷信息">
+                            <i class="fas fa-bug me-1"></i>診斷
+                        </button>
+                    </div>
+                `;
+            }
         }
     }
     
@@ -1681,8 +1838,11 @@ function showAlert(message, type) {
 {% block scripts %}
 {{ super() }}
 <!-- 引入 ECharts 初始化和工具函數 -->
-<script src="{{ url_for('static', filename='notes/echarts_init.js') }}"></script>
-<!-- 引入 feynman 修復腳本 -->
+<script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/echarts_init.js') }}"></script>
+<!-- 引入 AI 整理結果修復腳本 -->
 <script src="{{ url_for('static', filename='js/recover_feynman_data.js') }}"></script>
-<script src="{{ url_for('static', filename='js/fix_feynman_parsing.js') }}"></script>
+<script src="{{ url_for('static', filename='js/fix_organization_parsing.js') }}"></script>
+<!-- 引入 AI 整理結果除錯工具 -->
+<script src="{{ url_for('static', filename='js/organization_debug.js') }}"></script>
 {% endblock %}
