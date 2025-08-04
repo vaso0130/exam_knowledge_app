@@ -440,14 +440,49 @@ class NotesDatabaseManager:
             if analysis_type:
                 query = query.filter(NoteAIAnalysis.analysis_type == analysis_type)
             
-            analyses = query.order_by(NoteAIAnalysis.created_at.desc()).all()
+            # 確保一致的排序：首先按分析類型，然後按創建時間降序
+            analyses = query.order_by(
+                NoteAIAnalysis.analysis_type,
+                NoteAIAnalysis.created_at.desc()
+            ).all()
             
-            return [{
-                'id': analysis.id,
-                'analysis_type': analysis.analysis_type,
-                'result': json.loads(analysis.result) if analysis.result else {},
-                'created_at': analysis.created_at.isoformat()
-            } for analysis in analyses]
+            results = []
+            for analysis in analyses:
+                try:
+                    # 安全地解析JSON結果
+                    result_data = {}
+                    if analysis.result:
+                        result_data = json.loads(analysis.result)
+                        
+                    # 驗證結果數據的完整性
+                    if isinstance(result_data, dict):
+                        # 確保有organized_content欄位
+                        if not result_data.get('organized_content'):
+                            # 嘗試從其他欄位生成
+                            for field in ['formatted_content', 'content', 'summary', 'text']:
+                                if result_data.get(field):
+                                    result_data['organized_content'] = result_data[field]
+                                    break
+                            else:
+                                result_data['organized_content'] = '整理結果資料不完整'
+                    
+                    results.append({
+                        'id': analysis.id,
+                        'analysis_type': analysis.analysis_type,
+                        'result': result_data,
+                        'created_at': analysis.created_at.isoformat()
+                    })
+                except (json.JSONDecodeError, TypeError) as e:
+                    print(f"Error parsing analysis result for ID {analysis.id}: {e}")
+                    # 添加錯誤記錄但不中斷處理
+                    results.append({
+                        'id': analysis.id,
+                        'analysis_type': analysis.analysis_type,
+                        'result': {'error': f'資料解析錯誤: {str(e)}', 'organized_content': '資料解析失敗'},
+                        'created_at': analysis.created_at.isoformat()
+                    })
+            
+            return results
 
     # === Note Relationships ===
 

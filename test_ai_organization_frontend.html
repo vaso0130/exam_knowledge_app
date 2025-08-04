@@ -1,0 +1,156 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI整理功能測試</title>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; }
+    </style>
+</head>
+<body>
+    <h1>AI 整理功能測試頁面</h1>
+    
+    <h2>測試場景</h2>
+    <div id="test-results"></div>
+    
+    <script>
+        // 模擬前端formatOrganizationResult函數
+        function formatOrganizationResult(result, type) {
+            console.log(`格式化 ${type} 類型的結果:`, result);
+            
+            let html = '';
+            
+            // 檢查 result 是否存在且為對象
+            if (!result || typeof result !== 'object') {
+                console.warn(`結果格式不正確:`, result);
+                return '<p class="text-muted">內容格式有誤，請重新生成...</p>';
+            }
+            
+            if (result.organized_content) {
+                // 使用簡單的HTML渲染
+                html += `<div class="ai-organized-content mb-3">${result.organized_content}</div>`;
+            }
+            
+            // 如果沒有任何HTML內容，嘗試從其他欄位生成內容
+            if (!html) {
+                const possibleContentFields = [
+                    'organized_content', 'formatted_content', 'content', 
+                    'summary', 'description', 'text', 'data'
+                ];
+                
+                for (const field of possibleContentFields) {
+                    if (result[field]) {
+                        console.log(`使用 ${field} 欄位作為備用內容`);
+                        if (typeof result[field] === 'string') {
+                            html = `<div class="ai-organized-content mb-3">${result[field]}</div>`;
+                            break;
+                        } else if (typeof result[field] === 'object') {
+                            html = `<div class="mb-3"><pre>${JSON.stringify(result[field], null, 2)}</pre></div>`;
+                            break;
+                        }
+                    }
+                }
+                
+                // 如果仍然沒有內容，顯示調試信息
+                if (!html) {
+                    console.warn(`${type} 類型的結果沒有可用內容，可用欄位:`, Object.keys(result));
+                    html = `
+                        <div class="alert alert-warning">
+                            <h6>內容格式問題</h6>
+                            <p>AI 整理結果格式異常</p>
+                            <details>
+                                <summary>調試信息</summary>
+                                <pre>${JSON.stringify(result, null, 2)}</pre>
+                            </details>
+                        </div>
+                    `;
+                }
+            }
+            
+            return html;
+        }
+        
+        // 測試各種情況
+        function runTests() {
+            const testCases = [
+                {
+                    name: "正常的mindmap結果",
+                    type: "mindmap", 
+                    result: {
+                        organized_content: "這是心智圖的整理內容",
+                        mindmap_structure: {"主題": ["分支1", "分支2"]}
+                    }
+                },
+                {
+                    name: "缺少organized_content的結果",
+                    type: "hierarchical",
+                    result: {
+                        main_points: ["重點1", "重點2"],
+                        summary: "這是摘要內容"
+                    }
+                },
+                {
+                    name: "只有formatted_content的結果",
+                    type: "format_enhance",
+                    result: {
+                        formatted_content: "這是格式化後的內容",
+                        corrections_made: ["修正1", "修正2"]
+                    }
+                },
+                {
+                    name: "空結果",
+                    type: "memory_palace",
+                    result: {}
+                },
+                {
+                    name: "null結果",
+                    type: "qa_learning",
+                    result: null
+                },
+                {
+                    name: "字符串結果",
+                    type: "comparison",
+                    result: "這不是對象格式"
+                }
+            ];
+            
+            const resultsDiv = document.getElementById('test-results');
+            
+            testCases.forEach((testCase, index) => {
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'test-result';
+                
+                try {
+                    const formatted = formatOrganizationResult(testCase.result, testCase.type);
+                    resultDiv.className += ' success';
+                    resultDiv.innerHTML = `
+                        <h4>測試 ${index + 1}: ${testCase.name}</h4>
+                        <p><strong>類型:</strong> ${testCase.type}</p>
+                        <p><strong>輸入:</strong> <code>${JSON.stringify(testCase.result)}</code></p>
+                        <p><strong>輸出:</strong></p>
+                        <div style="border: 1px solid #ccc; padding: 10px; background: white;">
+                            ${formatted}
+                        </div>
+                    `;
+                } catch (error) {
+                    resultDiv.className += ' error';
+                    resultDiv.innerHTML = `
+                        <h4>測試 ${index + 1}: ${testCase.name} - 失敗</h4>
+                        <p><strong>錯誤:</strong> ${error.message}</p>
+                    `;
+                }
+                
+                resultsDiv.appendChild(resultDiv);
+            });
+        }
+        
+        // 運行測試
+        document.addEventListener('DOMContentLoaded', runTests);
+    </script>
+</body>
+</html>
