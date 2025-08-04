@@ -28,12 +28,38 @@ class SecurityManager:
     
     # === 邀請碼驗證 ===
     
-    def validate_invitation_code(self, code: str) -> Optional[str]:
+    def validate_invitation_code(self, code: str, ip_address: str = None, 
+                               user_agent: str = None, username_attempted: str = None) -> Optional[str]:
         """
-        驗證邀請碼
+        驗證邀請碼並處理失敗嘗試
         返回對應的角色，如果無效返回None
+        如果失敗次數過多會自動封鎖 IP
         """
-        return self.invitation_codes.get(code, None)
+        role = self.invitation_codes.get(code, None)
+        
+        if ip_address:
+            # 記錄嘗試
+            self.db.record_invite_code_attempt(
+                ip_address=ip_address,
+                invite_code=code,
+                success=(role is not None),
+                user_agent=user_agent,
+                username_attempted=username_attempted
+            )
+            
+            # 如果失敗，檢查是否需要封鎖 IP
+            if role is None:
+                failed_attempts = self.db.get_failed_invite_attempts(
+                    ip_address, self.lockout_window_minutes
+                )
+                
+                if failed_attempts >= self.max_failed_attempts:
+                    # 封鎖 IP
+                    reason = f"邀請碼輸入錯誤 {failed_attempts} 次"
+                    self.db.add_ip_to_blacklist(ip_address, reason, "系統自動封鎖")
+                    print(f"⚠️  IP {ip_address} 因邀請碼錯誤過多次被自動封鎖")
+        
+        return role
     
     # === 密碼處理 ===
     

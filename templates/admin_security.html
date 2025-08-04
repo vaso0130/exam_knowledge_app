@@ -204,6 +204,61 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- 邀請碼嘗試記錄 -->
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-key me-2"></i>邀請碼嘗試記錄
+                </h5>
+                <small class="text-muted">3次失敗後IP將被自動封鎖</small>
+            </div>
+            <div class="card-body p-0">
+                {% if invite_attempts %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>時間</th>
+                                    <th>IP 地址</th>
+                                    <th>嘗試用戶名</th>
+                                    <th>邀請碼</th>
+                                    <th>結果</th>
+                                    <th>用戶代理</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for attempt in invite_attempts[:10] %}
+                                <tr>
+                                    <td><small>{{ attempt.attempt_time }}</small></td>
+                                    <td><code>{{ attempt.ip_address }}</code></td>
+                                    <td>{{ attempt.username_attempted or '未提供' }}</td>
+                                    <td><code>{{ attempt.invite_code[:10] }}...</code></td>
+                                    <td>
+                                        {% if attempt.success %}
+                                            <span class="badge bg-success">
+                                                <i class="bi bi-check-circle me-1"></i>成功
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-danger">
+                                                <i class="bi bi-x-circle me-1"></i>失敗
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td><small>{{ (attempt.user_agent or '')[:50] }}...</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-inbox display-4"></i>
+                        <p class="mt-2">目前沒有邀請碼嘗試記錄</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

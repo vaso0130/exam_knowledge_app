@@ -344,13 +344,15 @@ def create_admin_app():
         try:
             blacklisted_ips = db_manager.get_blacklisted_ips()
             recent_attempts = db_manager.get_login_attempts(50)
+            invite_attempts = db_manager.get_invite_code_attempts(50)  # 獲取最近50次邀請碼嘗試
             return render_template('admin_security.html', 
                                  blacklisted_ips=blacklisted_ips,
-                                 recent_attempts=recent_attempts)
+                                 recent_attempts=recent_attempts,
+                                 invite_attempts=invite_attempts)
         except Exception as e:
             flash(f'獲取安全資料失敗: {str(e)}', 'error')
             return render_template('admin_security.html', 
-                                 blacklisted_ips=[], recent_attempts=[])
+                                 blacklisted_ips=[], recent_attempts=[], invite_attempts=[])
     
     @app.route('/security/unblock/<ip_address>', methods=['POST'])
     @require_admin

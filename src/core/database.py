@@ -211,6 +211,18 @@ class ContentValidation(Base):
     user = relationship("User")
 
 
+class InviteCodeAttempt(Base):
+    """邀請碼嘗試記錄"""
+    __tablename__ = "invite_code_attempts"
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String(45), nullable=False, index=True)
+    invite_code = Column(String(255), nullable=False)
+    success = Column(Integer, default=0)  # 0=失敗, 1=成功
+    attempt_time = Column(DateTime, default=datetime.utcnow, index=True)
+    user_agent = Column(Text, nullable=True)
+    username_attempted = Column(String(50), nullable=True)  # 嘗試註冊的用戶名
+
+
 # --- Database Manager ---
 
 class DatabaseManager:
@@ -974,3 +986,48 @@ class DatabaseManager:
                 'last_accessed': s.last_accessed.isoformat() if s.last_accessed else None,
                 'user_agent': s.user_agent
             } for s in sessions]
+
+    # === 邀請碼嘗試管理 ===
+    
+    def record_invite_code_attempt(self, ip_address: str, invite_code: str, success: bool = False, 
+                                 user_agent: str = None, username_attempted: str = None) -> None:
+        """記錄邀請碼嘗試"""
+        with self._session_scope() as session:
+            attempt = InviteCodeAttempt(
+                ip_address=ip_address,
+                invite_code=invite_code,
+                success=1 if success else 0,
+                user_agent=user_agent,
+                username_attempted=username_attempted
+            )
+            session.add(attempt)
+    
+    def get_failed_invite_attempts(self, ip_address: str, time_window_minutes: int = 60) -> int:
+        """獲取指定時間窗口內的邀請碼失敗次數"""
+        with self._session_scope() as session:
+            cutoff_time = datetime.utcnow() - timedelta(minutes=time_window_minutes)
+            
+            count = session.query(InviteCodeAttempt).filter(
+                InviteCodeAttempt.ip_address == ip_address,
+                InviteCodeAttempt.success == 0,
+                InviteCodeAttempt.attempt_time >= cutoff_time
+            ).count()
+            
+            return count
+    
+    def get_invite_code_attempts(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """獲取邀請碼嘗試記錄"""
+        with self._session_scope() as session:
+            attempts = session.query(InviteCodeAttempt).order_by(
+                InviteCodeAttempt.attempt_time.desc()
+            ).limit(limit).all()
+            
+            return [{
+                'id': attempt.id,
+                'ip_address': attempt.ip_address,
+                'invite_code': attempt.invite_code[:10] + "..." if len(attempt.invite_code) > 10 else attempt.invite_code,  # 隱藏完整邀請碼
+                'success': bool(attempt.success),
+                'attempt_time': attempt.attempt_time.isoformat(),
+                'user_agent': attempt.user_agent,
+                'username_attempted': attempt.username_attempted
+            } for attempt in attempts]

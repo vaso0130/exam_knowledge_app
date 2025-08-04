@@ -12,6 +12,32 @@
 - **🆕 解題技巧生成**：AI 智慧分析題目特點，提供專業解題策略與學習建議
 - **🆕 完全信任 AI 輸出**：移除人工二次加工，完全採用 AI 原始輸出，確保內容自然流暢
 
+### 👥 用戶管理系統
+- **邀請碼註冊機制**：安全的會員註冊流程，支援角色權限控制
+- **雙介面管理平台**：Web 管理介面 + CLI 命令列工具，完整功能對等
+- **用戶帳號管理**：新增、編輯、刪除、停用用戶帳號，完整的 CRUD 操作
+- **角色權限控制**：支援一般用戶、管理員等不同權限等級
+- **會話管理**：安全的登入登出機制，自動清理過期會話
+
+### 🛡️ 安全防護系統
+- **IP 自動封鎖**：登入失敗 3 次自動封鎖 IP 地址 60 分鐘
+- **邀請碼防護**：註冊時邀請碼錯誤 3 次同樣封鎖 IP，防止暴力破解
+- **安全監控面板**：即時監控登入嘗試、邀請碼嘗試、封鎖 IP 等安全事件
+- **密碼安全**：bcrypt 加密存儲，支援密碼重設功能
+- **會話安全**：Flask Secret Key 保護，防止會話劫持
+
+### 🎯 點數激勵系統
+- **自動恢復機制**：每小時自動恢復 100 點數，上限 100 點
+- **智慧消耗標準**：
+  - 生成考題：10-50 分（依題目數量）
+  - 重新生成答案：10 分
+  - 心智圖生成：5 分
+  - 解題技巧：5 分
+- **內容驗證保護**：AI 自動檢查上傳內容是否為學習相關
+- **違規自動處罰**：非學習內容扣 4800 分（禁用 48 小時）
+- **角色差異化**：管理者不受點數限制，檢視者需要消耗點數使用 AI 功能
+- **完整追蹤記錄**：所有點數交易與內容驗證都有詳細記錄
+
 ### 📚 完整學習流程
 - **8步驟處理管線**：知識點提取 → 申論題生成 → 內容清理 → 知識摘要 → 選擇題 → 內容組合 → 資料庫更新 → 心智圖
 - **🚀 並行處理架構**：**重大技術突破**！使用 asyncio.gather 實現真正並行處理，多題目同時分析，處理速度提升 3-5 倍
@@ -35,6 +61,8 @@
 - **🆕 資料庫架構完善**：MySQL 生產環境完整支援，包含 async_jobs 非同步工作管理表
 - **環境變數配置**：彈性的部署設定管理
 - **🆕 資料庫級非同步處理**：AsyncProcessor 改用資料庫儲存工作狀態，告別檔案系統，提升穩定性與可擴展性
+- **🆕 本地管理工具**：admin_server.py 提供隨機端口的本地管理介面，安全便捷
+- **🆕 CLI 管理工具**：admin_manager.py 命令列管理工具，與 Web 介面功能完全對等
 
 ## 🚀 快速開始
 
@@ -67,11 +95,20 @@ GEMINI_API_KEY=your_gemini_api_key_here
 DATABASE_URL=sqlite:///./db.sqlite3
 # MySQL 範例：DATABASE_URL=mysql+mysqlconnector://user:password@localhost/exam_db
 
-# Flask 設定
+# 安全設定
 FLASK_SECRET_KEY=your-super-secret-key-here
 
 # 檔案儲存路徑（使用相對路徑避免問題）
 FILE_STORAGE_PATH=./uploads
+
+# 系統管理設定
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=your-admin-password-here
+ADMIN_EMAIL=admin@example.com
+
+# 邀請碼設定（用於用戶註冊）
+USER_INVITE_CODE=user123
+ADMIN_INVITE_CODE=admin456
 ```
 
 #### WSL 環境（推薦配置）
@@ -89,6 +126,15 @@ FLASK_SECRET_KEY=your-super-secret-key-here
 # 檔案儲存路徑（WSL 原生路徑）
 FILE_STORAGE_PATH=/home/username/exam_app/uploads
 # 或使用相對路徑：FILE_STORAGE_PATH=./uploads
+
+# 系統管理設定
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=your-admin-password-here
+ADMIN_EMAIL=admin@example.com
+
+# 邀請碼設定（用於用戶註冊）
+USER_INVITE_CODE=user123
+ADMIN_INVITE_CODE=admin456
 ```
 
 **Google Cloud Vision API 設定**：
@@ -179,18 +225,41 @@ chmod 755 uploads
 - **SQLite**（預設）：適合開發和小型部署
 - **MySQL**：適合生產環境，需要設定 `DATABASE_URL`
 
-### 4. 啟動應用
+### 4. 管理員帳號設定
+
+首次啟動時，可以使用以下方式創建管理員帳號：
+
+```bash
+# 方法 1：使用環境變數自動創建（推薦）
+# 在 .env 中設定 ADMIN_USERNAME、ADMIN_PASSWORD、ADMIN_EMAIL
+
+# 方法 2：使用 setup_passwords.py 腳本
+python setup_passwords.py
+
+# 方法 3：使用 CLI 管理工具
+python admin_manager.py create-user admin --email admin@example.com --role admin
+```
+
+### 5. 啟動應用
 
 #### 開發模式
 ```bash
 # 啟動開發伺服器
 python web_app.py
+
+# 啟動本地管理介面（隨機端口，安全連線）
+python admin_server.py
 ```
 
 #### 生產模式
 ```bash
 # 使用 Waitress（推薦用於 Windows 或簡單部署）
 python wsgi.py
+
+# 使用 CLI 管理工具
+python admin_manager.py --help
+python admin_manager.py list-users
+python admin_manager.py show-stats
 
 # 使用 Gunicorn（推薦用於 Linux 生產環境，需額外安裝）
 # 注意：Gunicorn 在 Windows 上支援有限，建議 Linux 環境使用
@@ -214,6 +283,46 @@ gunicorn --bind 0.0.0.0:8001 \
 ```
 
 瀏覽器開啟：<http://localhost:8001>
+
+## 🔐 系統管理
+
+### Web 管理介面
+
+使用本地管理工具進行用戶和系統管理：
+
+```bash
+# 啟動本地管理介面
+python admin_server.py
+
+# 系統會顯示類似訊息：
+# 🌐 本地管理介面已啟動: http://localhost:54321/login
+# 🔐 使用管理員帳號登入進行管理
+```
+
+### CLI 管理工具
+
+使用命令列工具進行批次管理：
+
+```bash
+# 用戶管理
+python admin_manager.py list-users                    # 列出所有用戶
+python admin_manager.py create-user john --email john@example.com --role user
+python admin_manager.py user-detail john              # 查看用戶詳情
+python admin_manager.py edit-user john --email new@example.com
+python admin_manager.py delete-user john --force      # 刪除用戶
+python admin_manager.py reset-password john           # 重設密碼
+
+# 安全管理
+python admin_manager.py show-blacklist                # 查看封鎖 IP
+python admin_manager.py block-ip 192.168.1.100 --reason "惡意攻擊"
+python admin_manager.py unblock-ip 192.168.1.100      # 解除封鎖
+python admin_manager.py show-attempts --limit 100     # 查看登入記錄
+python admin_manager.py show-invite-attempts --limit 50  # 查看邀請碼嘗試
+
+# 系統管理
+python admin_manager.py show-stats                    # 系統統計
+python admin_manager.py cleanup --hours 48            # 清理過期會話
+```
 
 ## 🔧 常見問題解決
 
@@ -335,7 +444,9 @@ nssm install "ExamApp" python "C:\path\to\wsgi.py"
 exam_knowledge_app/
 ├── 🚀 啟動檔案
 │   ├── web_app.py                 # Flask 開發伺服器
-│   └── wsgi.py                    # WSGI 生產伺服器
+│   ├── wsgi.py                    # WSGI 生產伺服器
+│   ├── admin_server.py            # 本地管理 Web 介面
+│   └── admin_manager.py           # CLI 管理工具
 ├── 🗄️ 資料儲存
 │   ├── db.sqlite3                 # SQLite 主資料庫
 │   ├── uploads/                   # 上傳檔案暫存
@@ -344,7 +455,8 @@ exam_knowledge_app/
 │   └── src/
 │       ├── core/                  # 核心模組
 │       │   ├── database.py        # 資料庫管理（支援 SQLite/MySQL）
-│       │   └── gemini_client.py   # AI 客戶端
+│       │   ├── gemini_client.py   # AI 客戶端
+│       │   └── security_manager.py # 安全管理（密碼、IP 封鎖）
 │       ├── flows/                 # 處理流程
 │       │   ├── content_flow.py    # 內容處理管線
 │       │   ├── answer_flow.py     # 答案生成流程
@@ -352,16 +464,26 @@ exam_knowledge_app/
 │       │   └── flow_manager.py    # 統一流程管理
 │       ├── webapp/                # Web 介面
 │       │   ├── __init__.py        # Flask 應用初始化
+│       │   ├── auth_blueprint.py  # 認證相關路由
+│       │   ├── admin_blueprint.py # 管理功能路由
+│       │   ├── main_blueprint.py  # 主要功能路由
+│       │   ├── auth_middleware.py # 認證中間件
+│       │   ├── async_processor.py # 非同步處理器
 │       │   └── templates/         # HTML 模板
 │       └── utils/                 # 工具函式
 │           ├── file_processor.py  # 檔案處理
 │           ├── json_parser.py     # JSON 解析
 │           ├── markdown_utils.py  # Markdown 工具
+│           ├── points_manager.py  # 點數系統管理
+│           ├── points_decorator.py # 點數裝飾器
+│           ├── content_validator.py # 內容驗證
 │           └── playwright_scraper.py # 網頁爬取
 ├── 📋 設定與文檔
 │   ├── .env                       # 環境變數設定
 │   ├── requirements.txt           # Python 依賴
 │   ├── README.md                  # 專案說明
+│   ├── setup_passwords.py         # 初始密碼設定腳本
+│   ├── reset_password.py          # 密碼重設工具
 │   └── REFACTORING_PLAN.md        # 重構計畫
 └── ⚙️ 額外檔案
     └── .vscode/settings.json      # VS Code 設定
@@ -372,8 +494,11 @@ exam_knowledge_app/
 | 檔案 | 說明 |
 |------|------|
 | `web_app.py` | 啟動 Flask Web 應用 |
+| `admin_server.py` | 本地管理 Web 介面（隨機端口） |
+| `admin_manager.py` | CLI 管理工具（用戶、安全、系統管理） |
 | `src/core/gemini_client.py` | Gemini API 封裝與提示組裝 |
-| `src/core/database.py` | SQLite 資料存取層 |
+| `src/core/database.py` | SQLite/MySQL 資料存取層，用戶與安全管理 |
+| `src/core/security_manager.py` | 密碼加密、IP 封鎖、邀請碼驗證 |
 | `src/flows/content_flow.py` | 學習資料與考題處理流程 |
 | `src/flows/answer_flow.py` | 單一問題解析與知識點提取 |
 | `src/flows/mindmap_flow.py` | 依知識點產生心智圖 |
@@ -381,7 +506,12 @@ exam_knowledge_app/
 | `src/utils/file_processor.py` | 檔案/網址讀取與預處理 |
 | `src/utils/json_parser.py` | 文字中擷取 JSON 結構 |
 | `src/utils/markdown_utils.py` | Markdown 與程式碼格式化工具 |
+| `src/utils/points_manager.py` | 點數系統核心邏輯（恢復、消耗、處罰機制） |
+| `src/utils/points_decorator.py` | 點數系統裝飾器（自動扣點與權限檢查） |
+| `src/utils/content_validator.py` | 內容驗證器（AI 審核與品質控制） |
 | `src/webapp/__init__.py` | Flask 路由與模板配置 |
+| `src/webapp/auth_blueprint.py` | 用戶認證、註冊、登入路由 |
+| `src/webapp/admin_blueprint.py` | 管理功能路由（用戶管理、安全監控） |
 
 ## 🎯 主要功能
 
@@ -415,11 +545,26 @@ exam_knowledge_app/
 - **搜尋功能**：快速定位相關內容
 - **進度追蹤**：學習成效分析
 
+### 👤 用戶體驗
+- **角色差異化系統**：管理者與檢視者不同的權限與限制
+- **自動點數恢復**：每小時恢復 100 點，確保持續學習能力
+- **內容品質保護**：AI 自動驗證上傳內容，拒絕非學習相關材料
+- **響應式設計**：支援桌面與行動裝置
+- **即時回饋**：操作成功/失敗即時提示，點數變化即時顯示
+- **上傳者追蹤**：所有文件標記提供者，建立責任制度
+
 ## 🗃️ 資料庫結構
 
 ### 核心資料表
 
-- **documents**：文件基本資訊與內容
+- **users**：用戶帳號資訊、角色權限、點數記錄（current_points、last_point_refresh）
+- **point_transactions**：點數交易記錄，追蹤所有點數變化
+- **content_validations**：內容驗證記錄，AI 審核結果與處罰記錄
+- **user_sessions**：用戶登入會話管理
+- **login_attempts**：登入嘗試記錄，支援安全監控
+- **invite_code_attempts**：邀請碼嘗試記錄，防止暴力破解
+- **blacklisted_ips**：IP 封鎖清單，自動安全防護
+- **documents**：文件基本資訊與內容，包含 uploaded_by 上傳者追蹤
 - **questions**：題目詳細資料與答案，支援解題技巧與摘要欄位
 - **knowledge_points**：知識點定義與分類
 - **question_knowledge_links**：題目與知識點關聯（多對多關係）
@@ -432,6 +577,12 @@ exam_knowledge_app/
 - **mindmap_data**：心智圖 JSON 結構
 - **🆕 solving_tips 欄位**：問題解題技巧與策略建議
 - **🆕 question_summary 欄位**：問題摘要與學習重點
+- **🆕 點數管理系統**：
+  - **自動恢復**：每小時恢復 100 點，上限 100 點
+  - **智慧消耗**：依功能複雜度動態計算點數消耗
+  - **違規處罰**：非學習內容自動扣 4800 點（48 小時禁用）
+- **🆕 內容驗證機制**：AI 自動審核上傳內容，防止濫用
+- **🆕 安全防護體系**：完整的 IP 封鎖、登入保護、邀請碼驗證、內容品質控制
 
 ## 🔧 技術棧
 
@@ -486,6 +637,10 @@ waitress>=2.1.0               # WSGI 伺服器（跨平台）
 SQLAlchemy>=2.0.0             # ORM 層
 mysql-connector-python>=8.0.0 # MySQL 驅動
 
+# 安全與認證
+bcrypt>=4.0.0                 # 密碼加密
+tabulate>=0.9.0               # CLI 表格格式化（admin_manager.py）
+
 # 檔案處理
 pdfplumber>=0.7.0             # PDF 解析
 python-docx>=1.1.0            # Word 文件
@@ -506,7 +661,7 @@ python-dotenv>=1.0.0          # 環境變數管理
 
 ### 學習資料處理範例
 ```python
-# 處理學習資料
+# 處理學習資料（需要登入用戶，檢視者需要消耗點數）
 from src.flows.content_flow import ContentFlow
 from src.core.gemini_client import GeminiClient
 from src.core.database import DatabaseManager
@@ -516,7 +671,7 @@ gemini = GeminiClient()
 db = DatabaseManager()
 content_flow = ContentFlow(gemini, db)
 
-# 處理內容
+# 處理內容（檢視者會自動扣除對應點數）
 result = content_flow.complete_ai_processing(
     content="學習資料內容...",
     filename="資安概論",
@@ -524,13 +679,63 @@ result = content_flow.complete_ai_processing(
 )
 
 # 結果包含：
-# - 申論模擬題
+# - 申論模擬題（10-50點消耗）
 # - 知識摘要
 # - 互動選擇題
-# - 心智圖資料
+# - 心智圖資料（5點消耗）
+# - 解題技巧（5點消耗）
+# 注意：管理者使用不消耗點數
+```
+
+### 點數系統使用範例
+```python
+# 點數系統核心功能
+from src.utils.points_manager import PointsManager
+
+# 檢查用戶點數
+points_manager = PointsManager(db)
+current_points = points_manager.get_user_points(user_id)
+
+# 消耗點數（自動檢查餘額）
+success = points_manager.consume_points(user_id, 15, "生成心智圖")
+
+# 違規處罰（自動扣4800點）
+points_manager.penalize_user(user_id, "上傳非學習內容")
+
+# 自動恢復（每小時100點）
+points_manager.refresh_user_points(user_id)
+```
+
+### 管理系統使用範例
+```python
+# 使用 CLI 管理工具
+# 創建新用戶
+python admin_manager.py create-user alice --email alice@example.com --role user
+
+# 查看系統統計
+python admin_manager.py show-stats
+
+# 監控安全狀況
+python admin_manager.py show-attempts --limit 50
+python admin_manager.py show-blacklist
 ```
 
 ## 🔄 最新更新
+
+### v3.0 - 完整管理系統 (2025/08/04)
+
+- ✅ **用戶管理系統**：完整的邀請碼註冊、用戶帳號管理、角色權限控制
+- ✅ **雙介面管理平台**：Web 管理介面（admin_server.py）+ CLI 工具（admin_manager.py），功能完全對等
+- ✅ **安全防護機制**：IP 自動封鎖（登入失敗 3 次）、邀請碼防護（錯誤 3 次封鎖）、安全監控面板
+- ✅ **點數限制系統**：
+  - **自動恢復**：每小時恢復 100 點，上限 100 點
+  - **智慧消耗**：生成考題 10-50 分、重新生成答案 10 分、心智圖 5 分、解題技巧 5 分
+  - **違規處罰**：非學習內容扣 4800 分（禁用 48 小時）
+  - **角色差異**：管理者不受點數限制，檢視者需要消耗點數
+- ✅ **內容品質控制**：AI 自動驗證上傳內容，拒絕非學習相關材料
+- ✅ **密碼安全強化**：bcrypt 加密、密碼重設功能、會話安全管理
+- ✅ **CLI 管理工具**：使用 tabulate 提供美觀的表格輸出，支援所有管理功能
+- ✅ **安全監控升級**：新增邀請碼嘗試監控、IP 封鎖自動化、完整的安全事件追蹤
 
 ### v2.3 - 架構大升級 (2025/08/02)
 

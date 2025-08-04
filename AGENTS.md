@@ -1,358 +1,401 @@
 
-# 🚀 AI 智慧考題知識整理系統 v3.0 開發計畫
+# 🚀 AI 智慧考題知識整理系統 v3.1 開發計畫
 
-## 🎯 v3.0 主要目標：完整的安全與權限管理系統
+## 🎯 v3.1 主要目標：AI 驅動的個人筆記系統
 
-### 🔐 優先任務：帳號系統與資安防護
+### 📝 優先任務：個人筆記功能架構
 
-**背景**：系統已部署上線，需要完整的權限控制與安全防護機制。#### 3.2 主系統管理：❌#### 4.1 主系統路由架構（完全移除管理功能）
+**背景**：v3.0 已完成完整的安全與權限管理系統，現在要實現個人化學習筆記功能，打造真正的個人學習助手。
 
-```
-# 使用者認證
-/login              # 登入頁面
-/logout             # 登出功能
-/profile            # 個人資料頁面
-
-# 主要功能（需要登入，所有用戶相同）
-/dashboard          # 統一儀表板（admin 和 viewer 看到相同內容）
-/                   # 原有主頁功能保持不變
-
-# ❌ 完全移除所有管理路由
-# 不再有任何 /admin/* 路由
-# 所有管理操作都只能在本地端執行
-```
-
-**本地管理伺服器路由**（僅在 admin_server.py 中）:
-```
-# 本地管理介面（隨機端口，僅 127.0.0.1）
-http://127.0.0.1:{random_port}/
-├── /login              # 管理員登入
-├── /dashboard          # 管理統計
-├── /users              # 用戶管理
-├── /users/create       # 創建用戶
-├── /users/{id}/reset   # 重設密碼
-├── /security           # 安全監控
-└── /security/cleanup   # 系統清理
-```*
-- ✅ **登入系統**：完整的用戶認證與會話管理
-- ✅ **基本儀表板**：所有用戶看到相同的功能導航
-- ❌ **無管理操作**：不能創建/刪除用戶、不能管理 IP 黑名單
-- ❌ **無管理頁面**：所有 `/admin/*` 路由都已移除
-- 💡 **僅提示**：管理員會看到「請使用本地管理工具」的提示### 核心安全需求
-1. **雙層權限系統**：管理者 vs 檢視者
-2. **本地端帳號管理**：完全脫離 Web 介面的安全管理
-3. **IP 黑名單機制**：3 次密碼錯誤自動封鎖
-4. **為個人筆記功能做準備**：未來版本的基礎架構
+### 核心設計理念
+1. **模組化架構**：個人筆記系統與主程式適度解耦，便於獨立維護
+2. **AI 驅動**：利用 Gemini AI 提供智慧筆記整理、關聯分析、知識提取
+3. **用戶隔離**：每個用戶的筆記完全隔離，確保資料安全
+4. **知識整合**：可調用主程式的知識點、題庫資源，形成學習閉環
 
 ---
 
-## 📋 v3.0 開發任務清單
+## 📋 v3.1 開發任務清單
 
-### 🔒 Phase 1: 帳號系統架構設計
+### 🏗️ Phase 1: 個人筆記系統架構設計
 
-#### 1.1 資料庫設計
+#### 1.1 模組化架構設計
+```text
+exam_knowledge_app/
+├── 🧠 主程式（現有系統）
+│   ├── web_app.py                    # 主應用入口
+│   └── src/                          # 現有核心模組
+│       ├── core/                     # 核心模組（共用）
+│       ├── flows/                    # 處理流程（現有）
+│       ├── utils/                    # 工具函式（現有）
+│       ├── webapp/                   # Web 介面
+│       │   ├── templates/            # � 主程式模板（共用入口）
+│       │   │   ├── notes/            # �📝 筆記系統模板（新增）
+│       │   │   │   ├── note_list.html
+│       │   │   │   ├── note_edit.html
+│       │   │   │   ├── note_detail.html
+│       │   │   │   └── category_management.html
+│       │   │   └── ...existing templates...
+│       │   └── notes_blueprint.py   # 📝 筆記系統路由（新增）
+│       └── notes/                    # 📝 個人筆記系統模組（新增）
+│           ├── __init__.py
+│           ├── database.py           # 筆記專用資料庫操作
+│           ├── ai_client.py          # 筆記專用 AI 客戶端
+│           ├── note_manager.py       # 筆記核心管理邏輯
+│           ├── knowledge_integrator.py # 與主程式知識整合
+│           └── utils/                # 筆記專用工具函式
+│               ├── text_analyzer.py  # 文字分析與標籤提取
+│               ├── link_detector.py  # 智慧關聯檢測
+│               └── export_manager.py # 筆記匯出功能
+```
+
+#### 1.2 資料庫設計（筆記專用表）
 ```sql
--- 用戶管理表
-CREATE TABLE users (
+-- 個人筆記主表
+CREATE TABLE user_notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    role ENUM('admin', 'viewer') DEFAULT 'viewer',
-    email VARCHAR(100),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_login DATETIME,
-    is_active BOOLEAN DEFAULT TRUE
-);
-
--- 登入記錄表
-CREATE TABLE login_attempts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ip_address VARCHAR(45) NOT NULL,
-    username VARCHAR(50),
-    success BOOLEAN DEFAULT FALSE,
-    attempt_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-    user_agent TEXT
-);
-
--- IP 黑名單表
-CREATE TABLE ip_blacklist (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ip_address VARCHAR(45) UNIQUE NOT NULL,
-    reason VARCHAR(255) DEFAULT 'Too many failed login attempts',
-    blocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    blocked_by VARCHAR(50),
-    is_active BOOLEAN DEFAULT TRUE
-);
-
--- 會話管理表
-CREATE TABLE user_sessions (
-    id VARCHAR(255) PRIMARY KEY,
     user_id INTEGER NOT NULL,
-    ip_address VARCHAR(45) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    content_type ENUM('markdown', 'rich_text', 'code', 'mixed') DEFAULT 'markdown',
+    tags TEXT,                        -- JSON 陣列格式的標籤
+    ai_summary TEXT,                  -- AI 生成的筆記摘要
+    ai_keywords JSON,                 -- AI 提取的關鍵字
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME NOT NULL,
-    last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_archived BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
+
+-- 筆記分類表
+CREATE TABLE note_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    color VARCHAR(7),                 -- HEX 顏色碼
+    icon VARCHAR(50),                 -- 圖示名稱
+    parent_id INTEGER,                -- 支援階層分類
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (parent_id) REFERENCES note_categories(id)
+);
+
+-- 筆記與分類關聯表
+CREATE TABLE note_category_links (
+    note_id INTEGER NOT NULL,
+    category_id INTEGER NOT NULL,
+    PRIMARY KEY (note_id, category_id),
+    FOREIGN KEY (note_id) REFERENCES user_notes(id),
+    FOREIGN KEY (category_id) REFERENCES note_categories(id)
+);
+
+-- 筆記與主程式知識點關聯表
+CREATE TABLE note_knowledge_links (
+    note_id INTEGER NOT NULL,
+    knowledge_point_id INTEGER NOT NULL,
+    relevance_score FLOAT DEFAULT 0.8,  -- AI 計算的關聯度
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (note_id, knowledge_point_id),
+    FOREIGN KEY (note_id) REFERENCES user_notes(id),
+    FOREIGN KEY (knowledge_point_id) REFERENCES knowledge_points(id)
+);
+
+-- 筆記間關聯表（雙向關聯）
+CREATE TABLE note_relationships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_note_id INTEGER NOT NULL,
+    target_note_id INTEGER NOT NULL,
+    relationship_type ENUM('reference', 'follow_up', 'related', 'contrast') DEFAULT 'related',
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_note_id) REFERENCES user_notes(id),
+    FOREIGN KEY (target_note_id) REFERENCES user_notes(id)
+);
+
+-- AI 筆記分析記錄
+CREATE TABLE note_ai_analysis (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    note_id INTEGER NOT NULL,
+    analysis_type ENUM('summary', 'keywords', 'knowledge_links', 'suggestions') NOT NULL,
+    result JSON NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (note_id) REFERENCES user_notes(id)
+);
 ```
 
-#### 1.2 權限定義
-- **🔴 管理者 (admin)**：
-  - ✅ 完整 CRUD 權限（增刪改查所有內容）
-  - ✅ 刪除文件與問題
-  - ✅ 編輯問題內容
-  - ✅ 重新生成答案、心智圖、解題技巧
-  - ✅ 查看系統統計與日誌
-  - ✅ 上傳檔案分析
-  
-- **🟡 檢視者 (viewer)**：
-  - ✅ 檢視所有內容（文件、問題、知識點）
-  - ✅ 上傳檔案給 AI 分析
-  - ❌ 無法刪除或編輯現有內容
-  - ❌ 無法重新生成內容
+#### 1.3 權限與隔離設計
+- **完全用戶隔離**：每個用戶只能存取自己的筆記
+- **繼承主程式權限**：基於現有的 admin/viewer 角色系統
+- **限定只有管理員可以使用，檢視者無法使用此功能**
 
-### 🛡️ Phase 2: 安全防護機制
+### 🤖 Phase 2: AI 驅動功能設計
 
-#### 2.1 登入保護
-- **密碼策略**：bcrypt + salt
-- **失敗次數限制**：3 次錯誤 → IP 自動加入黑名單
-- **會話管理**：JWT 或 Flask-Session
-- **CSRF 保護**：所有表單都需要 CSRF token
-
-#### 2.2 IP 黑名單系統
+#### 2.1 智慧筆記分析
 ```python
-# 核心功能
-class SecurityManager:
-    def check_ip_blacklist(self, ip_address: str) -> bool
-    def add_to_blacklist(self, ip_address: str, reason: str) -> None
-    def remove_from_blacklist(self, ip_address: str) -> None
-    def record_login_attempt(self, ip: str, username: str, success: bool) -> None
-    def get_failed_attempts(self, ip: str, time_window: int = 3600) -> int
+class NoteAIClient:
+    def analyze_note_content(self, content: str) -> dict:
+        """分析筆記內容，提取關鍵資訊"""
+        return {
+            'summary': str,           # 筆記摘要
+            'keywords': list,         # 關鍵字列表
+            'main_topics': list,      # 主要主題
+            'difficulty_level': str,  # 難易度評估
+            'suggested_tags': list,   # 建議標籤
+            'knowledge_points': list  # 相關知識點
+        }
+    
+    def suggest_related_content(self, note_id: int) -> dict:
+        """建議相關內容"""
+        return {
+            'related_notes': list,        # 相關筆記
+            'knowledge_points': list,     # 相關知識點
+            'questions': list,            # 相關題目
+            'study_suggestions': list     # 學習建議
+        }
+    
+    def generate_study_plan(self, note_ids: list) -> dict:
+        """基於筆記生成學習計畫"""
+        return {
+            'daily_goals': list,      # 每日學習目標
+            'review_schedule': dict,  # 複習排程
+            'weak_areas': list,       # 薄弱環節
+            'improvement_tips': list  # 改進建議
+        }
 ```
 
-#### 2.3 中介軟體保護
-- **IP 黑名單檢查**：每個請求都先檢查 IP
-- **登入狀態驗證**：保護所有路由
-- **權限驗證**：admin/viewer 權限分離
-- **速率限制**：防止暴力破解
+#### 2.2 智慧關聯檢測
+- **內容相似性分析**：使用 AI 比對筆記內容的相關性
+- **知識點自動關聯**：將筆記內容與主程式的知識點自動關聯
+- **題目推薦**：根據筆記內容推薦相關練習題
+- **學習路徑建議**：AI 分析學習進度，建議最佳學習順序
 
-### 🖥️ Phase 3: 雙軌管理系統
+#### 2.3 AI 輔助功能
+- **自動摘要生成**：為長篇筆記生成精準摘要
+- **關鍵字提取**：自動提取重要概念和術語
+- **筆記品質評估**：分析筆記的完整性和邏輯性
+- **學習盲點檢測**：識別知識盲點，提供補強建議
 
-#### 3.1 本地專用管理：`admin_server.py`（完整管理權限）
-```bash
-# 啟動本地管理伺服器
-python admin_server.py
-# 自動在隨機端口啟動，僅限 127.0.0.1 訪問
-```
+### 📱 Phase 3: 使用者介面設計
 
-**本地管理功能**：
-- 🔒 **完全隔離**：僅本機 + 隨機端口 + 管理員驗證
-- 👥 **用戶管理**：創建、編輯、啟用/停用、密碼重設
-- � **IP 黑名單**：查看、解封、手動封鎖
-- � **安全監控**：登入記錄、威脅分析、系統清理
-- �️ **系統維護**：資料庫清理、備份還原
+#### 3.1 筆記編輯器
+- **多格式支援**：Markdown、富文本、程式碼、混合模式
+- **即時預覽**：所見即所得的編輯體驗
+- **AI 輔助功能**：
+  - **內容摘要**：選取文字後可請 AI 生成摘要
+  - **關鍵字提取**：AI 分析筆記內容並建議重要標籤
+  - **內容擴充**：選取段落後請 AI 補充相關概念或例子
+  - **格式整理**：AI 幫助調整文章結構和段落組織
+- **版本控制**：筆記修改歷史追蹤
 
-#### 3.2 主系統管理：整合到 `web_app.py`（僅顯示功能）
-- � **登入系統**：完整的用戶認證與會話管理
-- 📊 **管理員儀表板**：統計圖表、系統狀態顯示
-- � **無操作權限**：不能創建/刪除用戶、不能管理 IP 黑名單
-- � **僅供檢視**：可查看統計資料，但所有管理操作都引導到本地管理
+#### 3.2 知識整合介面
+- **知識點瀏覽**：在筆記中直接瀏覽相關知識點
+- **題目練習**：從筆記直接跳轉到相關練習題
+- **學習進度**：視覺化顯示學習進度和成果
+- **復習提醒**：基於記憶曲線的智慧提醒
 
-#### 3.3 CLI 工具：`admin_manager.py`（緊急備援）
-- � **緊急情況**：系統故障、忘記密碼、IP 被鎖
-- 💻 **離線管理**：完全不依賴 Web 介面
-- ⚡ **快速操作**：命令行快速執行關鍵任務
+#### 3.3 組織與搜尋
+- **階層分類**：支援多層次的筆記分類
+- **標籤系統**：靈活的標籤管理和篩選
+- **全文搜尋**：強大的搜尋功能，支援模糊搜尋
+- **AI 搜尋**：語意搜尋，理解用戶意圖
 
-### 🌐 Phase 4: Web 介面改造
+### 🔗 Phase 4: 主程式整合
 
-#### 4.1 路由架構重新設計
-
-**主系統路由**（集成到 web_app.py）:
-```
-# 使用者認證
-/login              # 登入頁面
-/logout             # 登出功能
-/profile            # 個人資料頁面
-
-# 主要功能（需要登入）
-/dashboard          # 管理員統計儀表板（僅顯示，無操作）
-/                   # 原有主頁功能保持不變
-
-# 🚫 移除所有管理操作路由
-# 不再有 /admin/users, /admin/security 等操作介面
-```
-
-**本地管理系統**（admin_server.py，隨機端口）:
-```
-# 僅限 127.0.0.1 訪問
-http://127.0.0.1:[隨機端口]/
-
-# 完整管理功能
-/                   # 本地管理儀表板
-/login              # 本地管理員認證
-/users              # 用戶完整管理
-/users/create       # 創建用戶
-/users/{id}/edit    # 編輯用戶
-/users/{id}/reset   # 重設密碼
-/security           # 安全監控
-/security/blacklist # IP 黑名單管理
-/cleanup            # 系統清理
-```
-
-**CLI 工具**（離線管理）:
-```bash
-python admin_manager.py [command]  # 緊急指令
-```
-
-#### 4.2 完全分離架構說明
-
-**主系統 (web_app.py)**：
-- ✅ 用戶認證功能（登入/登出）
-- ✅ 統一儀表板（admin 和 viewer 看相同內容）
-- ✅ 原有文檔功能保持不變
-- ❌ **完全移除所有管理操作**
-
-**本地管理系統 (admin_server.py)**：
-- 🔒 僅限 127.0.0.1 + 隨機端口
-- 🔑 獨立管理員認證
-- 👥 完整用戶管理功能
-- 🛡️ IP 黑名單管理
-- 📊 安全監控統計
-
-**CLI 工具 (admin_manager.py)**：
-- ⚡ 緊急離線操作
-- 🔧 系統維護功能
-
-#### 4.3 現有功能權限改造
+#### 4.1 路由整合
 ```python
-# 裝飾器範例
-@require_login
-@require_admin
-def delete_document(doc_id):
-    # 只有 admin 可以刪除
+# 在 src/webapp/__init__.py 中整合筆記系統
+from .notes_blueprint import notes_bp
 
-@require_login  
-def upload_file():
-    # admin 和 viewer 都可以上傳
-
-@require_login
-@require_admin
-def regenerate_answer(question_id):
-    # 只有 admin 可以重新生成
+def create_app():
+    # 現有主程式初始化
+    app = Flask(__name__)
+    # ... 現有設定 ...
+    
+    # 註冊現有藍圖
+    app.register_blueprint(main_bp)
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(admin_bp, url_prefix='/admin')
+    
+    # 整合筆記系統藍圖
+    app.register_blueprint(notes_bp, url_prefix='/notes')
+    
+    return app
 ```
+
+#### 4.2 模板共用架構
+```python
+# src/webapp/notes_blueprint.py 使用共用模板系統
+from flask import Blueprint, render_template
+from ..notes.note_manager import NoteManager
+
+notes_bp = Blueprint('notes', __name__)
+
+@notes_bp.route('/list')
+def note_list():
+    # 筆記列表邏輯
+    return render_template('notes/note_list.html', **data)
+
+@notes_bp.route('/edit/<int:note_id>')
+def note_edit(note_id):
+    # 筆記編輯邏輯
+    return render_template('notes/note_edit.html', **data)
+```
+
+#### 4.3 導航整合
+```html
+<!-- 在 src/webapp/templates/layout.html 中加入筆記系統導航 -->
+<nav class="navbar navbar-expand-lg">
+    <div class="navbar-nav">
+        <a class="nav-link" href="{{ url_for('main.index') }}">首頁</a>
+        <a class="nav-link" href="{{ url_for('main.knowledge') }}">知識管理</a>
+        <a class="nav-link" href="{{ url_for('notes.note_list') }}">📝 我的筆記</a>
+        <a class="nav-link" href="{{ url_for('main.documents_list') }}">文件庫</a>
+    </div>
+</nav>
+```
+
+#### 4.4 資料整合
+```python
+class KnowledgeIntegrator:
+    def get_related_knowledge_points(self, note_content: str) -> list:
+        """獲取與筆記相關的知識點"""
+        pass
+    
+    def get_related_questions(self, note_id: int) -> list:
+        """獲取與筆記相關的題目"""
+        pass
+    
+    def sync_learning_progress(self, user_id: int) -> dict:
+        """同步學習進度到主程式"""
+        pass
+```
+
+#### 4.3 權限整合
+- **會話共享**：與主程式共享用戶登入狀態
+- **權限繼承**：基於主程式的權限系統
+- **限定只有管理員可以使用，檢視者無法使用此功能**
 
 ---
 
-## 🚀 實作順序
+## 🚀 v3.1 實作順序
 
-### Week 1: 資料庫與核心安全
-1. ✅ 設計並建立用戶相關資料表
-2. ✅ 實作 `SecurityManager` 類別
-3. ✅ 實作密碼加密與驗證
-4. ✅ 實作 IP 黑名單機制
+### Week 1: 筆記系統架構建立
+1. 🔨 設計並建立筆記相關資料表
+2. 🔨 實作 `notes/database.py` 筆記專用資料庫操作，與主程式共同一個資料庫
+3. 🔨 建立 `notes/ai_client.py` 筆記專用 AI 客戶端
+4. 🔨 實作基礎的筆記 CRUD 功能
 
-### Week 2: 管理系統建置
-1. ✅ 建立 `admin_manager.py` CLI 工具（緊急管理用）
-2. ✅ 實作用戶 CRUD 功能
-3. ✅ 實作 IP 管理功能
-4. ✅ 建立獨立本地管理伺服器 (`admin_server.py`)
+### Week 2: AI 功能開發
+1. 🔨 實作筆記內容分析功能
+2. 🔨 開發智慧關聯檢測系統
+3. 🔨 建立知識點自動關聯機制
+4. 🔨 實作 AI 輔助寫作功能
 
-### Week 3: Web 介面整合
-1. ✅ 建立登入/登出頁面與認證系統
-2. ✅ 實作權限裝飾器與中介軟體
-3. ✅ 開發本地管理介面（僅限 127.0.0.1 + 隨機端口）
-4. ⭕ 改造主系統加入基礎權限控制（無帳號管理功能）
+### Week 3: 使用者介面開發
+1. 🔨 在 `src/webapp/templates/notes/` 中建立筆記模板（共用主程式模板系統）
+2. 🔨 創建 `src/webapp/notes_blueprint.py` 筆記系統路由
+3. 🔨 實作分類和標籤管理介面
+4. 🔨 建立搜尋、篩選和知識整合顯示功能
 
-### Week 4: 主系統認證整合與點數系統（完成 ✅）
-
-1. ✅ 整合認證系統到主 Web 應用
-   - 將 auth_blueprints 整合進 web_app.py
-   - 設置 session 管理和登入保護
-   - **確保完全移除所有管理操作**
-
-2. ✅ 實作點數系統（v3.1）
-   - **點數機制**：每小時恢復100點，上限100點
-   - **消耗標準**：生成考題10-50分、重新生成答案10分、心智圖5分、解題技巧5分
-   - **違規懲罰**：非學習內容扣4800分（禁用48小時）
-   - **上傳者追蹤**：所有文件顯示提供者資訊
-
-3. ✅ 建立內容驗證系統
-   - AI自動檢查上傳內容是否為學習相關
-   - 違規內容自動拒絕並處罰
-   - 完整的驗證記錄追蹤
-
-4. ✅ 資料庫結構更新
-   - 新增 point_transactions 表（點數交易記錄）
-   - 新增 content_validations 表（內容驗證記錄）
-   - users 表新增點數相關欄位
-   - documents 表新增上傳者追蹤
-1. ⭕ 整合認證系統到主 Web 應用
-2. ⭕ 為現有功能添加權限控制裝飾器
-3. ⭕ 創建主系統管理員儀表板（僅顯示統計，無操作功能）
-4. ⭕ 測試與優化整體系統
+### Week 4: 主程式整合與測試
+1. 🔨 在 `src/webapp/__init__.py` 中註冊筆記藍圖
+2. 🔨 更新主程式首頁個人筆記連結到正確的功能頁面，並且刪除現有的預告頁面`personal_notes.html`。
+2. 🔨 更新主程式導航選單，加入筆記系統入口
+3. 🔨 限定只有管理員可以使用，檢視者無法使用此功能，也看不到相關區域卡片或是連結按鈕。
+4. 🔨 完整系統測試與優化
 
 ---
 
-## 📚 技術需求
+## 📚 v3.1 技術需求
 
 ### 新增依賴套件
 ```requirements
-# 安全相關
-Flask-Login>=0.6.0          # 會話管理
-Flask-WTF>=1.1.0            # CSRF 保護  
-bcrypt>=4.0.0               # 密碼加密
-PyJWT>=2.8.0                # JWT token
-argon2-cffi>=23.0.0         # 更強的密碼加密（可選）
+# 筆記編輯相關
+markdown>=3.7.0              # Markdown 解析
+bleach>=6.0.0                # HTML 清理（安全性）
+python-slugify>=8.0.0        # 生成 URL 友善的 slug
 
-# 指令介面
-click>=8.1.0                # CLI 工具
-tabulate>=0.9.0             # 表格輸出
-colorama>=0.4.0             # 終端顏色
+# 文字分析
+jieba>=0.42.1                # 中文分詞
+scikit-learn>=1.3.0          # 文字相似性計算
+textdistance>=4.6.0          # 文字距離計算
+
+# 匯出功能
+reportlab>=4.0.0             # PDF 生成
+openpyxl>=3.1.0              # Excel 匯出
 ```
 
-### 設定檔更新
-```env
-# 新增安全設定
-LOGIN_RATE_LIMIT=5           # 每分鐘最大登入嘗試次數
-SESSION_TIMEOUT=3600         # 會話超時時間（秒）
-MAX_FAILED_ATTEMPTS=3        # IP 封鎖前的最大失敗次數
-BLACKLIST_DURATION=86400     # IP 封鎖時間（秒）
-ADMIN_ONLY_LOCAL=true        # 管理功能僅限本地端
-```
+### 個人筆記功能特色
+
+#### 🎯 核心亮點
+1. **AI 驅動的智慧筆記**：
+   - 自動摘要和關鍵字提取
+   - 智慧建議相關內容
+   - 學習盲點檢測
+
+2. **與主程式深度整合**：
+   - 筆記內容自動關聯知識點
+   - 推薦相關練習題目
+   - 學習進度同步追蹤
+
+3. **強大的組織能力**：
+   - 階層分類系統
+   - 靈活標籤管理
+   - AI 驅動的關聯檢測
+
+4. **個人化學習助手**：
+   - 基於筆記內容的學習計畫
+   - 記憶曲線復習提醒
+   - 個人化學習建議
+
+#### 🔒 安全與隔離
+- **完全用戶隔離**：每個用戶的筆記完全獨立
+- **繼承權限系統**：基於 v3.0 的安全框架
+
+#### 🎨 使用體驗
+- **直觀的編輯介面**：支援多種格式的筆記編輯
+- **即時 AI 輔助**：寫作過程中的智慧建議
+- **豐富的檢視模式**：時間線、分類、關聯圖等多種檢視
+- **無縫整合體驗**：與主程式功能自然銜接
 
 ---
 
-## 🔮 未來規劃（v3.1+）
+## 🔮 v3.2+ 未來規劃
 
-### 個人筆記功能準備
-- **用戶隔離**：每個用戶的筆記完全隔離
-- **筆記分類**：支援標籤與分類
-- **知識圖譜個人化**：基於個人筆記的知識關聯
+### 高級 AI 功能
+- **語音筆記**：語音轉文字，AI 自動整理
+- **圖片筆記**：OCR 識別，圖文混合筆記
+- **協作筆記**：團隊共享筆記（保持個人隱私）
 
-### 高級安全功能
-- **雙因素認證 (2FA)**：Google Authenticator 整合
-- **API 金鑰管理**：為程式化存取提供 API
-- **審計日誌**：完整的操作記錄與稽核
-
----
-
-## ⚠️ 安全注意事項
-
-1. **密碼安全**：
-   - 最少 8 字元，必須包含大小寫字母、數字、特殊符號
-   - 使用 bcrypt 或 argon2 加密
-   - 定期提醒更換密碼
-
-2. **會話安全**：
-   - 使用 HTTPS（生產環境必須）
-   - 會話 token 定期刷新
-   - 登出時清除所有會話
-
-3. **監控與警告**：
-   - 異常登入行為監控
-   - 管理員操作記錄
-   - 定期安全掃描
+### 學習分析
+- **學習行為分析**：深度分析學習模式
+- **個人化推薦**：AI 推薦學習內容和方法
 
 ---
 
-**注意**：v2.0 的知識圖譜功能將延後到 v3.1，優先完成安全系統建設。
+## ⚠️ v3.1 開發注意事項
+
+1. **模組化原則**：
+   - 筆記系統保持相對獨立，便於維護和擴展
+   - 通過明確的介面與主程式整合
+   - 避免過度耦合，確保系統穩定性
+
+2. **效能考量**：
+   - AI 分析功能設計為非同步處理
+   - 大量文字分析使用快取機制
+   - 資料庫查詢優化，建立適當索引
+
+3. **用戶體驗**：
+   - 筆記編輯介面響應迅速
+   - AI 功能提供即時回饋
+   - 支援離線編輯（本地暫存）
+
+4. **資料安全**：
+   - 筆記內容加密存儲（敏感資訊）
+   - 定期自動備份用戶資料
+   - 完整的操作記錄追蹤
+
+---
+
+**注意**：v2.0 的知識圖譜功能將延後到 v4.0，v3.1 專注於個人筆記系統建設。

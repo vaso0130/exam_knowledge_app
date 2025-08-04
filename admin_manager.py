@@ -270,6 +270,64 @@ def show_login_attempts_command(args):
         print(f"❌ 查詢登入記錄失敗: {e}")
 
 
+def show_invite_attempts_command(args):
+    """顯示邀請碼嘗試記錄"""
+    db_manager, _ = init_managers()
+    
+    limit = args.limit
+    
+    try:
+        attempts = db_manager.get_invite_code_attempts(limit)
+        
+        if not attempts:
+            print("📝 沒有邀請碼嘗試記錄")
+            return
+        
+        print(f"\n🔑 最近 {len(attempts)} 次邀請碼嘗試:")
+        
+        # 準備表格資料
+        table_data = []
+        for attempt in attempts:
+            attempt_time = attempt['attempt_time'][:19]
+            username = attempt['username_attempted'] or "未提供"
+            invite_code = (attempt['invite_code'] or "")[:15] + "..."
+            result = "✅ 成功" if attempt['success'] else "❌ 失敗"
+            user_agent = (attempt['user_agent'] or "")[:30] + "..."
+            
+            table_data.append([
+                attempt['id'],
+                attempt_time,
+                attempt['ip_address'],
+                username,
+                invite_code,
+                result,
+                user_agent
+            ])
+        
+        headers = ['ID', '時間', 'IP 地址', '嘗試用戶名', '邀請碼', '結果', 'User Agent']
+        print(tabulate(table_data, headers=headers, tablefmt='grid'))
+        
+        # 統計
+        successful = len([a for a in attempts if a['success']])
+        failed = len(attempts) - successful
+        print(f"\n📊 統計: 成功 {successful} 次, 失敗 {failed} 次")
+        
+        # 顯示最近失敗的 IP
+        failed_ips = {}
+        for attempt in attempts:
+            if not attempt['success']:
+                ip = attempt['ip_address']
+                failed_ips[ip] = failed_ips.get(ip, 0) + 1
+        
+        if failed_ips:
+            print(f"\n⚠️  失敗次數最多的 IP:")
+            for ip, count in sorted(failed_ips.items(), key=lambda x: x[1], reverse=True)[:5]:
+                print(f"   {ip}: {count} 次失敗")
+        
+    except Exception as e:
+        print(f"❌ 查詢邀請碼嘗試記錄失敗: {e}")
+
+
 def delete_user_command(args):
     """刪除用戶"""
     db_manager, _ = init_managers()
@@ -410,6 +468,7 @@ def show_stats_command(args):
         all_users = db_manager.get_all_users()
         blacklisted_ips = db_manager.get_blacklisted_ips()
         recent_attempts = db_manager.get_login_attempts(100)
+        invite_attempts = db_manager.get_invite_code_attempts(100)
         
         stats = {
             'total_users': len(all_users),
@@ -418,6 +477,11 @@ def show_stats_command(args):
             'blacklisted_ips': len(blacklisted_ips),
             'failed_attempts_today': len([
                 a for a in recent_attempts 
+                if not a['success'] and 
+                datetime.fromisoformat(a['attempt_time']).date() == datetime.now().date()
+            ]),
+            'failed_invites_today': len([
+                a for a in invite_attempts 
                 if not a['success'] and 
                 datetime.fromisoformat(a['attempt_time']).date() == datetime.now().date()
             ])
@@ -433,6 +497,7 @@ def show_stats_command(args):
         print(f"\n🛡️  安全統計:")
         print(f"   封鎖 IP 數: {stats['blacklisted_ips']}")
         print(f"   今日失敗登入: {stats['failed_attempts_today']}")
+        print(f"   今日邀請碼失敗: {stats['failed_invites_today']}")
         
         print(f"\n📅 最近活動:")
         if recent_attempts:
@@ -629,6 +694,11 @@ def main():
     attempts_parser = subparsers.add_parser('show-attempts', help='顯示登入嘗試記錄')
     attempts_parser.add_argument('--limit', type=int, default=50, help='顯示數量限制 (預設: 50)')
     attempts_parser.set_defaults(func=show_login_attempts_command)
+    
+    # 顯示邀請碼嘗試記錄
+    invite_attempts_parser = subparsers.add_parser('show-invite-attempts', help='顯示邀請碼嘗試記錄')
+    invite_attempts_parser.add_argument('--limit', type=int, default=50, help='顯示數量限制 (預設: 50)')
+    invite_attempts_parser.set_defaults(func=show_invite_attempts_command)
     
     # === 系統管理 ===
     # 系統統計

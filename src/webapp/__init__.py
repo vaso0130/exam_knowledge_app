@@ -58,6 +58,17 @@ from ..core.gemini_client import GeminiClient
 from ..flows.flow_manager import FlowManager
 from .async_processor import AsyncProcessor
 
+def get_client_ip():
+    """獲取客戶端真實IP地址"""
+    # 檢查是否通過代理伺服器
+    if 'X-Forwarded-For' in request.headers:
+        # X-Forwarded-For 可能包含多個IP，取第一個
+        return request.headers['X-Forwarded-For'].split(',')[0].strip()
+    elif 'X-Real-IP' in request.headers:
+        return request.headers['X-Real-IP']
+    else:
+        return request.remote_addr
+
 def create_app():
     # --- App Initialization ---
     app = Flask(__name__)
@@ -254,11 +265,20 @@ def create_app():
         email = request.form.get('email', '').strip()
         invite_code = request.form.get('invite_code', '').strip()
         
+        # 獲取客戶端資訊
+        client_ip = get_client_ip()
+        user_agent = request.headers.get('User-Agent', '')
+        
         # 使用SecurityManager驗證邀請碼
         from ..core.security_manager import SecurityManager
         security_manager = SecurityManager(db)
         
-        role = security_manager.validate_invitation_code(invite_code)
+        role = security_manager.validate_invitation_code(
+            invite_code, 
+            ip_address=client_ip, 
+            user_agent=user_agent, 
+            username_attempted=username
+        )
         if not role:
             flash('邀請碼無效，請檢查後重新輸入')
             return render_template('login.html')
