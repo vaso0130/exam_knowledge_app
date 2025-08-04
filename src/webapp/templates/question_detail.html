@@ -14,6 +14,7 @@
                     {% if question.subject %}
                     <a href="/questions?subject={{ question.subject }}" class="btn btn-outline-primary btn-sm">查看同科目</a>
                     {% endif %}
+                    <a href="{{ url_for('notes.create_note_from_question', question_id=question.id) }}" class="btn btn-outline-warning btn-sm">✍️ 為此題建立筆記</a>
                 </div>
             </div>
             <div class="card-body">

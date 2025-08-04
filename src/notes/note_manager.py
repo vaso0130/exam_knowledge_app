@@ -24,6 +24,9 @@ class NoteManager:
             'content': content,
             'content_type': kwargs.get('content_type', 'markdown'),
             'tags': kwargs.get('custom_tags', []),
+            'source_question_id': kwargs.get('source_question_id'),
+            'source_question_text': kwargs.get('source_question_text'),
+            'source_answer_text': kwargs.get('source_answer_text')
         }
 
         # 如果啟用 AI 分析，則執行分析
@@ -83,6 +86,16 @@ class NoteManager:
             'ai_keywords': ai_keywords,
             'has_ai_analysis': bool(note.get('ai_summary') or ai_keywords)
         }
+
+        # 來源題目資訊
+        if note.get('source_question_id'):
+            note_details['source_question'] = {
+                'id': note.get('source_question_id'),
+                'text': note.get('source_question_text'),
+                'answer': note.get('source_answer_text')
+            }
+        else:
+            note_details['source_question'] = None
 
         # 只有當筆記啟用了 AI 分析時，才生成智慧建議
         if note_details['has_ai_analysis']:
@@ -393,14 +406,22 @@ class NoteManager:
 
     # === 從題庫/教材生成筆記 ===
 
-    def create_note_from_questions(self, user_id: int, questions_data: List[Dict], title: str = None) -> Optional[str]:
+    def create_note_from_questions(
+        self,
+        user_id: int,
+        questions_data: List[Dict],
+        title: str = None,
+        source_question_id: str = None,
+        source_question_text: str = None,
+        source_answer_text: str = None
+    ) -> Optional[str]:
         """從題庫資料生成筆記"""
         try:
             ai_result = self.ai_client.generate_note_from_questions(questions_data)
-            
+
             note_title = title or ai_result.get('title', '從題庫生成的筆記')
             note_content = ai_result.get('content', '')
-            
+
             # 創建筆記
             note_id = self.db_manager.create_note(
                 user_id=user_id,
@@ -409,7 +430,10 @@ class NoteManager:
                 content_type='markdown',
                 tags=json.dumps(ai_result.get('suggested_tags', []), ensure_ascii=False),
                 ai_summary=ai_result.get('study_tips'),
-                ai_keywords=json.dumps(ai_result.get('key_concepts', []), ensure_ascii=False)
+                ai_keywords=json.dumps(ai_result.get('key_concepts', []), ensure_ascii=False),
+                source_question_id=source_question_id,
+                source_question_text=source_question_text,
+                source_answer_text=source_answer_text
             )
             
             if note_id:

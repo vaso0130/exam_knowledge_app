@@ -27,6 +27,10 @@ class UserNote(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_archived = Column(Integer, default=0)
+    # 新增欄位：來源題目資訊
+    source_question_id = Column(String(36))
+    source_question_text = Column(Text)
+    source_answer_text = Column(Text)
 
     user = relationship("User")
     categories = relationship("NoteCategory", secondary="note_category_links", back_populates="notes")
@@ -126,7 +130,10 @@ class NotesDatabaseManager:
                 tags=json.dumps(kwargs.get('tags', []), ensure_ascii=False),
                 ai_summary=kwargs.get('ai_summary'),
                 ai_keywords=json.dumps(kwargs.get('ai_keywords', []), ensure_ascii=False),
-                is_archived=kwargs.get('is_archived', 0)
+                is_archived=kwargs.get('is_archived', 0),
+                source_question_id=kwargs.get('source_question_id'),
+                source_question_text=kwargs.get('source_question_text'),
+                source_answer_text=kwargs.get('source_answer_text')
             )
             session.add(note)
             session.flush()
@@ -543,7 +550,10 @@ class NotesDatabaseManager:
             "ai_keywords": json.loads(note.ai_keywords) if note.ai_keywords else [],
             "created_at": note.created_at.isoformat(),
             "updated_at": note.updated_at.isoformat(),
-            "is_archived": bool(note.is_archived)
+            "is_archived": bool(note.is_archived),
+            "source_question_id": note.source_question_id,
+            "source_question_text": note.source_question_text,
+            "source_answer_text": note.source_answer_text
         }
 
     def _category_to_dict(self, category: NoteCategory) -> Dict[str, Any]:

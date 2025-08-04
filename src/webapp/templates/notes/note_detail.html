@@ -25,6 +25,29 @@
         </div>
     </div>
 
+    {% if note.source_question %}
+    <div class="mb-3">
+        <a href="{{ url_for('question_detail', q_id=note.source_question.id) }}" class="btn btn-outline-secondary btn-sm">返回原始題目</a>
+        <div class="accordion mt-2" id="sourceQuestionAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="headingSource">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSource" aria-expanded="false" aria-controls="collapseSource">
+                        顯示/隱藏來源題目
+                    </button>
+                </h2>
+                <div id="collapseSource" class="accordion-collapse collapse" aria-labelledby="headingSource" data-bs-parent="#sourceQuestionAccordion">
+                    <div class="accordion-body">
+                        <h6 class="fw-bold">題目</h6>
+                        <p>{{ note.source_question.text }}</p>
+                        <h6 class="fw-bold">答案</h6>
+                        <p>{{ note.source_question.answer }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="row">
         <!-- Main Note Content -->
         <div class="col-lg-8">

@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify
 from ..notes.note_manager import NoteManager
 from ..webapp.auth_middleware import require_admin
+from ..core.database import DatabaseManager
 
 # Define the blueprint for the notes system
 notes_bp = Blueprint(
@@ -89,6 +90,86 @@ def create_note():
             flash("建立筆記時發生錯誤。", "danger")
 
     return render_template('notes/note_edit.html', title="新增筆記", note=None)
+
+
+@notes_bp.route('/from-question/<string:question_id>', methods=['GET', 'POST'])
+def create_note_from_question(question_id):
+    """Create a note based on a question from the question bank."""
+    user_id = g.current_user['id']
+    main_db = DatabaseManager()
+    question = main_db.get_question_by_id(question_id)
+    if not question:
+        flash("找不到指定的題目。", "danger")
+        return redirect(url_for('questions'))
+    source_question = {
+        'id': question['id'],
+        'text': question['question_text'],
+        'answer': question.get('answer_text')
+    }
+    if request.method == 'POST':
+        # AI 自動生成
+        if 'ai_generate' in request.form:
+            note_id = note_manager.create_note_from_questions(
+                user_id=user_id,
+                questions_data=[{
+                    'question_text': source_question['text'],
+                    'answer_text': source_question['answer']
+                }],
+                source_question_id=question_id,
+                source_question_text=source_question['text'],
+                source_answer_text=source_question['answer']
+            )
+            if note_id:
+                flash("筆記已由 AI 自動生成！", "success")
+                return redirect(url_for('.note_detail', note_id=note_id))
+            flash("AI 生成筆記失敗。", "danger")
+        else:
+            title = request.form.get('title')
+            content = request.form.get('content')
+            enable_ai_analysis = request.form.get('enable_ai_analysis') == 'on'
+            enable_ai_organization = request.form.get('enable_ai_organization') == 'on'
+            organization_types = request.form.getlist('organization_types')
+            if not title or not content:
+                flash("標題和內容不能為空。", "danger")
+            else:
+                note_id = note_manager.create_new_note(
+                    user_id,
+                    title,
+                    content,
+                    enable_ai_analysis=enable_ai_analysis,
+                    source_question_id=question_id,
+                    source_question_text=source_question['text'],
+                    source_answer_text=source_question['answer']
+                )
+                if note_id:
+                    if enable_ai_organization and organization_types:
+                        from threading import Thread
+
+                        def generate_organizations():
+                            for org_type in organization_types:
+                                try:
+                                    note_manager.organize_note_with_ai(user_id, note_id, org_type)
+                                except Exception as e:
+                                    print(f"Warning: Failed to generate {org_type} organization: {e}")
+
+                        thread = Thread(target=generate_organizations)
+                        thread.daemon = True
+                        thread.start()
+
+                        flash(f"筆記已成功建立！{len(organization_types)} 種整理方式正在背景生成中...", "success")
+                    else:
+                        flash("筆記已成功建立！", "success")
+                    return redirect(url_for('.note_detail', note_id=note_id))
+                flash("建立筆記時發生錯誤。", "danger")
+
+    default_title = f"筆記：{source_question['text'][:30]}..." if source_question else "新增筆記"
+    return render_template(
+        'notes/note_edit.html',
+        title="新增筆記",
+        note=None,
+        default_title=default_title,
+        source_question=source_question
+    )
 
 @notes_bp.route('/<string:note_id>')
 def note_detail(note_id):
