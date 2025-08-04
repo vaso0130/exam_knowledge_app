@@ -16,6 +16,10 @@ load_dotenv()
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./db.sqlite3")
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
+def get_db_connection_string():
+    """獲取資料庫連接字串"""
+    return DATABASE_URL
+
 engine_args = {"echo": False}
 if IS_SQLITE:
     engine_args.update({
@@ -210,76 +214,6 @@ class ContentValidation(Base):
     user = relationship("User")
 
 
-# === v3.1 個人筆記系統模型 ===
-
-class UserNote(Base):
-    __tablename__ = "user_notes"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    title = Column(String(200), nullable=False)
-    content = Column(Text, nullable=False)
-    content_type = Column(String(20), default='markdown') # ENUM is not standard in all DBs
-    tags = Column(Text)  # JSON array as string
-    ai_summary = Column(Text)
-    ai_keywords = Column(Text) # JSON as string
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    is_archived = Column(Integer, default=0) # Using Integer for Boolean
-
-    user = relationship("User")
-    categories = relationship("NoteCategory", secondary="note_category_links", back_populates="notes")
-
-class NoteCategory(Base):
-    __tablename__ = "note_categories"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    name = Column(String(100), nullable=False)
-    description = Column(Text)
-    color = Column(String(7)) # HEX color code
-    icon = Column(String(50))
-    parent_id = Column(Integer, ForeignKey("note_categories.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    user = relationship("User")
-    notes = relationship("UserNote", secondary="note_category_links", back_populates="categories")
-    parent = relationship("NoteCategory", remote_side=[id])
-
-class NoteCategoryLink(Base):
-    __tablename__ = "note_category_links"
-    note_id = Column(Integer, ForeignKey("user_notes.id", ondelete="CASCADE"), primary_key=True)
-    category_id = Column(Integer, ForeignKey("note_categories.id", ondelete="CASCADE"), primary_key=True)
-
-class NoteKnowledgeLink(Base):
-    __tablename__ = "note_knowledge_links"
-    note_id = Column(Integer, ForeignKey("user_notes.id", ondelete="CASCADE"), primary_key=True)
-    knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
-    relevance_score = Column(Float, default=0.8)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    note = relationship("UserNote")
-    knowledge_point = relationship("KnowledgePoint")
-
-class NoteRelationship(Base):
-    __tablename__ = "note_relationships"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    source_note_id = Column(Integer, ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
-    target_note_id = Column(Integer, ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
-    relationship_type = Column(String(50), default='related') # ENUM
-    description = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    source_note = relationship("UserNote", foreign_keys=[source_note_id])
-    target_note = relationship("UserNote", foreign_keys=[target_note_id])
-
-class NoteAIAnalysis(Base):
-    __tablename__ = "note_ai_analysis"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    note_id = Column(Integer, ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
-    analysis_type = Column(String(50), nullable=False) # ENUM
-    result = Column(Text, nullable=False) # JSON as string
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    note = relationship("UserNote")
 
 class InviteCodeAttempt(Base):
     """邀請碼嘗試記錄"""
@@ -1184,3 +1118,275 @@ class DatabaseManager:
                 'user_agent': attempt.user_agent,
                 'username_attempted': attempt.username_attempted
             } for attempt in attempts]
+
+    # === v3.1 個人筆記系統管理方法 ===
+    
+    def create_note(self, user_id: int, title: str, content: str, 
+                   content_type: str = 'markdown', tags: List[str] = None) -> str:
+        """創建新筆記"""
+        with self._session_scope() as session:
+            note_id = str(uuid.uuid4())
+            note = UserNote(
+                id=note_id,
+                user_id=user_id,
+                title=title,
+                content=content,
+                content_type=content_type,
+                tags=json.dumps(tags or [], ensure_ascii=False)
+            )
+            session.add(note)
+            session.flush()
+            return note_id
+    
+    def get_note_by_id(self, note_id: str, user_id: int = None) -> Optional[Dict[str, Any]]:
+        """根據ID獲取筆記"""
+        with self._session_scope() as session:
+            query = session.query(UserNote).filter(UserNote.id == note_id)
+            if user_id:
+                query = query.filter(UserNote.user_id == user_id)
+            
+            note = query.first()
+            if note:
+                return {
+                    'id': note.id,
+                    'user_id': note.user_id,
+                    'title': note.title,
+                    'content': note.content,
+                    'content_type': note.content_type,
+                    'tags': json.loads(note.tags) if note.tags else [],
+                    'ai_summary': note.ai_summary,
+                    'ai_keywords': json.loads(note.ai_keywords) if note.ai_keywords else [],
+                    'created_at': note.created_at.isoformat(),
+                    'updated_at': note.updated_at.isoformat(),
+                    'is_archived': bool(note.is_archived)
+                }
+            return None
+    
+    def get_user_notes(self, user_id: int, include_archived: bool = False, 
+                      category_id: int = None, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        """獲取用戶筆記列表"""
+        with self._session_scope() as session:
+            query = session.query(UserNote).filter(UserNote.user_id == user_id)
+            
+            if not include_archived:
+                query = query.filter(UserNote.is_archived == 0)
+            
+            if category_id:
+                query = query.join(NoteCategoryLink).filter(
+                    NoteCategoryLink.category_id == category_id
+                )
+            
+            notes = query.order_by(UserNote.updated_at.desc()).offset(offset).limit(limit).all()
+            
+            return [{
+                'id': note.id,
+                'title': note.title,
+                'content': note.content[:200] + "..." if len(note.content) > 200 else note.content,  # 預覽內容
+                'content_type': note.content_type,
+                'tags': json.loads(note.tags) if note.tags else [],
+                'ai_summary': note.ai_summary,
+                'created_at': note.created_at.isoformat(),
+                'updated_at': note.updated_at.isoformat(),
+                'is_archived': bool(note.is_archived)
+            } for note in notes]
+    
+    def update_note(self, note_id: str, user_id: int, title: str = None, 
+                   content: str = None, tags: List[str] = None) -> bool:
+        """更新筆記"""
+        with self._session_scope() as session:
+            note = session.query(UserNote).filter(
+                UserNote.id == note_id, 
+                UserNote.user_id == user_id
+            ).first()
+            
+            if note:
+                if title is not None:
+                    note.title = title
+                if content is not None:
+                    note.content = content
+                if tags is not None:
+                    note.tags = json.dumps(tags, ensure_ascii=False)
+                note.updated_at = datetime.utcnow()
+                return True
+            return False
+    
+    def update_note_ai_analysis(self, note_id: str, ai_summary: str = None, 
+                               ai_keywords: List[str] = None) -> bool:
+        """更新筆記的AI分析結果"""
+        with self._session_scope() as session:
+            note = session.query(UserNote).filter(UserNote.id == note_id).first()
+            if note:
+                if ai_summary is not None:
+                    note.ai_summary = ai_summary
+                if ai_keywords is not None:
+                    note.ai_keywords = json.dumps(ai_keywords, ensure_ascii=False)
+                note.updated_at = datetime.utcnow()
+                return True
+            return False
+    
+    def delete_note(self, note_id: str, user_id: int) -> bool:
+        """刪除筆記"""
+        with self._session_scope() as session:
+            note = session.query(UserNote).filter(
+                UserNote.id == note_id,
+                UserNote.user_id == user_id
+            ).first()
+            
+            if note:
+                # 先刪除相關的分析記錄
+                session.query(NoteAIAnalysis).filter(
+                    NoteAIAnalysis.note_id == note_id
+                ).delete()
+                
+                # 刪除分類關聯
+                session.query(NoteCategoryLink).filter(
+                    NoteCategoryLink.note_id == note_id
+                ).delete()
+                
+                # 刪除知識點關聯
+                session.query(NoteKnowledgeLink).filter(
+                    NoteKnowledgeLink.note_id == note_id
+                ).delete()
+                
+                # 刪除筆記關係
+                session.query(NoteRelationship).filter(
+                    (NoteRelationship.source_note_id == note_id) |
+                    (NoteRelationship.target_note_id == note_id)
+                ).delete()
+                
+                # 最後刪除筆記本身
+                session.delete(note)
+                return True
+            return False
+    
+    def archive_note(self, note_id: str, user_id: int, archived: bool = True) -> bool:
+        """歸檔/取消歸檔筆記"""
+        with self._session_scope() as session:
+            result = session.query(UserNote).filter(
+                UserNote.id == note_id,
+                UserNote.user_id == user_id
+            ).update({
+                'is_archived': 1 if archived else 0,
+                'updated_at': datetime.utcnow()
+            })
+            return result > 0
+    
+    def search_notes(self, user_id: int, keyword: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """搜尋筆記"""
+        with self._session_scope() as session:
+            notes = session.query(UserNote).filter(
+                UserNote.user_id == user_id,
+                UserNote.is_archived == 0,
+                (UserNote.title.contains(keyword) | UserNote.content.contains(keyword))
+            ).order_by(UserNote.updated_at.desc()).limit(limit).all()
+            
+            return [{
+                'id': note.id,
+                'title': note.title,
+                'content': note.content[:200] + "..." if len(note.content) > 200 else note.content,
+                'tags': json.loads(note.tags) if note.tags else [],
+                'created_at': note.created_at.isoformat(),
+                'updated_at': note.updated_at.isoformat()
+            } for note in notes]
+    
+    # === 筆記分類管理 ===
+    
+    def create_note_category(self, user_id: int, name: str, description: str = None,
+                           color: str = None, icon: str = None, parent_id: int = None) -> int:
+        """創建筆記分類"""
+        with self._session_scope() as session:
+            category = NoteCategory(
+                user_id=user_id,
+                name=name,
+                description=description,
+                color=color,
+                icon=icon,
+                parent_id=parent_id
+            )
+            session.add(category)
+            session.flush()
+            return category.id
+    
+    def get_user_categories(self, user_id: int) -> List[Dict[str, Any]]:
+        """獲取用戶的筆記分類"""
+        with self._session_scope() as session:
+            categories = session.query(NoteCategory).filter(
+                NoteCategory.user_id == user_id
+            ).order_by(NoteCategory.name).all()
+            
+            return [{
+                'id': cat.id,
+                'name': cat.name,
+                'description': cat.description,
+                'color': cat.color,
+                'icon': cat.icon,
+                'parent_id': cat.parent_id,
+                'created_at': cat.created_at.isoformat()
+            } for cat in categories]
+    
+    def add_note_to_category(self, note_id: str, category_id: int, user_id: int) -> bool:
+        """將筆記加入分類"""
+        with self._session_scope() as session:
+            # 驗證筆記屬於該用戶
+            note = session.query(UserNote).filter(
+                UserNote.id == note_id,
+                UserNote.user_id == user_id
+            ).first()
+            
+            # 驗證分類屬於該用戶
+            category = session.query(NoteCategory).filter(
+                NoteCategory.id == category_id,
+                NoteCategory.user_id == user_id
+            ).first()
+            
+            if note and category:
+                # 檢查關聯是否已存在
+                existing = session.query(NoteCategoryLink).filter(
+                    NoteCategoryLink.note_id == note_id,
+                    NoteCategoryLink.category_id == category_id
+                ).first()
+                
+                if not existing:
+                    link = NoteCategoryLink(note_id=note_id, category_id=category_id)
+                    session.add(link)
+                    return True
+            return False
+    
+    # === 筆記AI分析管理 ===
+    
+    def save_note_ai_analysis(self, note_id: str, analysis_type: str, result: Dict[str, Any]) -> int:
+        """保存筆記AI分析結果"""
+        with self._session_scope() as session:
+            analysis = NoteAIAnalysis(
+                note_id=note_id,
+                analysis_type=analysis_type,
+                result=json.dumps(result, ensure_ascii=False)
+            )
+            session.add(analysis)
+            session.flush()
+            return analysis.id
+    
+    def get_note_ai_analysis(self, note_id: str, analysis_type: str = None) -> List[Dict[str, Any]]:
+        """獲取筆記AI分析結果"""
+        with self._session_scope() as session:
+            query = session.query(NoteAIAnalysis).filter(NoteAIAnalysis.note_id == note_id)
+            
+            if analysis_type:
+                query = query.filter(NoteAIAnalysis.analysis_type == analysis_type)
+            
+            analyses = query.order_by(NoteAIAnalysis.created_at.desc()).all()
+            
+            return [{
+                'id': analysis.id,
+                'analysis_type': analysis.analysis_type,
+                'result': json.loads(analysis.result),
+                'created_at': analysis.created_at.isoformat()
+            } for analysis in analyses]
+    
+    def delete_note_ai_analysis(self, analysis_id: int) -> bool:
+        """刪除筆記AI分析結果"""
+        with self._session_scope() as session:
+            result = session.query(NoteAIAnalysis).filter(
+                NoteAIAnalysis.id == analysis_id
+            ).delete()
+            return result > 0

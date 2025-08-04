@@ -39,8 +39,32 @@
                     </div>
                     
                     <!-- Rendered Markdown Content -->
-                    <div id="note-content" class="markdown-body">
-                        {{ note.content | markdown }}
+                    <div id="note-content-tabs">
+                        <!-- 標籤頁導航 -->
+                        <ul class="nav nav-tabs" id="content-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="original-tab" data-bs-toggle="tab" data-bs-target="#original-content" type="button" role="tab">
+                                    <i class="fas fa-edit me-1"></i>原始
+                                </button>
+                            </li>
+                            <!-- AI 整理標籤會在這裡動態添加 -->
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="add-organization-tab" onclick="showOrganizationSelector()" type="button">
+                                    <i class="fas fa-plus me-1"></i>+
+                                </button>
+                            </li>
+                        </ul>
+
+                        <!-- 標籤頁內容 -->
+                        <div class="tab-content" id="content-tab-content">
+                            <!-- 原始內容 -->
+                            <div class="tab-pane fade show active" id="original-content" role="tabpanel">
+                                <div class="note-content markdown-body mt-3">
+                                    {{ note.content | markdown }}
+                                </div>
+                            </div>
+                            <!-- AI 整理內容會在這裡動態添加 -->
+                        </div>
                     </div>
 
                     <hr>
@@ -57,18 +81,46 @@
                     </div>
                 </div>
             </div>
+
+            <!-- AI 整理結果顯示區域 -->
+            <div id="ai-organization-result" class="card shadow-sm mt-3" style="display: none;">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-magic me-2"></i>AI 整理結果</h5>
+                    <button type="button" class="btn-close" onclick="hideAIResult()"></button>
+                </div>
+                <div class="card-body">
+                    <div id="ai-organization-content"></div>
+                </div>
+            </div>
+
+            <!-- 預先生成的 AI 整理結果區域 -->
+            <div id="pre-generated-results" class="mt-3">
+                <!-- 這裡會顯示建立時預先生成的整理結果 -->
+            </div>
+
+            <!-- 互動式測驗顯示區域 -->
+            <div id="quiz-result" class="card shadow-sm mt-3" style="display: none;">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-question-circle me-2"></i>互動式測驗</h5>
+                    <button type="button" class="btn-close" onclick="hideQuizResult()"></button>
+                </div>
+                <div class="card-body">
+                    <div id="quiz-content"></div>
+                </div>
+            </div>
         </div>
 
         <!-- AI Assistant Sidebar -->
         <div class="col-lg-4">
-            <div class="card shadow-sm">
+            <!-- AI 基本資訊 -->
+            <div class="card shadow-sm mb-3">
                 <div class="card-header">
                     <h5 class="mb-0"><i class="fas fa-robot me-2"></i>AI 智慧助理</h5>
                 </div>
                 <div class="card-body">
                     <!-- AI Summary -->
                     <h6><i class="fas fa-file-alt me-2"></i>AI 筆記摘要</h6>
-                    <p class="text-muted">{{ note.ai_summary or '摘要生成中...' }}</p>
+                    <p class="text-muted">{{ note.ai_summary or '暫無摘要' }}</p>
                     
                     <hr>
 
@@ -84,29 +136,799 @@
 
                     <hr>
 
-                    <!-- AI Suggestions -->
-                    <h6><i class="fas fa-lightbulb me-2"></i>相關內容建議</h6>
-                    {% if suggestions %}
-                        {% if suggestions.related_notes %}
-                            <p class="mb-1"><strong>相關筆記:</strong> {{ suggestions.related_notes | join(', ') }}</p>
-                        {% endif %}
-                        {% if suggestions.knowledge_points %}
-                            <p class="mb-1"><strong>相關知識點:</strong> {{ suggestions.knowledge_points | join(', ') }}</p>
-                        {% endif %}
-                        {% if suggestions.questions %}
-                            <p class="mb-1"><strong>推薦題目:</strong></p>
-                            <ul>
-                                {% for q in suggestions.questions %}
-                                    <li>{{ q }}</li>
+                    <!-- 智慧建議 -->
+                    <h6><i class="fas fa-lightbulb me-2"></i>智慧建議</h6>
+                    <div id="ai-suggestions-content">
+                        {% if note.related_notes %}
+                            <div class="mb-2">
+                                <strong>相關筆記 ({{ note.related_notes|length }}):</strong>
+                                {% for related in note.related_notes %}
+                                    <div class="small text-muted">
+                                        <a href="{{ url_for('notes.note_detail', note_id=related.id) }}">{{ related.title }}</a>
+                                        <span class="badge bg-secondary">{{ related.similarity_score }}</span>
+                                    </div>
                                 {% endfor %}
-                            </ul>
+                            </div>
                         {% endif %}
-                    {% else %}
-                        <p class="text-muted">暫無建議</p>
-                    {% endif %}
+                        
+                        {% if note.related_knowledge_points %}
+                            <div class="mb-2">
+                                <strong>相關知識點 ({{ note.related_knowledge_points|length }}):</strong>
+                                {% for kp in note.related_knowledge_points %}
+                                    <div class="small text-muted">{{ kp.keyword }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        
+                        {% if note.study_suggestions %}
+                            <div class="mb-2">
+                                <strong>學習建議 ({{ note.study_suggestions|length }}):</strong>
+                                {% for suggestion in note.study_suggestions %}
+                                    <div class="small text-muted">• {{ suggestion }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        
+                        {% if not (note.related_notes or note.related_knowledge_points or note.study_suggestions) %}
+                            <p class="text-muted">點擊下方按鈕重新生成 AI 建議</p>
+                        {% endif %}
+                    </div>
+                    
+                    <button id="refresh-suggestions-btn" class="btn btn-outline-primary btn-sm mt-2" onclick="refreshAISuggestions()">
+                        <i class="fas fa-sync-alt me-1"></i> 重新生成建議
+                    </button>
+                </div>
+            </div>
+
+            <!-- AI 整理功能提示 -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-magic me-2"></i>AI 整理功能</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small">點擊上方內容區域的「+」按鈕來新增AI整理版本，或查看建立筆記時預先生成的整理結果。</p>
+                    
+                    <div class="alert alert-info mt-2">
+                        <i class="fas fa-info-circle me-1"></i>
+                        <small>您可以同時擁有多個整理版本，在不同的標籤頁間切換查看。</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 互動式測驗 -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-question-circle me-2"></i>互動式測驗</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small">根據筆記內容生成選擇題測驗：</p>
+                    
+                    <button class="btn btn-success btn-sm w-100 mb-2" onclick="generateQuiz()">
+                        <i class="fas fa-plus me-1"></i> 生成新測驗
+                    </button>
+                    
+                    <button class="btn btn-outline-success btn-sm w-100" onclick="loadSavedQuiz()">
+                        <i class="fas fa-history me-1"></i> 載入已保存的測驗
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status"></div>
+                <h5>AI 正在處理中...</h5>
+                <p class="text-muted mb-0">請稍候，這可能需要幾秒鐘</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 全域變數
+let currentNoteId = '{{ note.id }}';
+let loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+
+// 頁面載入時檢查預先生成的結果
+document.addEventListener('DOMContentLoaded', function() {
+    loadPreGeneratedResults();
+    initializeContentTabs();
+});
+
+// 初始化內容標籤頁
+function initializeContentTabs() {
+    // 確保 Bootstrap 標籤頁正常工作
+    var triggerTabList = [].slice.call(document.querySelectorAll('#content-tabs button'))
+    triggerTabList.forEach(function (triggerEl) {
+        var tabTrigger = new bootstrap.Tab(triggerEl)
+        
+        triggerEl.addEventListener('click', function (event) {
+            if (event.target.id !== 'add-organization-tab') {
+                event.preventDefault()
+                tabTrigger.show()
+            }
+        })
+    })
+}
+
+// 顯示組織方式選擇器
+function showOrganizationSelector() {
+    const organizationTypes = [
+        {type: 'mindmap', name: '心智圖結構化', icon: 'sitemap'},
+        {type: 'hierarchical', name: '層次化重點整理', icon: 'list'},
+        {type: 'feynman', name: '費曼技巧解析', icon: 'lightbulb'},
+        {type: 'qa_learning', name: '問答式學習', icon: 'question'},
+        {type: 'comparison', name: '對比分析整理', icon: 'balance-scale'},
+        {type: 'memory_palace', name: '記憶宮殿法', icon: 'home'},
+        {type: 'format_enhance', name: '格式化與補強', icon: 'magic'}
+    ];
+    
+    let modalHtml = `
+        <div class="modal fade" id="organizationModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-magic me-2"></i>選擇整理方式</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+    `;
+    
+    organizationTypes.forEach(type => {
+        // 檢查是否已經有這個標籤
+        const existingTab = document.getElementById(`${type.type}-tab`);
+        if (!existingTab) {
+            modalHtml += `
+                <div class="col-md-6 mb-3">
+                    <button class="btn btn-outline-primary w-100 text-start" 
+                            onclick="selectOrganizationType('${type.type}', '${type.name}', '${type.icon}')">
+                        <i class="fas fa-${type.icon} me-2"></i>
+                        <strong>${type.name}</strong>
+                    </button>
+                </div>
+            `;
+        }
+    });
+    
+    modalHtml += `
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 移除舊的 modal（如果存在）
+    const oldModal = document.getElementById('organizationModal');
+    if (oldModal) {
+        oldModal.remove();
+    }
+    
+    // 添加新的 modal
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // 顯示 modal
+    const modal = new bootstrap.Modal(document.getElementById('organizationModal'));
+    modal.show();
+}
+
+// 選擇組織方式並生成
+function selectOrganizationType(type, name, icon) {
+    // 關閉 modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('organizationModal'));
+    modal.hide();
+    
+    // 開始生成
+    loadingModal.show();
+    
+    fetch(`/notes/${currentNoteId}/organize`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            organization_type: type
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        loadingModal.hide();
+        if (data.success) {
+            addOrganizationTab(type, name, icon, data.result);
+            showAlert(`${name} 整理完成！`, 'success');
+        } else {
+            showAlert('AI 整理失敗：' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        loadingModal.hide();
+        showAlert('發生錯誤：' + error.message, 'danger');
+    });
+}
+
+// 添加新的組織標籤頁
+function addOrganizationTab(type, name, icon, result) {
+    // 添加標籤按鈕
+    const addTabButton = document.getElementById('add-organization-tab').parentElement;
+    const newTabHtml = `
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="${type}-tab" data-bs-toggle="tab" data-bs-target="#${type}-content" type="button" role="tab">
+                <i class="fas fa-${icon} me-1"></i>${name}
+                <button class="btn btn-sm ms-2" onclick="removeOrganizationTab('${type}')" title="移除">
+                    <i class="fas fa-times" style="font-size: 0.8em;"></i>
+                </button>
+            </button>
+        </li>
+    `;
+    addTabButton.insertAdjacentHTML('beforebegin', newTabHtml);
+    
+    // 添加標籤內容
+    const tabContent = document.getElementById('content-tab-content');
+    const newContentHtml = `
+        <div class="tab-pane fade" id="${type}-content" role="tabpanel">
+            <div class="note-content markdown-body mt-3">
+                ${formatOrganizationResult(result, type)}
+            </div>
+        </div>
+    `;
+    tabContent.insertAdjacentHTML('beforeend', newContentHtml);
+    
+    // 啟動新標籤
+    const newTab = new bootstrap.Tab(document.getElementById(`${type}-tab`));
+    newTab.show();
+}
+
+// 移除組織標籤頁
+function removeOrganizationTab(type) {
+    if (confirm('確定要移除這個整理版本嗎？')) {
+        // 移除標籤按鈕
+        const tabButton = document.getElementById(`${type}-tab`);
+        if (tabButton) {
+            tabButton.parentElement.remove();
+        }
+        
+        // 移除標籤內容
+        const tabContent = document.getElementById(`${type}-content`);
+        if (tabContent) {
+            tabContent.remove();
+        }
+        
+        // 切換到原始標籤
+        const originalTab = new bootstrap.Tab(document.getElementById('original-tab'));
+        originalTab.show();
+    }
+}
+
+// 載入預先生成的 AI 整理結果
+function loadPreGeneratedResults() {
+    fetch(`/notes/${currentNoteId}/pre-generated-results`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && Object.keys(data.results).length > 0) {
+                // 為每個預先生成的結果創建標籤頁
+                const typeNames = {
+                    'mindmap': {name: '心智圖結構化', icon: 'sitemap'},
+                    'hierarchical': {name: '層次化重點整理', icon: 'list'},
+                    'feynman': {name: '費曼技巧解析', icon: 'lightbulb'},
+                    'qa_learning': {name: '問答式學習', icon: 'question'},
+                    'comparison': {name: '對比分析整理', icon: 'balance-scale'},
+                    'memory_palace': {name: '記憶宮殿法', icon: 'home'},
+                    'format_enhance': {name: '格式化與補強', icon: 'magic'}
+                };
+                
+                for (const [type, result] of Object.entries(data.results)) {
+                    const typeInfo = typeNames[type];
+                    if (typeInfo) {
+                        addOrganizationTab(type, typeInfo.name, typeInfo.icon, result);
+                    }
+                }
+                
+                // 移除舊的預先生成結果顯示區域（因為現在用標籤頁了）
+                const container = document.getElementById('pre-generated-results');
+                if (container) {
+                    container.style.display = 'none';
+                }
+            }
+        })
+        .catch(error => {
+            console.log('No pre-generated results available:', error);
+        });
+}
+
+// 顯示預先生成的結果
+function displayPreGeneratedResults(results) {
+    const container = document.getElementById('pre-generated-results');
+    let html = '<div class="alert alert-success"><i class="fas fa-check-circle me-1"></i><strong>建立時預先生成的 AI 整理結果</strong></div>';
+    
+    const typeNames = {
+        'mindmap': '心智圖結構化',
+        'hierarchical': '層次化重點整理',
+        'feynman': '費曼技巧解析',
+        'qa_learning': '問答式學習',
+        'comparison': '對比分析整理',
+        'memory_palace': '記憶宮殿法'
+    };
+    
+    for (const [type, result] of Object.entries(results)) {
+        html += `
+            <div class="card shadow-sm mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-magic me-2"></i>${typeNames[type] || type}</h6>
+                    <button class="btn btn-outline-primary btn-sm" onclick="regenerateOrganization('${type}', '${typeNames[type]}')">
+                        <i class="fas fa-sync-alt me-1"></i>重新生成
+                    </button>
+                </div>
+                <div class="card-body">
+                    ${formatOrganizationResult(result, type)}
+                </div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+}
+
+// 格式化整理結果顯示
+function formatOrganizationResult(result, type) {
+    let html = '';
+    
+    if (result.organized_content) {
+        html += `<div class="mb-3">${result.organized_content.replace(/\n/g, '<br>')}</div>`;
+    }
+    
+    // 根據不同的整理類型顯示特定內容
+    if (type === 'mindmap' && result.mindmap_structure) {
+        html += '<h6>心智圖結構：</h6>';
+        html += '<div class="small"><pre class="bg-light p-2">' + JSON.stringify(result.mindmap_structure, null, 2) + '</pre></div>';
+    } else if (type === 'hierarchical' && result.main_points) {
+        html += '<h6>主要重點：</h6><ul>';
+        result.main_points.forEach(point => {
+            html += `<li>${point}</li>`;
+        });
+        html += '</ul>';
+    } else if (type === 'qa_learning' && result.basic_questions) {
+        html += '<h6>基礎問題：</h6><ul>';
+        result.basic_questions.forEach(q => {
+            html += `<li>${q}</li>`;
+        });
+        html += '</ul>';
+    } else if (type === 'format_enhance') {
+        // 格式化與補強的特殊顯示
+        if (result.formatted_content) {
+            html += `<div class="mb-3">${result.formatted_content.replace(/\n/g, '<br>')}</div>`;
+        }
+        
+        if (result.corrections_made && result.corrections_made.length > 0) {
+            html += '<div class="alert alert-info mt-3">';
+            html += '<h6><i class="fas fa-spell-check me-2"></i>修正的問題：</h6>';
+            html += '<ul class="mb-0">';
+            result.corrections_made.forEach(correction => {
+                html += `<li class="small">${correction}</li>`;
+            });
+            html += '</ul></div>';
+        }
+        
+        if (result.enhancements_added && result.enhancements_added.length > 0) {
+            html += '<div class="alert alert-success mt-3">';
+            html += '<h6><i class="fas fa-plus-circle me-2"></i>新增的補充內容：</h6>';
+            html += '<ul class="mb-0">';
+            result.enhancements_added.forEach(enhancement => {
+                html += `<li class="small">${enhancement}</li>`;
+            });
+            html += '</ul></div>';
+        }
+    }
+    
+    return html || '<p class="text-muted">內容正在生成中...</p>';
+}
+
+// 重新生成特定類型的整理
+function regenerateOrganization(type, name) {
+    if (confirm(`確定要重新生成「${name}」嗎？這將覆蓋現有的結果。`)) {
+        organizeNote(type, name);
+    }
+}
+
+// 重新生成 AI 建議
+function refreshAISuggestions() {
+    const btn = document.getElementById('refresh-suggestions-btn');
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> 生成中...';
+    btn.disabled = true;
+    
+    fetch(`/notes/${currentNoteId}/suggestions`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateSuggestionsDisplay(data.suggestions);
+                showAlert('AI 建議已更新！', 'success');
+            } else {
+                showAlert('生成建議失敗：' + data.error, 'danger');
+            }
+        })
+        .catch(error => {
+            showAlert('發生錯誤：' + error.message, 'danger');
+        })
+        .finally(() => {
+            btn.innerHTML = '<i class="fas fa-sync-alt me-1"></i> 重新生成建議';
+            btn.disabled = false;
+        });
+}
+
+// 更新建議顯示
+function updateSuggestionsDisplay(suggestions) {
+    const content = document.getElementById('ai-suggestions-content');
+    let html = '';
+    
+    if (suggestions.related_notes && suggestions.related_notes.length > 0) {
+        html += `<div class="mb-2"><strong>相關筆記 (${suggestions.related_notes.length}):</strong>`;
+        suggestions.related_notes.forEach(note => {
+            html += `<div class="small text-muted">• ${note}</div>`;
+        });
+        html += '</div>';
+    }
+    
+    if (suggestions.knowledge_points && suggestions.knowledge_points.length > 0) {
+        html += `<div class="mb-2"><strong>相關知識點 (${suggestions.knowledge_points.length}):</strong>`;
+        suggestions.knowledge_points.forEach(kp => {
+            html += `<div class="small text-muted">• ${kp}</div>`;
+        });
+        html += '</div>';
+    }
+    
+    if (suggestions.study_suggestions && suggestions.study_suggestions.length > 0) {
+        html += `<div class="mb-2"><strong>學習建議 (${suggestions.study_suggestions.length}):</strong>`;
+        suggestions.study_suggestions.forEach(suggestion => {
+            html += `<div class="small text-muted">• ${suggestion}</div>`;
+        });
+        html += '</div>';
+    }
+    
+    if (html === '') {
+        html = '<p class="text-muted">暫無相關建議</p>';
+    }
+    
+    content.innerHTML = html;
+}
+
+// AI 整理筆記
+function organizeNote(type, name) {
+    loadingModal.show();
+    
+    fetch(`/notes/${currentNoteId}/organize`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            organization_type: type
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        loadingModal.hide();
+        if (data.success) {
+            displayAIOrganization(data, name);
+            // 重新載入預先生成的結果
+            setTimeout(() => {
+                loadPreGeneratedResults();
+            }, 1000);
+        } else {
+            showAlert('AI 整理失敗：' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        loadingModal.hide();
+        showAlert('發生錯誤：' + error.message, 'danger');
+    });
+}
+
+// 顯示 AI 整理結果
+function displayAIOrganization(data, typeName) {
+    const resultDiv = document.getElementById('ai-organization-result');
+    const contentDiv = document.getElementById('ai-organization-content');
+    
+    let html = `<h6 class="text-primary"><i class="fas fa-magic me-2"></i>${typeName}</h6>`;
+    
+    if (data.result.organized_content) {
+        html += `<div class="alert alert-light">${data.result.organized_content.replace(/\n/g, '<br>')}</div>`;
+    }
+    
+    // 根據不同的整理類型顯示特定內容
+    if (data.organization_type === 'mindmap' && data.result.mindmap_structure) {
+        html += '<h6>心智圖結構：</h6>';
+        html += '<div class="small"><pre>' + JSON.stringify(data.result.mindmap_structure, null, 2) + '</pre></div>';
+    } else if (data.organization_type === 'hierarchical' && data.result.main_points) {
+        html += '<h6>主要重點：</h6><ul>';
+        data.result.main_points.forEach(point => {
+            html += `<li>${point}</li>`;
+        });
+        html += '</ul>';
+    } else if (data.organization_type === 'qa_learning' && data.result.basic_questions) {
+        html += '<h6>基礎問題：</h6><ul>';
+        data.result.basic_questions.forEach(q => {
+            html += `<li>${q}</li>`;
+        });
+        html += '</ul>';
+    }
+    
+    contentDiv.innerHTML = html;
+    resultDiv.style.display = 'block';
+    resultDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+// 生成測驗
+function generateQuiz() {
+    loadingModal.show();
+    
+    fetch(`/notes/${currentNoteId}/quiz`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        loadingModal.hide();
+        if (data.success) {
+            displayQuiz(data.quiz);
+        } else {
+            showAlert('生成測驗失敗：' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        loadingModal.hide();
+        showAlert('發生錯誤：' + error.message, 'danger');
+    });
+}
+
+// 載入已保存的測驗
+function loadSavedQuiz() {
+    fetch(`/notes/${currentNoteId}/quiz`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayQuiz(data.quiz);
+            } else {
+                showAlert('沒有找到已保存的測驗', 'info');
+            }
+        })
+        .catch(error => {
+            showAlert('發生錯誤：' + error.message, 'danger');
+        });
+}
+
+// 顯示測驗
+function displayQuiz(quiz) {
+    const resultDiv = document.getElementById('quiz-result');
+    const contentDiv = document.getElementById('quiz-content');
+    
+    let html = '<h6 class="text-success"><i class="fas fa-question-circle me-2"></i>互動式測驗</h6>';
+    
+    if (quiz.questions) {
+        quiz.questions.forEach((q, index) => {
+            html += `
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <strong>題目 ${index + 1}</strong>
+                        <span class="badge bg-${q.difficulty === 'easy' ? 'success' : q.difficulty === 'medium' ? 'warning' : 'danger'} ms-2">
+                            ${q.difficulty === 'easy' ? '簡單' : q.difficulty === 'medium' ? '中等' : '困難'}
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>${q.question}</strong></p>
+                        <div class="options">
+                            ${q.options.map((option, i) => `
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="q${index}" id="q${index}_${i}" value="${String.fromCharCode(65 + i)}">
+                                    <label class="form-check-label" for="q${index}_${i}">
+                                        ${String.fromCharCode(65 + i)}. ${option}
+                                    </label>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-outline-info" onclick="showAnswer(${index}, '${q.correct_answer}', '${q.explanation}')">
+                                顯示答案
+                            </button>
+                        </div>
+                        <div id="answer-${index}" class="mt-2" style="display: none;"></div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    contentDiv.innerHTML = html;
+    resultDiv.style.display = 'block';
+    resultDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+// 顯示答案
+function showAnswer(questionIndex, correctAnswer, explanation) {
+    const answerDiv = document.getElementById(`answer-${questionIndex}`);
+    answerDiv.innerHTML = `
+        <div class="alert alert-info">
+            <strong>正確答案：${correctAnswer}</strong><br>
+            <small>${explanation}</small>
+        </div>
+    `;
+    answerDiv.style.display = 'block';
+}
+
+// 隱藏 AI 結果
+function hideAIResult() {
+    document.getElementById('ai-organization-result').style.display = 'none';
+}
+
+// 隱藏測驗結果
+function hideQuizResult() {
+    document.getElementById('quiz-result').style.display = 'none';
+}
+
+// 顯示警告訊息
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild);
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+</script>
+
+<style>
+    /* 筆記內容樣式 - 基於答案樣式但使用不同的背景色 */
+    .note-content {
+        line-height: 1.6;
+        font-size: 1.1rem;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif;
+    }
+
+    .note-content h1,
+    .note-content h2,
+    .note-content h3 {
+        color: #495057;
+        margin-top: 1.5rem;
+        margin-bottom: 0.8rem;
+        border-bottom: 2px solid #e9ecef;
+        padding-bottom: 0.3rem;
+    }
+
+    .note-content h1 { font-size: 1.8rem; }
+    .note-content h2 { font-size: 1.5rem; }
+    .note-content h3 { font-size: 1.3rem; }
+
+    .note-content p {
+        line-height: 1.8;
+        margin-bottom: 1rem;
+        text-align: justify;
+    }
+
+    .note-content ul,
+    .note-content ol {
+        margin-bottom: 1rem;
+        padding-left: 2rem;
+    }
+
+    .note-content li {
+        margin-bottom: 0.3rem;
+        line-height: 1.6;
+    }
+
+    .note-content blockquote {
+        border-left: 4px solid #28a745;  /* 綠色邊框，區別於答案的藍色 */
+        margin: 1rem 0;
+        padding: 0.5rem 1rem;
+        background-color: #f8fffe;  /* 淺綠色背景 */
+        font-style: italic;
+    }
+
+    .note-content table {
+        width: 100%;
+        margin: 1rem 0;
+        border-collapse: collapse;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .note-content th,
+    .note-content td {
+        border: 1px solid #dee2e6;
+        padding: 0.75rem;
+        text-align: left;
+    }
+
+    .note-content th {
+        background-color: #e8f5e8;  /* 淺綠色表頭 */
+        font-weight: 600;
+        color: #155724;
+    }
+
+    .note-content tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+
+    /* 程式碼區塊樣式 */
+    .note-content pre {
+        margin: 1.5rem 0;
+        background-color: #f4f4f4;  /* 灰色背景，區別於答案 */
+        border: 1px solid #ddd;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        font-family: "Courier New", Consolas, monospace;
+        overflow-x: auto;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .note-content code {
+        background-color: #f4f4f4;
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.25rem;
+        font-family: "Courier New", Consolas, monospace;
+        font-size: 0.9em;
+    }
+
+    /* 強調樣式 */
+    .note-content strong {
+        color: #2c5530;
+        font-weight: 600;
+    }
+
+    .note-content em {
+        color: #6c757d;
+        font-style: italic;
+    }
+
+    /* 分隔線樣式 */
+    .note-content hr {
+        border: none;
+        height: 2px;
+        background: linear-gradient(to right, #28a745, transparent);
+        margin: 2rem 0;
+    }
+
+    /* 超連結樣式 */
+    .note-content a {
+        color: #28a745;
+        text-decoration: none;
+        border-bottom: 1px dotted #28a745;
+    }
+
+    .note-content a:hover {
+        color: #1e7e34;
+        border-bottom: 1px solid #1e7e34;
+    }
+
+    /* AI功能按鈕樣式 */
+    .btn-outline-info:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    /* 測驗選項樣式 */
+    .form-check-input:checked {
+        background-color: #198754;
+        border-color: #198754;
+    }
+
+    /* 卡片陰影效果 */
+    .card {
+        transition: box-shadow 0.15s ease-in-out;
+    }
+
+    .card:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+</style>
 {% endblock %}
