@@ -1,0 +1,112 @@
+
+{% extends "layout.html" %}
+
+{% block title %}{{ note.title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Breadcrumbs and Actions -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{{ url_for('notes.note_list') }}">我的筆記</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ note.title | truncate(30) }}</li>
+            </ol>
+        </nav>
+        <div>
+            <a href="{{ url_for('notes.edit_note', note_id=note.id) }}" class="btn btn-secondary btn-sm">
+                <i class="fas fa-edit me-1"></i> 編輯
+            </a>
+            <form action="{{ url_for('notes.delete_note', note_id=note.id) }}" method="POST" class="d-inline" onsubmit="return confirm('您確定要刪除這篇筆記嗎？');">
+                <button type="submit" class="btn btn-danger btn-sm">
+                    <i class="fas fa-trash-alt me-1"></i> 刪除
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Main Note Content -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h1 class="h4 mb-0">{{ note.title }}</h1>
+                </div>
+                <div class="card-body">
+                    <div class="text-muted mb-3">
+                        <span><i class="fas fa-calendar-alt me-1"></i> 建立於: {{ note.created_at | format_datetime }}</span>
+                        <span class="ms-3"><i class="fas fa-sync-alt me-1"></i> 更新於: {{ note.updated_at | format_datetime }}</span>
+                    </div>
+                    
+                    <!-- Rendered Markdown Content -->
+                    <div id="note-content" class="markdown-body">
+                        {{ note.content | markdown }}
+                    </div>
+
+                    <hr>
+                    <!-- Tags -->
+                    <div class="mt-3">
+                        <h5><i class="fas fa-tags me-2"></i>標籤</h5>
+                        {% if note.tags %}
+                            {% for tag in note.tags %}
+                                <span class="badge bg-info me-1">{{ tag }}</span>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">無標籤</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Assistant Sidebar -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-robot me-2"></i>AI 智慧助理</h5>
+                </div>
+                <div class="card-body">
+                    <!-- AI Summary -->
+                    <h6><i class="fas fa-file-alt me-2"></i>AI 筆記摘要</h6>
+                    <p class="text-muted">{{ note.ai_summary or '摘要生成中...' }}</p>
+                    
+                    <hr>
+
+                    <!-- AI Keywords -->
+                    <h6><i class="fas fa-key me-2"></i>AI 關鍵字</h6>
+                    {% if note.ai_keywords %}
+                        {% for keyword in note.ai_keywords %}
+                            <span class="badge bg-success me-1">{{ keyword }}</span>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-muted">無關鍵字</p>
+                    {% endif %}
+
+                    <hr>
+
+                    <!-- AI Suggestions -->
+                    <h6><i class="fas fa-lightbulb me-2"></i>相關內容建議</h6>
+                    {% if suggestions %}
+                        {% if suggestions.related_notes %}
+                            <p class="mb-1"><strong>相關筆記:</strong> {{ suggestions.related_notes | join(', ') }}</p>
+                        {% endif %}
+                        {% if suggestions.knowledge_points %}
+                            <p class="mb-1"><strong>相關知識點:</strong> {{ suggestions.knowledge_points | join(', ') }}</p>
+                        {% endif %}
+                        {% if suggestions.questions %}
+                            <p class="mb-1"><strong>推薦題目:</strong></p>
+                            <ul>
+                                {% for q in suggestions.questions %}
+                                    <li>{{ q }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-muted">暫無建議</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

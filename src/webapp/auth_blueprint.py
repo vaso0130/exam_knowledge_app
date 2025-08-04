@@ -5,24 +5,10 @@ v3.0 認證藍圖 - 處理登入、登出等認證相關功能
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, g
 from ..core.security_manager import SecurityManager
 from ..core.database import DatabaseManager
-from .auth_middleware import login_user, logout_user, get_client_ip
+from .auth_middleware import login_user, logout_user
+from . import get_client_ip
 
 auth_bp = Blueprint('auth', __name__, url_prefix='')
-
-
-def get_client_ip() -> str:
-    """獲取客戶端 IP 地址"""
-    # 檢查 X-Forwarded-For 標頭（代理伺服器）
-    if request.headers.get('X-Forwarded-For'):
-        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    
-    # 檢查 X-Real-IP 標頭
-    if request.headers.get('X-Real-IP'):
-        return request.headers.get('X-Real-IP')
-    
-    # 使用遠端地址
-    return request.remote_addr or '127.0.0.1'
-
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():

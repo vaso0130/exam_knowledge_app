@@ -1,6 +1,7 @@
 
 import os
 import json
+import uuid  # Add uuid import here at the top
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
@@ -31,7 +32,7 @@ Base = declarative_base()
 
 class Document(Base):
     __tablename__ = "documents"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, index=True)  # Changed to UUID
     title = Column(String(512), index=True)
     content = Column(Text)  # Extracted text, can be long
     original_content = Column(Text, nullable=True) # Deprecated but kept for compatibility
@@ -53,12 +54,12 @@ class Document(Base):
     questions = relationship("Question", back_populates="document", cascade="all, delete-orphan")
     uploader = relationship("User", back_populates="uploads")
 
-import uuid # Import uuid module
+# Note: uuid import moved to top of file
 
 class Question(Base):
     __tablename__ = "questions"
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), unique=True) # Changed to String(36) for UUID
-    document_id = Column(Integer, ForeignKey("documents.id"))
+    document_id = Column(String(36), ForeignKey("documents.id"))  # Changed to String(36)
     title = Column(String(512))
     question_text = Column(Text)
     answer_text = Column(Text, nullable=True)
@@ -186,7 +187,7 @@ class PointTransaction(Base):
     points_before = Column(Integer, nullable=False)
     points_after = Column(Integer, nullable=False)
     description = Column(String(255), nullable=True)
-    related_document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    related_document_id = Column(String(36), ForeignKey("documents.id"), nullable=True)  # Changed to String(36)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # 關聯
@@ -198,18 +199,87 @@ class ContentValidation(Base):
     """內容驗證記錄"""
     __tablename__ = "content_validations"
     id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    document_id = Column(String(36), ForeignKey("documents.id"), nullable=False)  # Changed to String(36)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_valid_content = Column(Integer, nullable=False)  # 1=合法內容, 0=違規內容
     confidence_score = Column(Float, nullable=True)  # AI 信心分數
     validation_details = Column(Text, nullable=True)  # AI 回傳的詳細說明
-    penalty_applied = Column(Integer, default=0)  # 是否已處罰
-    created_at = Column(DateTime, default=datetime.utcnow)
     
     # 關聯
     document = relationship("Document")
     user = relationship("User")
 
+
+# === v3.1 個人筆記系統模型 ===
+
+class UserNote(Base):
+    __tablename__ = "user_notes"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    content_type = Column(String(20), default='markdown') # ENUM is not standard in all DBs
+    tags = Column(Text)  # JSON array as string
+    ai_summary = Column(Text)
+    ai_keywords = Column(Text) # JSON as string
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_archived = Column(Integer, default=0) # Using Integer for Boolean
+
+    user = relationship("User")
+    categories = relationship("NoteCategory", secondary="note_category_links", back_populates="notes")
+
+class NoteCategory(Base):
+    __tablename__ = "note_categories"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    color = Column(String(7)) # HEX color code
+    icon = Column(String(50))
+    parent_id = Column(Integer, ForeignKey("note_categories.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    notes = relationship("UserNote", secondary="note_category_links", back_populates="categories")
+    parent = relationship("NoteCategory", remote_side=[id])
+
+class NoteCategoryLink(Base):
+    __tablename__ = "note_category_links"
+    note_id = Column(Integer, ForeignKey("user_notes.id", ondelete="CASCADE"), primary_key=True)
+    category_id = Column(Integer, ForeignKey("note_categories.id", ondelete="CASCADE"), primary_key=True)
+
+class NoteKnowledgeLink(Base):
+    __tablename__ = "note_knowledge_links"
+    note_id = Column(Integer, ForeignKey("user_notes.id", ondelete="CASCADE"), primary_key=True)
+    knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
+    relevance_score = Column(Float, default=0.8)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    note = relationship("UserNote")
+    knowledge_point = relationship("KnowledgePoint")
+
+class NoteRelationship(Base):
+    __tablename__ = "note_relationships"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_note_id = Column(Integer, ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
+    target_note_id = Column(Integer, ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
+    relationship_type = Column(String(50), default='related') # ENUM
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    source_note = relationship("UserNote", foreign_keys=[source_note_id])
+    target_note = relationship("UserNote", foreign_keys=[target_note_id])
+
+class NoteAIAnalysis(Base):
+    __tablename__ = "note_ai_analysis"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    note_id = Column(Integer, ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
+    analysis_type = Column(String(50), nullable=False) # ENUM
+    result = Column(Text, nullable=False) # JSON as string
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    note = relationship("UserNote")
 
 class InviteCodeAttempt(Base):
     """邀請碼嘗試記錄"""
@@ -250,7 +320,7 @@ class DatabaseManager:
                      tags: str = None, file_path: str = None, source: str = None, 
                      key_points_summary: str = None, 
                      quick_quiz: str = None, doc_type: str = "info",
-                     uploader_id: int = None, uploader_name: str = None) -> int:
+                     uploader_id: int = None, uploader_name: str = None) -> str:  # Changed return type to str
         with self._session_scope() as session:
             new_doc = Document(
                 title=title,
@@ -270,12 +340,12 @@ class DatabaseManager:
             session.flush()
             return new_doc.id
 
-    def update_document_content(self, doc_id: int, cleaned_content: str, original_content: str = None):
+    def update_document_content(self, doc_id: str, cleaned_content: str, original_content: str = None):  # Changed doc_id type to str
         """
         更新文件內容，可選擇保存原始內容備份
         
         Args:
-            doc_id: 文件ID
+            doc_id: 文件ID (UUID string)
             cleaned_content: AI清理後的內容
             original_content: 原始內容（可選，用於備份）
         """
@@ -291,7 +361,7 @@ class DatabaseManager:
                 return True
             return False
 
-    def insert_question(self, document_id: int, title: str, question_text: str, answer_text: str = None,
+    def insert_question(self, document_id: str, title: str, question_text: str, answer_text: str = None,  # Changed document_id type to str
                         subject: str = None, answer_sources: str = None,
                         difficulty: str = None, guidance_level: str = None, mindmap_code: str = None) -> str:
         with self._session_scope() as session:
@@ -346,7 +416,7 @@ class DatabaseManager:
             }
             return question_data
 
-    def get_document_by_id(self, document_id: int) -> Optional[Dict[str, Any]]:
+    def get_document_by_id(self, document_id: str) -> Optional[Dict[str, Any]]:  # Changed parameter type to str
         with self._session_scope() as session:
             doc = session.query(Document).filter(Document.id == document_id).first()
             if not doc:
@@ -386,7 +456,7 @@ class DatabaseManager:
                 "solving_tips": solving_tips
             })
 
-    def update_document_summary_and_quiz(self, document_id: int, summary: str, quiz: str):
+    def update_document_summary_and_quiz(self, document_id: str, summary: str, quiz: str):  # Changed parameter type to str
         with self._session_scope() as session:
             session.query(Document).filter(Document.id == document_id).update({
                 "key_points_summary": summary,
@@ -470,7 +540,7 @@ class DatabaseManager:
                 })
             return results
             
-    def get_questions_by_document_id(self, document_id: int) -> List[Dict[str, Any]]:
+    def get_questions_by_document_id(self, document_id: str) -> List[Dict[str, Any]]:  # Changed parameter type to str
         with self._session_scope() as session:
             questions = session.query(Question).filter(Question.document_id == document_id).order_by(Question.created_at.desc()).all()
             return [
@@ -503,6 +573,89 @@ class DatabaseManager:
             
             return deleted_count
 
+    def get_orphaned_knowledge_points_count(self) -> int:
+        """取得孤立知識點的數量（不刪除，僅統計）"""
+        with self._session_scope() as session:
+            count = session.query(KnowledgePoint).filter(
+                ~KnowledgePoint.id.in_(
+                    session.query(QuestionKnowledgeLink.knowledge_point_id).distinct()
+                )
+            ).count()
+            return count
+
+    def get_orphaned_knowledge_points_details(self) -> List[Dict[str, Any]]:
+        """取得孤立知識點的詳細資訊"""
+        with self._session_scope() as session:
+            orphaned_kps = session.query(KnowledgePoint).filter(
+                ~KnowledgePoint.id.in_(
+                    session.query(QuestionKnowledgeLink.knowledge_point_id).distinct()
+                )
+            ).all()
+            
+            return [{
+                'id': kp.id,
+                'name': kp.name,
+                'subject': kp.subject,
+                'description': kp.description
+            } for kp in orphaned_kps]
+
+    def comprehensive_cleanup(self, dry_run: bool = False) -> Dict[str, Any]:
+        """
+        全面清理資料庫中的孤立資料
+        
+        Args:
+            dry_run: 如果為 True，只統計不實際刪除
+            
+        Returns:
+            清理統計資訊
+        """
+        stats = {
+            'orphaned_knowledge_points': 0,
+            'expired_sessions': 0,
+            'old_async_jobs': 0,
+            'old_login_attempts': 0
+        }
+        
+        if dry_run:
+            # 只統計，不刪除
+            stats['orphaned_knowledge_points'] = self.get_orphaned_knowledge_points_count()
+            
+            with self._session_scope() as session:
+                # 統計過期會話
+                cutoff_time = datetime.utcnow() - timedelta(hours=24)
+                stats['expired_sessions'] = session.query(UserSession).filter(
+                    UserSession.is_active == 1
+                ).filter(
+                    (UserSession.last_accessed != None) & (UserSession.last_accessed < cutoff_time) |
+                    (UserSession.last_accessed == None) & (UserSession.created_at < cutoff_time)
+                ).count()
+                
+                # 統計舊的非同步工作
+                cutoff_date = datetime.utcnow() - timedelta(days=7)
+                stats['old_async_jobs'] = session.query(AsyncJob).filter(
+                    AsyncJob.created_at < cutoff_date
+                ).count()
+                
+                # 統計舊的登入記錄
+                cutoff_date = datetime.utcnow() - timedelta(days=30)
+                stats['old_login_attempts'] = session.query(LoginAttempt).filter(
+                    LoginAttempt.attempt_time < cutoff_date
+                ).count()
+        else:
+            # 實際執行清理
+            stats['orphaned_knowledge_points'] = self.clean_orphaned_knowledge_points()
+            stats['expired_sessions'] = self.cleanup_expired_sessions(hours=24)
+            stats['old_async_jobs'] = self.cleanup_old_async_jobs(days=7)
+            
+            # 清理舊的登入記錄（30天前）
+            with self._session_scope() as session:
+                cutoff_date = datetime.utcnow() - timedelta(days=30)
+                stats['old_login_attempts'] = session.query(LoginAttempt).filter(
+                    LoginAttempt.attempt_time < cutoff_date
+                ).delete()
+        
+        return stats
+
     def delete_question(self, q_id: str):
         with self._session_scope() as session:
             q = session.query(Question).filter(Question.id == q_id).first()
@@ -519,7 +672,7 @@ class DatabaseManager:
             # 自動清理孤立的知識點
             self.clean_orphaned_knowledge_points()
 
-    def delete_document(self, doc_id: int):
+    def delete_document(self, doc_id: str):  # Changed parameter type to str
         with self._session_scope() as session:
             doc = session.query(Document).filter(Document.id == doc_id).first()
             if doc:

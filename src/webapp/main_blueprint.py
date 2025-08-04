@@ -24,7 +24,7 @@ def dashboard():
     user = g.current_user
     
     # 所有用戶看到相同的儀表板，只是會顯示不同的角色標識
-    return render_template('dashboard/user_dashboard.html', user=user)
+    return render_template('index.html', user=user)
 
 
 @main_bp.context_processor

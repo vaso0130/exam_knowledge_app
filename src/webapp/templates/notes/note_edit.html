@@ -1,0 +1,62 @@
+
+{% extends "layout.html" %}
+{% from "_form_helpers.html" import render_field, render_ai_field, render_tags_field %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="fas fa-edit me-2"></i>{{ title }}</h1>
+        <a href="{{ url_for('notes.note_list') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i> 返回列表
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="POST" action="">
+                <div class="mb-3">
+                    <label for="title" class="form-label"><strong>標題</strong></label>
+                    <input type="text" class="form-control" id="title" name="title" value="{{ note.title if note else '' }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="content" class="form-label"><strong>內容 (支援 Markdown)</strong></label>
+                    <textarea class="form-control" id="content" name="content" rows="15" required>{{ note.content if note else '' }}</textarea>
+                </div>
+                
+                <!-- Simple live preview (optional, can be enhanced with JS) -->
+                <div class="mb-4">
+                    <h5 class="mb-2">即時預覽</h5>
+                    <div id="preview" class="border p-3 bg-light markdown-body" style="min-height: 100px;"></div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-1"></i> 儲存筆記
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const contentEl = document.getElementById('content');
+        const previewEl = document.getElementById('preview');
+
+        function updatePreview() {
+            previewEl.innerHTML = marked.parse(contentEl.value);
+        }
+
+        contentEl.addEventListener('input', updatePreview);
+        
+        // Initial preview
+        updatePreview();
+    });
+</script>
+{% endblock %}

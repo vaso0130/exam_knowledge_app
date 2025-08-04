@@ -1,5 +1,3 @@
-
-
 import os
 import json
 import tempfile
@@ -159,6 +157,20 @@ def create_app():
         from markupsafe import Markup
         return Markup(html)
 
+    @app.template_filter('format_datetime')
+    def format_datetime_filter(value, format='%Y-%m-%d %H:%M'):
+        """Formats an ISO datetime string into a more readable format."""
+        if not value:
+            return ""
+        try:
+            # Parse the ISO format string
+            dt = datetime.fromisoformat(value)
+            # Return the formatted string
+            return dt.strftime(format)
+        except (ValueError, TypeError):
+            # If parsing fails, return the original value
+            return value
+
     # --- Authentication Helpers ---
     @app.before_request
     def load_logged_in_user():
@@ -185,6 +197,17 @@ def create_app():
         # 檢查是否需要登入才能訪問（排除登入頁面本身）
         if not g.current_user and request.endpoint not in ['login', 'static', 'check_user']:
             return redirect(url_for('login'))
+
+    # Register Blueprints
+    from .main_blueprint import main_bp
+    from .auth_blueprint import auth_bp
+    # from .admin_blueprint import admin_bp  # 🔒 移除管理藍圖 - 僅通過獨立管理伺服器訪問
+    from .notes_blueprint import notes_bp # 📝 Import the new notes blueprint
+
+    app.register_blueprint(main_bp)
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    # app.register_blueprint(admin_bp, url_prefix='/admin')  # 🔒 禁用主程式中的管理路由
+    app.register_blueprint(notes_bp, url_prefix='/notes') # 📝 Register the notes blueprint
 
     # --- Routes ---
 
@@ -648,12 +671,18 @@ def create_app():
         
         try:
             question_ids_str = request.form.getlist('question_ids')
-            if question_ids_str:
-                # question_ids = [int(id_str) for id_str in question_ids_str] # Removed int() conversion
-                db.batch_delete_questions(question_ids_str)
-                flash(f'已刪除 {len(question_ids_str)} 個題目')
-            else:
+            if not question_ids_str:
                 flash('請選擇要刪除的題目')
+                return redirect(url_for('questions'))
+            
+            questions_data = []
+            for q_id in question_ids_str:
+                q = db.get_question_by_id(q_id)
+                if q:
+                    questions_data.append(q)
+            
+            db.batch_delete_questions(question_ids_str)
+            flash(f'已刪除 {len(question_ids_str)} 個題目')
         except Exception as e:
             app.logger.error(f"Batch deleting questions failed: {e}", exc_info=True)
             flash(f'批次刪除失敗: {str(e)}')
@@ -771,14 +800,14 @@ def create_app():
             flash(f'載入文件列表時發生錯誤: {str(e)}', 'danger')
             return redirect(url_for('index'))
 
-    @app.route('/document/<int:doc_id>')
+    @app.route('/document/<doc_id>')
     def document_detail(doc_id):
         document = db.get_document_by_id(doc_id)
         if not document:
             abort(404)
         return render_template('document_detail.html', document=document)
 
-    @app.route('/delete_document/<int:doc_id>', methods=['POST'])
+    @app.route('/delete_document/<doc_id>', methods=['POST'])
     def delete_document(doc_id):
         # v3.1: 檢查權限 - 只有管理員可以刪除文件
         current_user = getattr(g, 'current_user', None)
@@ -808,7 +837,7 @@ def create_app():
             flash(f'刪除文件失敗: {str(e)}', 'danger')
         return redirect(url_for('documents_list'))
 
-    @app.route('/original_document/<int:doc_id>')
+    @app.route('/original_document/<doc_id>')
     def original_document(doc_id):
         document = db.get_document_by_id(doc_id)
         if not document:
@@ -822,8 +851,12 @@ def create_app():
             # If it's a local file, read its content
             from ..utils.file_processor import FileProcessor
             original_content, _ = FileProcessor().process_input(document['file_path'])
+        elif document.get('original_content'):
+            # For text input documents, use the original_content field
+            original_content = document.get('original_content', '')
         else:
-            abort(404) # No valid source or file not found
+            # If no original content is available, use the processed content
+            original_content = document.get('content', '')
 
         # 設定 markdown 配置使其輸出 Prism.js 相容的 class
         extension_configs = {
@@ -1143,11 +1176,7 @@ def create_app():
             app.logger.error(f"生成解題技巧失敗: {e}", exc_info=True)
             return jsonify({'success': False, 'error': f'生成失敗: {str(e)}'})
 
-    @app.route('/personal_notes')
-    def personal_notes():
-        return render_template('personal_notes.html')
-
-    @app.route('/learning-summary/<int:doc_id>')
+    @app.route('/learning-summary/<doc_id>')
     def learning_summary_detail(doc_id):
         document = db.get_document_by_id(doc_id)
         if not document:

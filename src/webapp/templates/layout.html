@@ -412,6 +412,69 @@
                 padding: 1rem;
             }
         }
+        
+        /* AI 增強表單樣式 */
+        .ai-enhanced-field {
+            position: relative;
+        }
+        
+        .ai-enhanced-field .ai-enhance-btn {
+            z-index: 10;
+            border-radius: 4px;
+        }
+        
+        .ai-suggestions {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 8px;
+        }
+        
+        .ai-suggestion-tag, .suggested-tag, .existing-tag {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .ai-suggestion-tag:hover, .suggested-tag:hover, .existing-tag:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .tags-input-container {
+            position: relative;
+        }
+        
+        .tags-display {
+            min-height: 40px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 8px;
+        }
+        
+        .ai-analysis-container .card {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0f8ff 100%);
+            border: 1px solid #28a745;
+        }
+        
+        .ai-analysis-results .analysis-summary {
+            background: rgba(255,255,255,0.8);
+            border-radius: 4px;
+            padding: 8px;
+        }
+        
+        /* AI 增強按鈕動畫 */
+        .ai-enhance-btn:hover {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            border-color: #0056b3;
+        }
+        
+        /* 載入動畫 */
+        .spinner-border-sm {
+            width: 0.875rem;
+            height: 0.875rem;
+        }
     </style>
     
     <!-- 引入 Mermaid.js for 心智圖 -->
@@ -459,6 +522,11 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/documents">📜 原始文件</a>
                     </li>
+                    {% if g.current_user and g.current_user.role == 'admin' %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('notes.note_list') }}">📝 我的筆記</a>
+                    </li>
+                    {% endif %}
                 </ul>
                 
                 <!-- 用戶狀態區域 -->
@@ -561,5 +629,96 @@
     </script>
     
     {% block scripts %}{% endblock %}
+    
+    <!-- AI 表單增強功能 -->
+    <script>
+        // AI 表單助手功能 (內嵌版本)
+        
+        // AI 建議應用函數
+        function applySuggestion(fieldName, suggestion) {
+            const field = document.querySelector(`[name="${fieldName}"]`);
+            if (field) {
+                if (field.tagName.toLowerCase() === 'textarea') {
+                    const cursorPos = field.selectionStart;
+                    const textBefore = field.value.substring(0, cursorPos);
+                    const textAfter = field.value.substring(cursorPos);
+                    field.value = textBefore + suggestion + textAfter;
+                    field.selectionStart = field.selectionEnd = cursorPos + suggestion.length;
+                } else {
+                    field.value = field.value ? field.value + ' ' + suggestion : suggestion;
+                }
+                field.focus();
+                field.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+        
+        // 標籤相關功能
+        let currentTags = [];
+        
+        function addSuggestedTag(tag) {
+            if (!currentTags.includes(tag)) {
+                currentTags.push(tag);
+                updateTagsDisplay();
+                updateTagsInput();
+            }
+        }
+        
+        function removeTag(tag) {
+            const index = currentTags.indexOf(tag);
+            if (index > -1) {
+                currentTags.splice(index, 1);
+                updateTagsDisplay();
+                updateTagsInput();
+            }
+        }
+        
+        function updateTagsDisplay() {
+            const display = document.querySelector('.tags-display');
+            if (display) {
+                display.innerHTML = currentTags.map(tag => 
+                    `<span class="badge bg-primary me-1">
+                        ${tag} 
+                        <i class="fas fa-times ms-1" onclick="removeTag('${tag}')" style="cursor: pointer;"></i>
+                    </span>`
+                ).join('');
+            }
+        }
+        
+        function updateTagsInput() {
+            const input = document.querySelector('.tags-input');
+            if (input) {
+                input.value = currentTags.join(', ');
+            }
+        }
+        
+        // 初始化標籤輸入功能
+        function initializeTagsInput() {
+            const tagsInput = document.querySelector('.tags-input');
+            if (tagsInput) {
+                if (tagsInput.value) {
+                    currentTags = tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag);
+                    updateTagsDisplay();
+                }
+                
+                tagsInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const newTag = this.value.trim();
+                        if (newTag && !currentTags.includes(newTag)) {
+                            currentTags.push(newTag);
+                            updateTagsDisplay();
+                            updateTagsInput();
+                            this.value = '';
+                        }
+                    }
+                });
+            }
+        }
+        
+        // 頁面載入完成後初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeTagsInput();
+        });
+    </script>
 </body>
 </html>

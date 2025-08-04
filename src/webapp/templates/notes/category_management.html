@@ -1,0 +1,84 @@
+
+{% extends "layout.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="fas fa-folder-open me-2"></i>分類管理</h1>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#categoryModal">
+            <i class="fas fa-plus me-1"></i> 新增分類
+        </button>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header">
+            現有分類
+        </div>
+        <div class="card-body">
+            {% if categories %}
+                <ul class="list-group">
+                    {% for category in categories %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge me-2" style="background-color: {{ category.color or '#6c757d' }};">
+                                    <i class="fas {{ category.icon or 'fa-folder' }}"></i>
+                                </span>
+                                <strong>{{ category.name }}</strong>
+                                {% if category.description %}
+                                    <small class="text-muted ms-2">- {{ category.description }}</small>
+                                {% endif %}
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary">編輯</button>
+                                <button class="btn btn-sm btn-outline-danger">刪除</button>
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-center text-muted">您還沒有建立任何分類。</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Modal for adding/editing category -->
+    <div class="modal fade" id="categoryModal" tabindex="-1" aria-labelledby="categoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="categoryModalLabel">新增分類</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form>
+                        <div class="mb-3">
+                            <label for="category-name" class="form-label">分類名稱</label>
+                            <input type="text" class="form-control" id="category-name">
+                        </div>
+                        <div class="mb-3">
+                            <label for="category-description" class="form-label">描述</label>
+                            <textarea class="form-control" id="category-description" rows="3"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="category-color" class="form-label">顏色</label>
+                                <input type="color" class="form-control form-control-color" id="category-color" value="#563d7c" title="Choose your color">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="category-icon" class="form-label">圖示 (Font Awesome)</label>
+                                <input type="text" class="form-control" id="category-icon" placeholder="e.g., fa-star">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                    <button type="button" class="btn btn-primary">儲存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

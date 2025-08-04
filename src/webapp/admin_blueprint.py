@@ -49,7 +49,86 @@ def dashboard():
         flash(f'獲取統計資料失敗: {str(e)}', 'error')
         stats = {}
     
-    return render_template('admin/readonly_dashboard.html', stats=stats)
+    return render_template('admin_dashboard.html', stats=stats)
+
+
+@admin_bp.route('/maintenance')
+@require_admin  
+def maintenance():
+    """資料庫維護頁面"""
+    db_manager: DatabaseManager = current_app.db_manager
+    
+    try:
+        # 獲取維護統計資訊
+        maintenance_stats = db_manager.comprehensive_cleanup(dry_run=True)
+        orphaned_details = db_manager.get_orphaned_knowledge_points_details()
+        
+        stats = {
+            'orphaned_knowledge_points': maintenance_stats['orphaned_knowledge_points'],
+            'expired_sessions': maintenance_stats['expired_sessions'], 
+            'old_async_jobs': maintenance_stats['old_async_jobs'],
+            'old_login_attempts': maintenance_stats['old_login_attempts'],
+            'orphaned_details': orphaned_details[:20]  # 只顯示前20個
+        }
+        
+    except Exception as e:
+        flash(f'獲取維護資訊失敗: {str(e)}', 'error')
+        stats = {}
+    
+    return render_template('admin_maintenance.html', stats=stats)
+
+
+@admin_bp.route('/maintenance/cleanup', methods=['POST'])
+@require_admin
+def maintenance_cleanup():
+    """執行資料庫清理"""
+    db_manager: DatabaseManager = current_app.db_manager
+    
+    try:
+        cleanup_type = request.form.get('cleanup_type', 'full')
+        
+        if cleanup_type == 'orphaned_only':
+            # 只清理孤立知識點
+            count = db_manager.clean_orphaned_knowledge_points()
+            flash(f'成功清理 {count} 個孤立知識點', 'success')
+        else:
+            # 全面清理
+            stats = db_manager.comprehensive_cleanup(dry_run=False)
+            total = sum(stats.values())
+            flash(f'資料庫清理完成！清理了 {total} 個項目', 'success')
+            
+            if stats['orphaned_knowledge_points'] > 0:
+                flash(f'- 孤立知識點: {stats["orphaned_knowledge_points"]} 個', 'info')
+            if stats['expired_sessions'] > 0:
+                flash(f'- 過期會話: {stats["expired_sessions"]} 個', 'info') 
+            if stats['old_async_jobs'] > 0:
+                flash(f'- 舊非同步工作: {stats["old_async_jobs"]} 個', 'info')
+            if stats['old_login_attempts'] > 0:
+                flash(f'- 舊登入記錄: {stats["old_login_attempts"]} 個', 'info')
+    
+    except Exception as e:
+        flash(f'清理過程中發生錯誤: {str(e)}', 'error')
+    
+    return redirect(url_for('admin.maintenance'))
+
+
+@admin_bp.route('/api/maintenance/stats')
+@require_admin
+def api_maintenance_stats():
+    """API: 獲取維護統計資訊"""
+    db_manager: DatabaseManager = current_app.db_manager
+    
+    try:
+        stats = db_manager.comprehensive_cleanup(dry_run=True)
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 @admin_bp.route('/manage-locally')

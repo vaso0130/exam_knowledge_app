@@ -14,7 +14,7 @@ from threading import Timer
 # 添加專案根目錄到 path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, render_template, request, redirect, url_for, flash, session, g
+from flask import Flask, render_template, request, redirect, url_for, flash, session, g, jsonify
 from datetime import datetime, timedelta
 
 from src.core.database import DatabaseManager
@@ -418,6 +418,76 @@ def create_admin_app():
         except Exception as e:
             flash(f'獲取登入記錄失敗: {str(e)}', 'error')
             return render_template('admin_login_attempts.html', attempts=[])
+    
+    @app.route('/maintenance')
+    @require_admin  
+    def maintenance():
+        """資料庫維護頁面"""
+        try:
+            # 獲取維護統計資訊
+            maintenance_stats = db_manager.comprehensive_cleanup(dry_run=True)
+            orphaned_details = db_manager.get_orphaned_knowledge_points_details()
+            
+            stats = {
+                'orphaned_knowledge_points': maintenance_stats['orphaned_knowledge_points'],
+                'expired_sessions': maintenance_stats['expired_sessions'], 
+                'old_async_jobs': maintenance_stats['old_async_jobs'],
+                'old_login_attempts': maintenance_stats['old_login_attempts'],
+                'orphaned_details': orphaned_details[:20] if orphaned_details else []  # 只顯示前20個
+            }
+            
+        except Exception as e:
+            flash(f'獲取維護資訊失敗: {str(e)}', 'error')
+            stats = {}
+        
+        return render_template('admin_maintenance.html', stats=stats)
+
+    @app.route('/maintenance/cleanup', methods=['POST'])
+    @require_admin
+    def maintenance_cleanup():
+        """執行資料庫清理"""
+        try:
+            cleanup_type = request.form.get('cleanup_type', 'full')
+            
+            if cleanup_type == 'orphaned_only':
+                # 只清理孤立知識點
+                count = db_manager.clean_orphaned_knowledge_points()
+                flash(f'成功清理 {count} 個孤立知識點', 'success')
+            else:
+                # 全面清理
+                stats = db_manager.comprehensive_cleanup(dry_run=False)
+                total = sum(stats.values())
+                flash(f'資料庫清理完成！清理了 {total} 個項目', 'success')
+                
+                if stats['orphaned_knowledge_points'] > 0:
+                    flash(f'- 孤立知識點: {stats["orphaned_knowledge_points"]} 個', 'info')
+                if stats['expired_sessions'] > 0:
+                    flash(f'- 過期會話: {stats["expired_sessions"]} 個', 'info') 
+                if stats['old_async_jobs'] > 0:
+                    flash(f'- 舊非同步工作: {stats["old_async_jobs"]} 個', 'info')
+                if stats['old_login_attempts'] > 0:
+                    flash(f'- 舊登入記錄: {stats["old_login_attempts"]} 個', 'info')
+        
+        except Exception as e:
+            flash(f'清理過程中發生錯誤: {str(e)}', 'error')
+        
+        return redirect(url_for('maintenance'))
+
+    @app.route('/api/maintenance/stats')
+    @require_admin
+    def api_maintenance_stats():
+        """API: 獲取維護統計資訊"""
+        try:
+            stats = db_manager.comprehensive_cleanup(dry_run=True)
+            return jsonify({
+                'success': True,
+                'stats': stats
+            })
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
     
     # 錯誤處理
     @app.errorhandler(404)
