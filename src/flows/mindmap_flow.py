@@ -50,7 +50,17 @@ class MindmapFlow:
             if not question_data:
                 return {'success': False, 'error': '找不到指定的問題'}
 
-            # 2. 組合文本
+            print(f"正在為問題 ID {question_id} 生成心智圖...")
+            
+            # 2. 驗證問題 ID 格式（如果是字串，確保是有效的 UUID）
+            if isinstance(question_id, str):
+                import uuid
+                try:
+                    uuid.UUID(question_id)
+                except ValueError:
+                    return {'success': False, 'error': f'無效的問題 ID 格式: {question_id}'}
+            
+            # 3. 組合文本
             subject = question_data['subject']
             knowledge_points_data = question_data.get('knowledge_points', [])
             
@@ -71,6 +81,7 @@ class MindmapFlow:
             knowledge_points = [kp for kp in knowledge_points if kp.strip()]
 
             # 檢查是否有有效的知識點
+            question_summary = None  # 初始化變數
             if not knowledge_points:
                 print("警告：沒有發現有效的知識點，將生成提示性心智圖")
                 mindmap_code = f"""mindmap
@@ -94,16 +105,32 @@ class MindmapFlow:
 
             # 4. 將心智圖程式碼儲存回資料庫
             print("正在儲存心智圖...")
-            self.db.update_question_mindmap(question_id, mindmap_code)
+            try:
+                self.db.update_question_mindmap(question_id, mindmap_code)
+                print("心智圖儲存成功")
+            except Exception as db_error:
+                print(f"儲存心智圖時發生錯誤: {db_error}")
+                # 即使儲存失敗，仍然返回生成的心智圖代碼
+                return {
+                    'success': True,
+                    'mindmap_code': mindmap_code,
+                    'knowledge_points_count': len(knowledge_points),
+                    'warning': f'心智圖生成成功，但儲存時發生錯誤: {str(db_error)}'
+                }
             
             # 5. 如果有題目摘要，也一併儲存
             if question_summary and question_summary.get('summary') and question_summary.get('solving_tips'):
                 print("正在儲存題目摘要與解題技巧...")
-                self.db.update_question_solving_tips(
-                    question_id, 
-                    question_summary.get('summary', ''),
-                    question_summary.get('solving_tips', '')
-                )
+                try:
+                    self.db.update_question_solving_tips(
+                        question_id, 
+                        question_summary.get('summary', ''),
+                        question_summary.get('solving_tips', '')
+                    )
+                    print("題目摘要與解題技巧儲存成功")
+                except Exception as summary_error:
+                    print(f"儲存題目摘要時發生錯誤: {summary_error}")
+                    # 摘要儲存失敗不影響整體結果
 
             return {
                 'success': True,

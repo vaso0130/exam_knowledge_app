@@ -90,13 +90,24 @@ class ContentFlow:
             knowledge_points = question_data.get('knowledge_points', [])
             if knowledge_points:
                 print(f"    🔗 為題目 {question_id} 關聯 {len(knowledge_points)} 個知識點")
+                successful_links = 0
                 for kp_name in knowledge_points:
-                    kp_id = self.db.add_or_get_knowledge_point(
-                        name=kp_name.strip(),
-                        subject=subject,
-                        description=f"來自{'模擬題' if is_generated_question else '考題'}生成"
-                    )
-                    self.db.link_question_to_knowledge_point(question_id, kp_id)
+                    try:
+                        kp_id = self.db.add_or_get_knowledge_point(
+                            name=kp_name.strip(),
+                            subject=subject,
+                            description=f"來自{'模擬題' if is_generated_question else '考題'}生成"
+                        )
+                        if self.db.link_question_to_knowledge_point(question_id, kp_id):
+                            successful_links += 1
+                    except Exception as e:
+                        print(f"    ⚠️ 關聯知識點 '{kp_name}' 時發生錯誤: {e}")
+                        continue
+                
+                if successful_links > 0:
+                    print(f"    ✅ 成功關聯 {successful_links}/{len(knowledge_points)} 個知識點")
+                else:
+                    print(f"    ⚠️ 無法關聯任何知識點，可能存在資料庫約束問題")
 
             # 4. 生成心智圖 (I/O 密集型)
             mindmap_result = await self.mindmap_flow.generate_and_save_mindmap(question_id)

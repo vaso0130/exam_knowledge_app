@@ -369,14 +369,35 @@ class DatabaseManager:
                 return new_kp.id
 
     def link_question_to_knowledge_point(self, question_id: str, knowledge_point_id: int):
-        with self._session_scope() as session:
-            link = session.query(QuestionKnowledgeLink).filter_by(
-                question_id=question_id, 
-                knowledge_point_id=knowledge_point_id
-            ).first()
-            if not link:
-                new_link = QuestionKnowledgeLink(question_id=question_id, knowledge_point_id=knowledge_point_id)
-                session.add(new_link)
+        """建立問題與知識點的關聯，包含錯誤處理"""
+        try:
+            with self._session_scope() as session:
+                # 首先驗證問題是否存在
+                question_exists = session.query(Question).filter(Question.id == question_id).first()
+                if not question_exists:
+                    print(f"警告：問題 ID {question_id} 不存在，跳過知識點關聯")
+                    return False
+                
+                # 檢查關聯是否已存在
+                link = session.query(QuestionKnowledgeLink).filter_by(
+                    question_id=question_id, 
+                    knowledge_point_id=knowledge_point_id
+                ).first()
+                
+                if not link:
+                    new_link = QuestionKnowledgeLink(question_id=question_id, knowledge_point_id=knowledge_point_id)
+                    session.add(new_link)
+                    print(f"成功建立問題 {question_id} 與知識點 {knowledge_point_id} 的關聯")
+                    return True
+                else:
+                    print(f"問題 {question_id} 與知識點 {knowledge_point_id} 的關聯已存在")
+                    return True
+                    
+        except Exception as e:
+            print(f"建立問題與知識點關聯時發生錯誤: {e}")
+            print(f"問題 ID: {question_id}, 知識點 ID: {knowledge_point_id}")
+            # 不拋出異常，只記錄錯誤
+            return False
 
     def update_question_mindmap(self, question_id: str, mindmap_code: str):
         with self._session_scope() as session:
