@@ -1,0 +1,322 @@
+/* 筆記內容樣式 - 基於答案樣式但使用不同的背景色 */
+.note-content {
+    line-height: 1.6;
+    font-size: 1.1rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif;
+}
+
+.note-content h1,
+.note-content h2,
+.note-content h3 {
+    color: #495057;
+    margin-top: 1.5rem;
+    margin-bottom: 0.8rem;
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 0.3rem;
+}
+
+.note-content h1 {
+    font-size: 1.8rem;
+}
+
+.note-content h2 {
+    font-size: 1.5rem;
+}
+
+.note-content h3 {
+    font-size: 1.3rem;
+}
+
+.note-content p {
+    line-height: 1.8;
+    margin-bottom: 1rem;
+    text-align: justify;
+}
+
+.note-content ul,
+.note-content ol {
+    margin-bottom: 1rem;
+    padding-left: 2rem;
+}
+
+.note-content li {
+    margin-bottom: 0.3rem;
+    line-height: 1.6;
+}
+
+.note-content blockquote {
+    border-left: 4px solid #28a745;
+    /* 綠色邊框，區別於答案的藍色 */
+    margin: 1rem 0;
+    padding: 0.5rem 1rem;
+    background-color: #f8fffe;
+    /* 淺綠色背景 */
+    font-style: italic;
+}
+
+.note-content table {
+    width: 100%;
+    margin: 1rem 0;
+    border-collapse: collapse;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.note-content th,
+.note-content td {
+    border: 1px solid #dee2e6;
+    padding: 0.75rem;
+    text-align: left;
+}
+
+.note-content th {
+    background-color: #e8f5e8;
+    /* 淺綠色表頭 */
+    font-weight: 600;
+    color: #155724;
+}
+
+.note-content tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+/* 程式碼區塊樣式 */
+.note-content pre {
+    margin: 1.5rem 0;
+    background-color: #f4f4f4;
+    /* 灰色背景，區別於答案 */
+    border: 1px solid #ddd;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    font-family: "Courier New", Consolas, monospace;
+    overflow-x: auto;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.note-content code {
+    background-color: #f4f4f4;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-family: "Courier New", Consolas, monospace;
+    font-size: 0.9em;
+}
+
+/* 強調樣式 */
+.note-content strong {
+    color: #2c5530;
+    font-weight: 600;
+}
+
+.note-content em {
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* 分隔線樣式 */
+.note-content hr {
+    border: none;
+    height: 2px;
+    background: linear-gradient(to right, #28a745, transparent);
+    margin: 2rem 0;
+}
+
+/* 超連結樣式 */
+.note-content a {
+    color: #28a745;
+    text-decoration: none;
+    border-bottom: 1px dotted #28a745;
+}
+
+.note-content a:hover {
+    color: #1e7e34;
+    border-bottom: 1px solid #1e7e34;
+}
+
+/* 心智圖容器樣式 */
+.mindmap-scroll-container {
+    cursor: grab; /* 預設顯示「可抓取」圖示 */
+    position: relative;
+    overflow: auto; /* 使用 auto 讓滾動條在需要時出現 */
+    user-select: none; /* 防止拖曳時選中文本 */
+}
+
+.mindmap-scroll-container:active {
+    cursor: grabbing;
+}
+
+.mindmap-container {
+    position: relative;
+}
+
+/* 添加指示箭頭提示用戶可以滑動 */
+.mindmap-scroll-container::after {
+    content: '←→';
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 16px;
+    color: #666;
+    border: 1px solid #ddd;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+}
+
+/* AI功能按鈕樣式 */
+.btn-outline-info:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 測驗選項樣式 */
+.form-check-input:checked {
+    background-color: #198754;
+    border-color: #198754;
+}
+
+/* 卡片陰影效果 */
+.card {
+    transition: box-shadow 0.15s ease-in-out;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+
+/* AI 整理內容樣式 - 基於題庫參考答案但使用不同配色 */
+.ai-organized-content {
+    line-height: 1.6;
+    font-size: 1.1rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif;
+    background-color: #f8fffe;
+    /* 淺綠色背景，區別於答案的藍色 */
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid #d4edda;
+}
+
+.ai-organized-content h1,
+.ai-organized-content h2,
+.ai-organized-content h3 {
+    color: #155724;
+    /* 深綠色標題 */
+    margin-top: 1.5rem;
+    margin-bottom: 0.8rem;
+    border-bottom: 2px solid #c3e6cb;
+    padding-bottom: 0.3rem;
+}
+
+.ai-organized-content h1 {
+    font-size: 1.8rem;
+}
+
+.ai-organized-content h2 {
+    font-size: 1.5rem;
+}
+
+.ai-organized-content h3 {
+    font-size: 1.3rem;
+}
+
+.ai-organized-content p {
+    line-height: 1.8;
+    margin-bottom: 1rem;
+    text-align: justify;
+    color: #495057;
+}
+
+.ai-organized-content ul,
+.ai-organized-content ol {
+    margin-bottom: 1rem;
+    padding-left: 2rem;
+}
+
+.ai-organized-content li {
+    margin-bottom: 0.3rem;
+    line-height: 1.6;
+    color: #495057;
+}
+
+.ai-organized-content blockquote {
+    border-left: 4px solid #28a745;
+    /* 綠色邊框 */
+    margin: 1rem 0;
+    padding: 0.5rem 1rem;
+    background-color: #d4f6d4;
+    /* 更淺的綠色背景 */
+    font-style: italic;
+    color: #155724;
+}
+
+.ai-organized-content table {
+    width: 100%;
+    margin: 1rem 0;
+    border-collapse: collapse;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.ai-organized-content th,
+.ai-organized-content td {
+    border: 1px solid #c3e6cb;
+    padding: 0.75rem;
+    text-align: left;
+}
+
+.ai-organized-content th {
+    background-color: #d4edda;
+    /* 淺綠色表頭 */
+    font-weight: 600;
+    color: #155724;
+}
+
+.ai-organized-content tr:nth-child(even) {
+    background-color: #f8f9fa;
+}
+
+/* 程式碼區塊樣式 */
+.ai-organized-content pre {
+    margin: 1.5rem 0;
+    background-color: #f1f3f4;
+    /* 淺灰色背景 */
+    border: 1px solid #c3e6cb;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    font-family: "Courier New", Consolas, monospace;
+    overflow-x: auto;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.ai-organized-content code {
+    background-color: #e8f5e9;
+    /* 淺綠色背景 */
+    color: #2e7d32;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-family: "Courier New", Consolas, monospace;
+    font-size: 0.9em;
+}
+
+/* 強調樣式 */
+.ai-organized-content strong {
+    color: #2e7d32;
+    /* 深綠色 */
+    font-weight: 600;
+}
+
+.ai-organized-content em {
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* 連結樣式 */
+.ai-organized-content a {
+    color: #28a745;
+    text-decoration: none;
+    border-bottom: 1px dotted #28a745;
+}
+
+.ai-organized-content a:hover {
+    color: #1e7e34;
+    border-bottom: 1px solid #1e7e34;
+}

@@ -76,7 +76,7 @@ class GeminiClient:
             config = self.generation_config if is_json else genai.types.GenerationConfig(
                 temperature=0.3,
                 top_p=0.9,
-                max_output_tokens=4096
+                max_output_tokens=8192
             )
             response = await asyncio.to_thread(
                 self.model.generate_content,

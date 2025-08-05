@@ -372,6 +372,47 @@ class NoteManager:
             {'type': 'format_enhance', 'name': '格式化與補強', 'description': '整理格式、補充資料、修正錯字'}
         ]
 
+    # === 格式化與補強應用功能 ===
+    
+    def apply_formatted_content(self, user_id: int, note_id: str, analysis_id: int) -> Dict[str, Any]:
+        """將格式化與補強的內容應用到原始筆記"""
+        # 驗證使用者對筆記的訪問權限
+        note = self.db_manager.get_note_by_id(user_id, note_id)
+        if not note:
+            return {'success': False, 'error': '筆記不存在或無權限訪問'}
+        
+        # 獲取格式化結果
+        analysis = self.db_manager.get_note_ai_analysis_by_id(analysis_id)
+        if not analysis:
+            return {'success': False, 'error': '找不到指定的格式化結果'}
+            
+        # 驗證分析結果屬於該筆記
+        if analysis['note_id'] != note_id:
+            return {'success': False, 'error': '格式化結果與筆記不匹配'}
+            
+        # 驗證分析類型是格式化與補強
+        if not analysis['analysis_type'].endswith('format_enhance'):
+            return {'success': False, 'error': '指定的分析結果不是格式化與補強類型'}
+        
+        # 從結果中提取格式化內容
+        result = analysis['result']
+        formatted_content = result.get('formatted_content')
+        
+        if not formatted_content:
+            return {'success': False, 'error': '格式化結果中未找到格式化內容'}
+        
+        # 更新筆記內容
+        update_success = self.db_manager.update_note(user_id, note_id, content=formatted_content)
+        
+        if update_success:
+            return {
+                'success': True, 
+                'message': '筆記內容已成功更新為格式化版本',
+                'note_id': note_id
+            }
+        else:
+            return {'success': False, 'error': '更新筆記內容失敗'}
+    
     # === 互動式選擇題功能 ===
 
     def generate_quiz_for_note(self, user_id: int, note_id: str) -> Dict[str, Any]:
@@ -462,29 +503,59 @@ class NoteManager:
             return fallback_content
 
     def _create_fallback_content(self, context: Dict[str, Any]) -> str:
-        """創建備用內容模板，當AI生成失敗時使用"""
+        """創建增強版備用內容模板，當AI生成失敗時使用"""
         question_text = context.get('question_text', '')
         answer_text = context.get('answer_text', '')
         user_content = context.get('user_content', '')
         user_prompt = context.get('user_prompt', '')
         
-        fallback = f"""# {context.get('title', '筆記')}
+        fallback = f"""# {context.get('title', '學習筆記')}
 
-## 📚 原始題目
+## 📚 知識背景與脈絡
+
+這個題目涉及的核心知識點包括：
+- 從題目中提取關鍵概念
+- 分析題目與答案間的關聯
+- 理解相關學科知識框架
+
+## 🔍 概念剖析
+
+### 核心概念
+題目關注的重點：
+```
 {question_text}
+```
 
-## ✅ 參考答案
+### 解答要點
+參考答案的關鍵信息：
+```
 {answer_text}
+```
 
-## 📝 筆記內容
-{user_content if user_content else '（請在此處添加您的筆記內容）'}
+## � 解題思路與方法
 
-## 💡 學習要點
-- 請仔細分析題目要求
-- 理解答案的關鍵概念
-- 總結重要知識點
+1. 首先理解問題的關鍵點
+2. 分析可能的解題策略
+3. 應用相關知識點
+4. 驗證結果的正確性
 
-{f"## 🎯 特別提醒\\n{user_prompt}" if user_prompt else ""}
+## 📌 重點整理
+
+| 知識點 | 重要性 | 常見考點 |
+|-------|------|--------|
+| 待補充... | ⭐⭐⭐ | 題目中的關鍵概念 |
+| 待補充... | ⭐⭐ | 解答中的重要方法 |
+
+## �📝 個人學習筆記
+{user_content if user_content else "在這裡記錄您的學習心得和重點整理。"}
+
+## 🧠 記憶技巧與擴展學習
+
+- 將本題知識點與其他相關概念連結
+- 創建思維導圖幫助記憶關鍵信息
+- 嘗試用自己的話解釋核心概念
+
+{f"## 🎯 學習指引\\n{user_prompt}" if user_prompt else ""}
 """
         return fallback
 

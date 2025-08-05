@@ -1,7 +1,9 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify, Response
 from ..notes.note_manager import NoteManager
 from ..webapp.auth_middleware import require_admin
 from ..core.database import DatabaseManager
+import json
+import traceback
 
 
 # Define the blueprint for the notes system
@@ -428,6 +430,30 @@ def generate_quiz(note_id):
         return jsonify({
             'success': False,
             'error': str(e)
+        }), 500
+
+@notes_bp.route('/<string:note_id>/apply-formatted-content', methods=['POST'])
+def apply_formatted_content(note_id):
+    """API endpoint to apply formatted content to the original note."""
+    user_id = g.current_user['id']
+    analysis_id = request.json.get('analysis_id')
+    
+    if not analysis_id:
+        return jsonify({
+            'success': False,
+            'error': '必須提供 analysis_id 參數'
+        }), 400
+        
+    try:
+        result = note_manager.apply_formatted_content(user_id, note_id, analysis_id)
+        return jsonify(result)
+    except Exception as e:
+        print(f"應用格式化內容時發生錯誤: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'應用格式化內容時發生錯誤: {str(e)}'
         }), 500
 
 @notes_bp.route('/<string:note_id>/quiz')

@@ -1383,6 +1383,24 @@ class DatabaseManager:
                 'created_at': analysis.created_at.isoformat()
             } for analysis in analyses]
     
+    def get_note_ai_analysis_by_id(self, analysis_id: int) -> Optional[Dict[str, Any]]:
+        """根據ID獲取特定的筆記AI分析結果"""
+        with self._session_scope() as session:
+            analysis = session.query(NoteAIAnalysis).filter(
+                NoteAIAnalysis.id == analysis_id
+            ).first()
+            
+            if not analysis:
+                return None
+                
+            return {
+                'id': analysis.id,
+                'note_id': analysis.note_id,
+                'analysis_type': analysis.analysis_type,
+                'result': json.loads(analysis.result),
+                'created_at': analysis.created_at.isoformat()
+            }
+    
     def delete_note_ai_analysis(self, analysis_id: int) -> bool:
         """刪除筆記AI分析結果"""
         with self._session_scope() as session:
