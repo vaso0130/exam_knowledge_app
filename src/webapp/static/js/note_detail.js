@@ -350,19 +350,14 @@ function initializeContentTabs() {
 
     // 添加新的組織標籤頁
     function addOrganizationTab(type, name, icon, result) {
-        console.log(`嘗試添加 ${type} 標籤頁...`, { name, icon });
-        console.log(`結果數據類型: ${typeof result}, 是否為空: ${!result}`);
-
         // 檢查是否已經存在相同類型的標籤頁
         const existingTab = document.getElementById(`${type}-tab`);
         if (existingTab) {
-            console.log(`標籤頁 ${type} 已存在，更新內容而非重新創建`);
             // 更新現有標籤頁的內容
             const existingContent = document.getElementById(`${type}-content`);
             if (existingContent) {
                 const formattedContent = formatOrganizationResult(result, type);
                 existingContent.querySelector('.note-content').innerHTML = formattedContent;
-                console.log(`${type} 標籤頁內容已更新`);
                 
                 // 更新完內容後，重新調整圖表大小
                 setTimeout(() => {
@@ -371,7 +366,6 @@ function initializeContentTabs() {
                         const chartInstance = echarts.getInstanceByDom(chartContainer);
                         if (chartInstance) {
                             chartInstance.resize();
-                            console.log(`Updated chart in ${type}-content has been resized`);
                         }
                     }
                 }, 300);
@@ -384,7 +378,6 @@ function initializeContentTabs() {
         const tabContent = document.getElementById('content-tab-content');
 
         if (!addTabButton || !tabContent) {
-            console.error('找不到必要的DOM元素來創建標籤頁');
             return;
         }
 
@@ -406,7 +399,6 @@ function initializeContentTabs() {
 
             // 格式化內容
             const formattedContent = formatOrganizationResult(result, type);
-            console.log(`${type} 格式化後的內容長度: ${formattedContent.length}`);
 
             // 添加標籤內容
             const newContentHtml = `
@@ -425,10 +417,7 @@ function initializeContentTabs() {
                 newTab.show();
             }
 
-            console.log(`${type} 標籤頁創建完成！`);
-
         } catch (error) {
-            console.error(`創建 ${type} 標籤頁時發生錯誤:`, error);
             showAlert(`創建 ${name} 標籤頁失敗`, 'danger');
         }
     }
@@ -487,23 +476,21 @@ function initializeContentTabs() {
 
     // 載入預先生成的 AI 整理結果
     function loadPreGeneratedResults() {
-        console.log('開始載入預先生成的 AI 整理結果...');
-
         fetch(`/notes/${currentNoteId}/pre-generated-results`)
             .then(response => {
-                console.log('API 回應狀態:', response.status);
+                // 檢查是否是HTML回應（登入頁面）
+                const contentType = response.headers.get('Content-Type');
+                if (contentType && contentType.includes('text/html')) {
+                    throw new Error('身份驗證失效，請重新登入');
+                }
+                
                 return response.json();
             })
             .then(data => {
-                console.log('API 回應完整數據:', data);
-
                 if (data.success) {
                     const resultsCount = Object.keys(data.results || {}).length;
-                    console.log(`找到 ${resultsCount} 個預先生成的結果`);
 
                     if (resultsCount > 0) {
-                        console.log('結果詳情:', data.results);
-
                         // 為每個預先生成的結果創建標籤頁
                         const typeNames = {
                             'mindmap': { name: '心智圖結構化', icon: 'sitemap' },
@@ -542,16 +529,12 @@ function initializeContentTabs() {
                                     successCount++;
 
                                 } catch (error) {
-                                    console.error(`創建 ${type} 標籤頁失敗:`, error);
                                     errorCount++;
                                 }
                             } else {
-                                console.warn(`未知的整理類型: ${type}`);
                                 errorCount++;
                             }
                         }
-
-                        console.log(`標籤頁創建完成！成功: ${successCount}, 失敗: ${errorCount}`);
 
                         // 如果有成功創建的標籤頁，隱藏舊的顯示區域
                         if (successCount > 0) {
@@ -566,17 +549,13 @@ function initializeContentTabs() {
                             showAlert(`已載入 ${successCount} 個AI整理結果，${errorCount} 個載入失敗`, 'warning');
                         }
 
-                    } else {
-                        console.log('沒有找到預先生成的結果');
                     }
                 } else {
-                    console.error('API 回應失敗:', data.error);
                     showAlert('載入AI整理結果失敗：' + (data.error || '未知錯誤'), 'danger');
                 }
             })
             .catch(error => {
-                console.error('載入預先生成結果時發生錯誤:', error);
-                showAlert('載入AI整理結果時發生網路錯誤', 'danger');
+                showAlert('載入AI整理結果時發生錯誤', 'danger');
             });
     }
 
@@ -615,13 +594,10 @@ function initializeContentTabs() {
 
     // 格式化整理結果顯示
     function formatOrganizationResult(result, type) {
-        console.log(`格式化 ${type} 類型的結果:`, result);
-
         let html = '';
 
         // 檢查 result 是否存在且為對象
         if (!result || typeof result !== 'object') {
-            console.warn(`結果格式不正確:`, result);
             return '<p class="text-muted">內容格式有誤，請重新生成...</p>';
         }
 
@@ -639,9 +615,9 @@ function initializeContentTabs() {
         if (result.mindmap_data) {
             const chartId = `echart-mindmap-${Date.now()}`;
             html += `<h6><i class="fas fa-project-diagram me-2 text-primary"></i>心智圖視覺化 <small class="text-muted">(可拖曳、縮放及滑動)</small></h6>`;
-            // 容器結構保持不變
+            // 擴大容器以提供更大的拖曳範圍
             html += `<div class="mindmap-scroll-container" style="width: 100%; height: 800px; overflow: hidden; border: 1px solid #eee; position: relative; user-select: none;">
-                <div id="${chartId}" style="width: 150%; height: 100%; min-width: 1200px;" class="mindmap-container"></div>
+                <div id="${chartId}" style="width: 200%; height: 120%; min-width: 1600px; min-height: 960px;" class="mindmap-container"></div>
             </div>`;
 
             setTimeout(() => {
@@ -656,45 +632,86 @@ function initializeContentTabs() {
                         series: [{
                             type: 'tree',
                             data: [result.mindmap_data],
-                            top: '5%', left: '7%', bottom: '5%', right: '18%',
+                            top: '5%', left: '5%', bottom: '5%', right: '10%', // 調整佈局給右側更多空間
                             symbolSize: 16,
-                            layout: 'orthogonal', orient: 'LR', edgeShape: 'polyline',
-                            // ... 其他美化選項 ...
+                            layout: 'orthogonal', 
+                            orient: 'LR', 
+                            edgeShape: 'polyline',
+                            
+                            // 優化樹的展開和佈局
+                            initialTreeDepth: 1, // 初始展開1層
+                            expandAndCollapse: true,
+                            
+                            // 確保有足夠的間距
+                            itemStyle: {
+                                color: '#5470c6',
+                                borderColor: '#fff',
+                                borderWidth: 1
+                            },
+                            
+                            lineStyle: {
+                                color: '#ccc',
+                                width: 1
+                            },
                             
                             // *** 【關鍵修改 1】: 徹底禁用 ECharts 的漫遊功能 ***
-                            roam: false, 
+                            roam: false,
                             
-                            initialTreeDepth: -1,
-                            expandAndCollapse: true
+                            // 設定標籤樣式
+                            label: {
+                                position: 'left',
+                                verticalAlign: 'middle',
+                                align: 'right',
+                                fontSize: 12
+                            },
+                            
+                            // 設定葉子節點的標籤位置
+                            leaves: {
+                                label: {
+                                    position: 'right',
+                                    verticalAlign: 'middle',
+                                    align: 'left'
+                                }
+                            }
                         }]
                     };
                     
                     myChart.setOption(option);
                     window.addEventListener('resize', () => myChart.resize());
 
+                    // 設定初始滾動位置，確保根節點可見
+                    setTimeout(() => {
+                        // 將滾動位置設為左上角附近，但留出一些邊距
+                        scrollContainer.scrollLeft = Math.max(0, (scrollContainer.scrollWidth * 0.1));
+                        scrollContainer.scrollTop = Math.max(0, (scrollContainer.scrollHeight * 0.2));
+                    }, 100);
+
                     // --- 全新的手動互動控制邏輯 ---
 
-                    // 1. 保留優化的【滾輪縮放】邏輯
+                    // 1. 優化的【滾輪縮放】邏輯 - 降低敏感度
                     let isWheeling = false;
                     chartDom.addEventListener('wheel', function(event) {
                         event.preventDefault();
                         if (isWheeling) return;
                         isWheeling = true;
-                        setTimeout(() => { isWheeling = false; }, 80); // 稍微縮短緩衝時間
+                        setTimeout(() => { isWheeling = false; }, 20); // 縮短緩衝時間提高響應
 
                         const currentOption = myChart.getOption();
                         let currentZoom = currentOption.series[0].zoom || 1;
-                        const zoomStep = 0.1;
+                        const zoomStep = 0.03; // 大幅降低縮放步長，讓縮放更精細
                         currentZoom += (event.deltaY < 0 ? zoomStep : -zoomStep);
-                        currentZoom = Math.max(0.3, Math.min(5.0, currentZoom));
+                        currentZoom = Math.max(0.2, Math.min(6.0, currentZoom)); // 擴大縮放範圍
                         
                         myChart.setOption({ series: [{ zoom: currentZoom }] });
                     });
 
-                    // 2. 【全新的手動拖曳平移】邏輯
+                    // 2. 【優化的手動拖曳平移】邏輯 - 提高響應性和範圍
                     let isDragging = false;
                     let startX, startY;
                     let scrollLeftStart, scrollTopStart;
+
+                    // 設定初始滑鼠樣式
+                    scrollContainer.style.cursor = 'grab';
 
                     scrollContainer.addEventListener('mousedown', (e) => {
                         isDragging = true;
@@ -705,6 +722,8 @@ function initializeContentTabs() {
                         startY = e.pageY - scrollContainer.offsetTop;
                         scrollLeftStart = scrollContainer.scrollLeft;
                         scrollTopStart = scrollContainer.scrollTop;
+                        // 防止文字選取
+                        e.preventDefault();
                     });
 
                     scrollContainer.addEventListener('mouseleave', () => {
@@ -724,12 +743,19 @@ function initializeContentTabs() {
                         // 計算滑鼠移動的距離
                         const x = e.pageX - scrollContainer.offsetLeft;
                         const y = e.pageY - scrollContainer.offsetTop;
-                        const walkX = (x - startX);
-                        const walkY = (y - startY);
+                        const walkX = (x - startX) * 1.2; // 增加拖曳靈敏度
+                        const walkY = (y - startY) * 1.2;
 
                         // 根據移動距離更新滾動條位置
-                        scrollContainer.scrollLeft = scrollLeftStart - walkX;
-                        scrollContainer.scrollTop = scrollTopStart - walkY;
+                        const newScrollLeft = scrollLeftStart - walkX;
+                        const newScrollTop = scrollTopStart - walkY;
+                        
+                        // 確保在有效範圍內
+                        const maxScrollLeft = scrollContainer.scrollWidth - scrollContainer.clientWidth;
+                        const maxScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+                        
+                        scrollContainer.scrollLeft = Math.max(0, Math.min(maxScrollLeft, newScrollLeft));
+                        scrollContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, newScrollTop));
                     });
 
 
@@ -746,9 +772,6 @@ function initializeContentTabs() {
         } else if (type === 'hierarchical') {
             // 層次化筆記的特殊顯示
             html += '<div class="hierarchical-container p-3 border rounded">';
-
-            // 添加除錯信息
-            console.log('層次化整理結果數據:', JSON.stringify(result, null, 2));
 
             // 標題
             if (result.title) {
@@ -937,8 +960,21 @@ function initializeContentTabs() {
 
             html += '</div>'; // 關閉容器
         } else if (type === 'qa_learning') {
-            // 問答式學習的增強顯示
+            // 問答式學習的顯示
             html += '<div class="qa-learning-container p-3 border rounded">';
+
+            // 如果後端返回了 organized_content 而沒有結構化數據，顯示重新生成提示
+            if (result.organized_content && typeof result.organized_content === 'string' && !result.basic_questions) {
+                html += `<div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle me-2"></i>需要重新生成</h6>
+                    <p>檢測到舊格式的問答資料，請重新生成以獲得最佳體驗。</p>
+                    <button class="btn btn-sm btn-primary" onclick="regenerateOrganization('qa_learning', '問答式學習')">
+                        <i class="fas fa-sync me-1"></i>重新生成
+                    </button>
+                </div>`;
+                html += '</div>'; // 關閉容器
+                return html;
+            }
 
             // 基礎問題部分
             if (result.basic_questions && result.basic_questions.length > 0) {
@@ -950,7 +986,7 @@ function initializeContentTabs() {
                         const qId = `basic-q-${index}`;
                         const answerId = `basic-a-${index}`;
                         const answer = result.answers && result.answers[question] ?
-                            result.answers[question] : '查看答案功能準備中...';
+                            result.answers[question].replace(/\n/g, '<br>') : '查看答案功能準備中...';
 
                         html += `
                     <div class="accordion-item">
@@ -961,7 +997,7 @@ function initializeContentTabs() {
                         </h2>
                         <div id="${answerId}" class="accordion-collapse collapse" aria-labelledby="${qId}-header">
                             <div class="accordion-body">
-                                ${renderMarkdown(answer)}
+                                ${answer}
                             </div>
                         </div>
                     </div>`;
@@ -982,7 +1018,7 @@ function initializeContentTabs() {
                         const qId = `interm-q-${index}`;
                         const answerId = `interm-a-${index}`;
                         const answer = result.answers && result.answers[question] ?
-                            result.answers[question] : '查看答案功能準備中...';
+                            result.answers[question].replace(/\n/g, '<br>') : '查看答案功能準備中...';
 
                         html += `
                     <div class="accordion-item">
@@ -993,7 +1029,7 @@ function initializeContentTabs() {
                         </h2>
                         <div id="${answerId}" class="accordion-collapse collapse" aria-labelledby="${qId}-header">
                             <div class="accordion-body">
-                                ${renderMarkdown(answer)}
+                                ${answer}
                             </div>
                         </div>
                     </div>`;
@@ -1014,7 +1050,7 @@ function initializeContentTabs() {
                         const qId = `adv-q-${index}`;
                         const answerId = `adv-a-${index}`;
                         const answer = result.answers && result.answers[question] ?
-                            result.answers[question] : '查看答案功能準備中...';
+                            result.answers[question].replace(/\n/g, '<br>') : '查看答案功能準備中...';
 
                         html += `
                     <div class="accordion-item">
@@ -1025,7 +1061,7 @@ function initializeContentTabs() {
                         </h2>
                         <div id="${answerId}" class="accordion-collapse collapse" aria-labelledby="${qId}-header">
                             <div class="accordion-body">
-                                ${renderMarkdown(answer)}
+                                ${answer}
                             </div>
                         </div>
                     </div>`;
@@ -1046,7 +1082,7 @@ function initializeContentTabs() {
                         const qId = `crit-q-${index}`;
                         const answerId = `crit-a-${index}`;
                         const answer = result.answers && result.answers[question] ?
-                            result.answers[question] : '查看答案功能準備中...';
+                            result.answers[question].replace(/\n/g, '<br>') : '查看答案功能準備中...';
 
                         html += `
                     <div class="accordion-item">
@@ -1057,7 +1093,7 @@ function initializeContentTabs() {
                         </h2>
                         <div id="${answerId}" class="accordion-collapse collapse" aria-labelledby="${qId}-header">
                             <div class="accordion-body">
-                                ${renderMarkdown(answer)}
+                                ${answer}
                             </div>
                         </div>
                     </div>`;
@@ -1072,7 +1108,7 @@ function initializeContentTabs() {
             if (result.learning_progression) {
                 html += `<div class="alert alert-light border-start border-4 border-info mb-3">
                 <h6><i class="fas fa-route me-2 text-info"></i>學習路徑</h6>
-                ${renderMarkdown(result.learning_progression)}
+                ${result.learning_progression.replace(/\n/g, '<br>')}
             </div>`;
             }
 
@@ -1775,12 +1811,15 @@ function initializeContentTabs() {
         });
     }
 
-    // 簡單的 Markdown 渲染函數
+    //簡單的 Markdown 渲染函數
     function renderMarkdown(text) {
         if (!text) return '';
 
         // 簡單的 Markdown 轉換
-        return text
+        let result = text
+            // 先處理程式碼塊（保護其中的內容）
+            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+            .replace(/`(.*?)`/g, '<code>$1</code>')
             // 標題
             .replace(/^### (.*$)/gim, '<h3>$1</h3>')
             .replace(/^## (.*$)/gim, '<h2>$1</h2>')
@@ -1791,9 +1830,6 @@ function initializeContentTabs() {
             // 斜體
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
             .replace(/_(.*?)_/g, '<em>$1</em>')
-            // 程式碼塊
-            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-            .replace(/`(.*?)`/g, '<code>$1</code>')
             // 連結
             .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
             // 引用
@@ -1801,17 +1837,30 @@ function initializeContentTabs() {
             // 列表項目
             .replace(/^\* (.*$)/gim, '<li>$1</li>')
             .replace(/^- (.*$)/gim, '<li>$1</li>')
-            .replace(/^\d+\. (.*$)/gim, '<li>$1</li>')
-            // 包裝列表
-            .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
-            // 段落
-            .replace(/\n\n/g, '</p><p>')
-            .replace(/^(?!<[hup]|<li|<blockquote)/gm, '<p>')
-            .replace(/(?<!>)$/gm, '</p>')
-            // 清理多餘的段落標籤
+            .replace(/^\d+\. (.*$)/gim, '<li>$1</li>');
+
+        // 處理列表包裝
+        result = result.replace(/(<li>.*?<\/li>[\s\S]*?<li>.*?<\/li>)/g, '<ul>$1</ul>');
+        
+        // 處理換行和段落
+        // 將單個換行轉換為 <br>，雙換行轉換為段落分隔
+        result = result
+            .replace(/\n\n+/g, '||PARAGRAPH||') // 標記段落分隔
+            .replace(/\n/g, '<br>') // 單換行轉為 <br>
+            .replace(/\|\|PARAGRAPH\|\|/g, '</p><p>'); // 段落分隔
+        
+        // 如果沒有明確的 HTML 標籤開頭，包裝在段落中
+        if (!result.match(/^<[hul]/)) {
+            result = '<p>' + result + '</p>';
+        }
+        
+        // 清理多餘的段落標籤
+        result = result
             .replace(/<p><\/p>/g, '')
             .replace(/<p>(<[hul])/g, '$1')
             .replace(/(<\/[hul]>)<\/p>/g, '$1');
+            
+        return result;
     }
 
     // 顯示警告訊息

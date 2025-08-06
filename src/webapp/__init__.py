@@ -750,6 +750,7 @@ def create_app():
             try:
                 from sqlalchemy import text
                 with note_manager.db_manager.get_db_session() as session:
+                    # 先嘗試精確的 ID 匹配
                     query = text("""
                     SELECT un.id, un.title, un.created_at 
                     FROM note_ai_analysis naa 
@@ -769,10 +770,42 @@ def create_app():
                         {
                             'id': row[0],
                             'title': row[1],
-                            'created_at': row[2]
+                            'created_at': row[2],
+                            'match_type': 'exact_id'
                         } 
                         for row in result
                     ]
+                    
+                    # 如果沒有找到精確匹配，嘗試按題目文字內容匹配
+                    if not related_notes and q.get('question_text'):
+                        # 取題目文字的前50個字元作為匹配模式
+                        question_snippet = q['question_text'][:50].strip()
+                        if len(question_snippet) > 10:  # 確保有足夠的文字內容
+                            content_query = text("""
+                            SELECT un.id, un.title, un.created_at 
+                            FROM note_ai_analysis naa 
+                            JOIN user_notes un ON naa.note_id = un.id 
+                            WHERE naa.analysis_type = 'source_question' 
+                            AND un.user_id = :user_id 
+                            AND naa.result LIKE :question_text_pattern
+                            ORDER BY un.created_at DESC
+                            LIMIT 3
+                            """)
+                            
+                            result = session.execute(content_query, {
+                                'user_id': g.current_user['id'],
+                                'question_text_pattern': f'%{question_snippet}%'
+                            })
+                            
+                            related_notes.extend([
+                                {
+                                    'id': row[0],
+                                    'title': row[1],
+                                    'created_at': row[2],
+                                    'match_type': 'content'
+                                } 
+                                for row in result
+                            ])
             except Exception as e:
                 print(f"Error fetching related notes: {e}")
                 

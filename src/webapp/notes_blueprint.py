@@ -432,6 +432,7 @@ def generate_mock_questions(note_id):
         from ..core.gemini_client import GeminiClient
         from ..flows.content_flow import ContentFlow
         import asyncio
+        import concurrent.futures
         
         gemini_client = GeminiClient()
         db = DatabaseManager()
@@ -457,11 +458,14 @@ def generate_mock_questions(note_id):
             # 創建一個臨時文檔來關聯這些問題 (使用筆記ID作為文檔ID)
             doc_id = None
             
-            # 使用 ContentFlow 處理每個問題 (與學習資料生成的問題流程一致)
+            print(f"開始處理 {len(questions)} 道模擬題，從筆記 '{note_title}' (ID: {note_id}) 生成")
+            
+            # 準備所有問題數據並去重知識點
+            question_data_list = []
             for i, question in enumerate(questions):
                 # 準備問題數據
                 question_data = {
-                    'title': question.get('title', '模擬題'),
+                    'title': question.get('title', f'模擬題 {i+1}'),
                     'question': question.get('question', ''),  # 注意這裡用 'question' 而不是 'question_text'
                     'answer': question.get('answer', ''),
                     'subject': subject,
@@ -472,16 +476,59 @@ def generate_mock_questions(note_id):
                     'source_note_title': note_title
                 }
                 
-                # 使用 ContentFlow 處理問題 (會自動執行答案生成、心智圖生成和題目摘要)
-                try:
-                    result = loop.run_until_complete(content_flow._process_single_question_concurrently(
+                # 對問題數據進行預處理，去除可能的重複知識點
+                if 'knowledge_points' in question_data and question_data['knowledge_points']:
+                    # 使用集合去重，保持順序，並確保清理空白和特殊字符
+                    unique_kps = []
+                    kp_set = set()
+                    for kp in question_data['knowledge_points']:
+                        if kp:  # 確保不是 None 或空值
+                            kp_clean = str(kp).strip()
+                            if kp_clean and kp_clean.lower() not in kp_set:
+                                unique_kps.append(kp_clean)
+                                kp_set.add(kp_clean.lower())
+                    
+                    question_data['knowledge_points'] = unique_kps
+                    print(f"  📝 題目 {i+1}: 原始知識點 {len(question.get('knowledge_points', []))} 個，去重後 {len(unique_kps)} 個")
+                else:
+                    question_data['knowledge_points'] = []
+                
+                question_data_list.append((question_data, i+1))
+            
+            # 使用並行處理來處理所有問題
+            async def process_all_questions():
+                """並行處理所有模擬題"""
+                tasks = []
+                for question_data, question_index in question_data_list:
+                    task = content_flow._process_single_question_concurrently(
                         question_data=question_data,
                         doc_id=doc_id,
                         subject=subject,
-                        question_index=i+1,
+                        question_index=question_index,
                         is_generated_question=True
-                    ))
-                    
+                    )
+                    tasks.append(task)
+                
+                # 等待所有任務完成
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                return results
+            
+            # 執行並行處理
+            results = loop.run_until_complete(process_all_questions())
+            
+            # 處理結果
+            for i, result in enumerate(results):
+                try:
+                    if isinstance(result, Exception):
+                        error_msg = str(result)
+                        print(f"處理模擬題 {i+1} 時發生錯誤: {result}")
+                        
+                        # 如果是知識點重複錯誤，嘗試記錄更多詳情
+                        if "Duplicate entry" in error_msg and "knowledge_point" in error_msg:
+                            original_kps = question_data_list[i][0].get('knowledge_points', [])
+                            print(f"  📋 題目 {i+1} 的知識點: {original_kps}")
+                        continue
+                        
                     if result and result.get('success') and result.get('id'):
                         # 記錄答案來源為筆記
                         db.edit_question(
@@ -496,10 +543,13 @@ def generate_mock_questions(note_id):
                         # 記錄成功添加的問題
                         added_questions.append({
                             'id': result['id'],
-                            'title': question_data['title']
+                            'title': question_data_list[i][0]['title']
                         })
+                    else:
+                        print(f"處理模擬題 {i+1} 失敗: 結果無效或缺少必要欄位")
+                        
                 except Exception as e:
-                    print(f"處理模擬題 {i+1} 時發生錯誤: {e}")
+                    print(f"處理模擬題 {i+1} 結果時發生錯誤: {e}")
                     continue
             
             return jsonify({

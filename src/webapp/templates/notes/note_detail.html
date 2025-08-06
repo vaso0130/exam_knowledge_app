@@ -68,7 +68,7 @@
                             <!-- 原始內容 -->
                             <div class="tab-pane fade show active" id="original-content" role="tabpanel">
                                 <div class="note-content markdown-content mt-3">
-                                    {{ note.content | safe }}
+                                    {{ note.content | markdown }}
                                 </div>
                             </div>
                             <!-- AI 整理內容會在這裡動態添加 -->
@@ -302,7 +302,7 @@
 {% block scripts %}
 {{ super() }}
 <!-- 引入 ECharts 初始化和工具函數 -->
-<script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+
 <script src="{{ url_for('static', filename='js/echarts_init.js') }}"></script>
 <!-- 引入 AI 整理結果修復腳本 -->
 <script src="{{ url_for('static', filename='js/recover_feynman_data.js') }}"></script>

@@ -203,6 +203,7 @@ class GeminiClient:
                 (二) 台灣的氣候特徵是什麼？\n\n
                 (三) 台灣的文化特徵是什麼？
                 ```
+
         ---
 
         ### IV. 輸入文本
@@ -284,7 +285,7 @@ class GeminiClient:
         """
         根據完整文本內容生成高品質申論模擬題，並為每個問題自動標註知識點標籤
         專注於生成需要深入分析和應用的題目，而非單純複述知識
-        使用中級模型 (gemini-2.5-flash-lite) 進行題目生成
+        使用主要模型進行題目生成，提高穩定性和品質
         """
         prompt = f"""
         你是一位專業的{subject}科申論題出題專家。請根據提供的學習資料，設計2-4道高品質的申論模擬題。
@@ -355,7 +356,7 @@ class GeminiClient:
             ]
         }}
         """
-        parsed_json = await self._generate_with_intermediate_model(prompt)
+        parsed_json = await self._generate_with_json_parsing(prompt)
         return parsed_json.get("questions", []) if parsed_json else []
 
     async def generate_answer(self, question_text: str) -> Optional[Dict[str, Any]]:

@@ -41,7 +41,9 @@
                         {% endif %}
                     </div>
                     {% else %}
+                    {% if g.current_user and g.current_user.role == 'admin' %}
                     <a href="{{ url_for('notes.create_note_from_question', question_id=question.id) }}" class="btn btn-warning btn-sm">為此題建立筆記</a>
+                    {% endif %}
                     {% endif %}
                 </div>
             </div>
@@ -80,7 +82,7 @@
                     </div>
                     
                     <div class="answer-content markdown-content">
-                        {{ answer_html|safe }}
+                        {{ answer_html|markdown }}
                     </div>
 
                     <!-- 答案來源 -->

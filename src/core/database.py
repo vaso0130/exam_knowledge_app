@@ -57,6 +57,11 @@ class Document(Base):
     # 關聯
     questions = relationship("Question", back_populates="document", cascade="all, delete-orphan")
     uploader = relationship("User", back_populates="uploads")
+    knowledge_points = relationship(
+        "KnowledgePoint",
+        secondary="document_knowledge_links",
+        back_populates="documents"
+    )
 
 # Note: uuid import moved to top of file
 
@@ -95,11 +100,24 @@ class KnowledgePoint(Base):
         secondary="question_knowledge_links",
         back_populates="knowledge_points"
     )
+    documents = relationship(
+        "Document",
+        secondary="document_knowledge_links",
+        back_populates="knowledge_points"
+    )
 
 class QuestionKnowledgeLink(Base):
     __tablename__ = "question_knowledge_links"
     question_id = Column(String(36), ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True) # Changed to String(36)
     knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
+
+class DocumentKnowledgeLink(Base):
+    __tablename__ = "document_knowledge_links"
+    document_id = Column(String(36), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
+    knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
+    relevance_score = Column(Float, default=0.8)
+    extraction_method = Column(String(50), default="ai_generated")  # 'manual', 'ai_generated', 'question_derived'
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class AsyncJob(Base):
     __tablename__ = "async_jobs"
@@ -225,6 +243,83 @@ class InviteCodeAttempt(Base):
     attempt_time = Column(DateTime, default=datetime.utcnow, index=True)
     user_agent = Column(Text, nullable=True)
     username_attempted = Column(String(50), nullable=True)  # 嘗試註冊的用戶名
+
+
+# === v3.1 個人筆記系統模型 ===
+
+class UserNote(Base):
+    """用戶筆記"""
+    __tablename__ = "user_notes"
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    content_type = Column(String(20), default='markdown')
+    tags = Column(Text)  # JSON array as string
+    ai_summary = Column(Text)
+    ai_keywords = Column(Text)  # JSON as string
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_archived = Column(Integer, default=0)
+
+    user = relationship("User")
+    categories = relationship("NoteCategory", secondary="note_category_links", back_populates="notes")
+
+class NoteCategory(Base):
+    """筆記分類"""
+    __tablename__ = "note_categories"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    color = Column(String(7))  # HEX color code
+    icon = Column(String(50))
+    parent_id = Column(Integer, ForeignKey("note_categories.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    notes = relationship("UserNote", secondary="note_category_links", back_populates="categories")
+    parent = relationship("NoteCategory", remote_side=[id])
+
+class NoteCategoryLink(Base):
+    """筆記分類關聯表"""
+    __tablename__ = "note_category_links"
+    note_id = Column(String(36), ForeignKey("user_notes.id", ondelete="CASCADE"), primary_key=True)
+    category_id = Column(Integer, ForeignKey("note_categories.id", ondelete="CASCADE"), primary_key=True)
+
+class NoteKnowledgeLink(Base):
+    """筆記知識點關聯表"""
+    __tablename__ = "note_knowledge_links"
+    note_id = Column(String(36), ForeignKey("user_notes.id", ondelete="CASCADE"), primary_key=True)
+    knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
+    relevance_score = Column(Float, default=0.8)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    note = relationship("UserNote")
+    knowledge_point = relationship("KnowledgePoint")
+
+class NoteRelationship(Base):
+    """筆記關聯關係"""
+    __tablename__ = "note_relationships"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_note_id = Column(String(36), ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
+    target_note_id = Column(String(36), ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
+    relationship_type = Column(String(50), nullable=False)  # 'related', 'reference', 'follows'
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    source_note = relationship("UserNote", foreign_keys=[source_note_id])
+    target_note = relationship("UserNote", foreign_keys=[target_note_id])
+
+class NoteAIAnalysis(Base):
+    """筆記AI分析結果"""
+    __tablename__ = "note_ai_analysis"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    note_id = Column(String(36), ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
+    analysis_type = Column(String(50), nullable=False)  # 'summary', 'keywords', 'knowledge_links', 'suggestions', 'source_question'
+    result = Column(Text, nullable=False)  # JSON as string (使用資料庫實際欄位名稱)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    note = relationship("UserNote")
 
 
 # --- Database Manager ---
@@ -399,8 +494,94 @@ class DatabaseManager:
                 session.flush()
                 return new_kp.id
 
+    def add_or_get_knowledge_point_safe(self, name: str, subject: str, description: str = "") -> int:
+        """
+        安全的知識點創建，包含智慧去重避免相似知識點重複
+        """
+        with self._session_scope() as session:
+            # 1. 精確匹配
+            kp = session.query(KnowledgePoint).filter_by(name=name.strip()).first()
+            if kp:
+                return kp.id
+                
+            # 2. 相似度檢查（防止AI生成的相似知識點）
+            similar_kps = session.query(KnowledgePoint).filter(
+                KnowledgePoint.subject == subject,
+                KnowledgePoint.name.like(f"%{name.strip()[:10]}%")
+            ).all()
+            
+            for similar_kp in similar_kps:
+                similarity = self._calculate_similarity(name.strip(), similar_kp.name)
+                if similarity > 0.85:  # 85% 相似度閾值
+                    print(f"發現相似知識點: '{name}' -> '{similar_kp.name}' (相似度: {similarity:.2f})")
+                    return similar_kp.id
+            
+            # 3. 創建新知識點
+            new_kp = KnowledgePoint(name=name.strip(), subject=subject, description=description)
+            session.add(new_kp)
+            session.flush()
+            return new_kp.id
+
+    def _calculate_similarity(self, text1: str, text2: str) -> float:
+        """計算兩個知識點名稱的相似度"""
+        from difflib import SequenceMatcher
+        return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
+
+    def link_document_to_knowledge_point(self, document_id: str, knowledge_point_id: int, 
+                                       relevance_score: float = 0.8, extraction_method: str = "ai_generated") -> bool:
+        """建立文件與知識點的直接關聯"""
+        try:
+            with self._session_scope() as session:
+                # 驗證文件和知識點是否存在
+                doc_exists = session.query(Document).filter(Document.id == document_id).first()
+                kp_exists = session.query(KnowledgePoint).filter(KnowledgePoint.id == knowledge_point_id).first()
+                
+                if not doc_exists:
+                    print(f"警告：文件 ID {document_id} 不存在，跳過知識點關聯")
+                    return False
+                if not kp_exists:
+                    print(f"警告：知識點 ID {knowledge_point_id} 不存在，跳過文件關聯")
+                    return False
+                
+                try:
+                    # 檢查關聯是否已存在
+                    existing_link = session.query(DocumentKnowledgeLink).filter_by(
+                        document_id=document_id, 
+                        knowledge_point_id=knowledge_point_id
+                    ).first()
+                    
+                    if existing_link:
+                        print(f"文件 {document_id} 與知識點 {knowledge_point_id} 的關聯已存在")
+                        return True
+                    
+                    # 創建新關聯
+                    new_link = DocumentKnowledgeLink(
+                        document_id=document_id, 
+                        knowledge_point_id=knowledge_point_id,
+                        relevance_score=relevance_score,
+                        extraction_method=extraction_method
+                    )
+                    session.add(new_link)
+                    session.commit()
+                    print(f"成功建立文件 {document_id} 與知識點 {knowledge_point_id} 的關聯")
+                    return True
+                    
+                except Exception as e:
+                    session.rollback()
+                    error_str = str(e)
+                    if "Duplicate entry" in error_str or "UNIQUE constraint" in error_str:
+                        print(f"文件 {document_id} 與知識點 {knowledge_point_id} 的關聯已存在")
+                        return True
+                    else:
+                        print(f"建立文件知識點關聯時發生錯誤: {e}")
+                        return False
+                        
+        except Exception as e:
+            print(f"建立文件與知識點關聯時發生錯誤: {e}")
+            return False
+
     def link_question_to_knowledge_point(self, question_id: str, knowledge_point_id: int):
-        """建立問題與知識點的關聯，包含錯誤處理"""
+        """建立問題與知識點的關聯，包含錯誤處理和並行安全性"""
         try:
             with self._session_scope() as session:
                 # 首先驗證問題是否存在
@@ -409,20 +590,35 @@ class DatabaseManager:
                     print(f"警告：問題 ID {question_id} 不存在，跳過知識點關聯")
                     return False
                 
-                # 檢查關聯是否已存在
-                link = session.query(QuestionKnowledgeLink).filter_by(
-                    question_id=question_id, 
-                    knowledge_point_id=knowledge_point_id
-                ).first()
-                
-                if not link:
+                try:
+                    # 直接嘗試插入，如果重複會被捕獲
                     new_link = QuestionKnowledgeLink(question_id=question_id, knowledge_point_id=knowledge_point_id)
                     session.add(new_link)
+                    session.commit()
                     print(f"成功建立問題 {question_id} 與知識點 {knowledge_point_id} 的關聯")
                     return True
-                else:
-                    print(f"問題 {question_id} 與知識點 {knowledge_point_id} 的關聯已存在")
-                    return True
+                    
+                except Exception as e:
+                    session.rollback()
+                    error_str = str(e)
+                    
+                    # 檢查是否是重複鍵錯誤
+                    if "Duplicate entry" in error_str or "UNIQUE constraint" in error_str or "23000" in error_str:
+                        # 驗證關聯確實存在
+                        link_exists = session.query(QuestionKnowledgeLink).filter_by(
+                            question_id=question_id, 
+                            knowledge_point_id=knowledge_point_id
+                        ).first()
+                        
+                        if link_exists:
+                            print(f"問題 {question_id} 與知識點 {knowledge_point_id} 的關聯已存在")
+                            return True
+                        else:
+                            print(f"意外的重複鍵錯誤，但關聯不存在: Q:{question_id}, KP:{knowledge_point_id}")
+                            return False
+                    else:
+                        print(f"建立知識點關聯時發生其他錯誤 (Q:{question_id}, KP:{knowledge_point_id}): {e}")
+                        return False
                     
         except Exception as e:
             print(f"建立問題與知識點關聯時發生錯誤: {e}")
@@ -561,12 +757,15 @@ class DatabaseManager:
             return [{c.name: getattr(kp, c.name) for c in kp.__table__.columns} for kp in kps]
 
     def clean_orphaned_knowledge_points(self) -> int:
-        """清理沒有關聯問題的孤立知識點"""
+        """清理沒有關聯問題或文件的孤立知識點"""
         with self._session_scope() as session:
-            # 查找所有沒有關聯問題的知識點
+            # 查找所有沒有關聯問題或文件的知識點
             orphaned_kps = session.query(KnowledgePoint).filter(
                 ~KnowledgePoint.id.in_(
                     session.query(QuestionKnowledgeLink.knowledge_point_id).distinct()
+                ) &
+                ~KnowledgePoint.id.in_(
+                    session.query(DocumentKnowledgeLink.knowledge_point_id).distinct()
                 )
             ).all()
             
@@ -575,6 +774,68 @@ class DatabaseManager:
                 session.delete(kp)
             
             return deleted_count
+
+    def monitor_duplicate_risks(self) -> Dict[str, Any]:
+        """監控重複關聯風險"""
+        from sqlalchemy import text
+        
+        with self._session_scope() as session:
+            stats = {}
+            
+            # 檢查各關聯表的重複情況
+            tables_to_check = [
+                ('question_knowledge_links', ['question_id', 'knowledge_point_id']),
+                ('document_knowledge_links', ['document_id', 'knowledge_point_id']),
+            ]
+            
+            # 添加筆記相關表格（如果存在）
+            try:
+                session.execute(text('SELECT 1 FROM note_knowledge_links LIMIT 1'))
+                tables_to_check.extend([
+                    ('note_knowledge_links', ['note_id', 'knowledge_point_id']),
+                    ('note_category_links', ['note_id', 'category_id'])
+                ])
+            except:
+                pass  # 筆記表不存在
+            
+            for table_name, pk_cols in tables_to_check:
+                try:
+                    pk_str = ', '.join(pk_cols)
+                    duplicate_count = session.execute(text(f'''
+                        SELECT COUNT(*) FROM (
+                            SELECT {pk_str}, COUNT(*) as cnt 
+                            FROM {table_name} 
+                            GROUP BY {pk_str} 
+                            HAVING cnt > 1
+                        ) as duplicates
+                    ''')).scalar()
+                    stats[table_name] = duplicate_count
+                except Exception as e:
+                    stats[table_name] = f'ERROR: {str(e)}'
+            
+            # 添加關聯密度統計
+            try:
+                question_count = session.execute(text('SELECT COUNT(*) FROM questions')).scalar()
+                kp_count = session.execute(text('SELECT COUNT(*) FROM knowledge_points')).scalar()
+                qk_links = session.execute(text('SELECT COUNT(*) FROM question_knowledge_links')).scalar()
+                
+                try:
+                    dk_links = session.execute(text('SELECT COUNT(*) FROM document_knowledge_links')).scalar()
+                    stats['document_knowledge_links_count'] = dk_links
+                except:
+                    stats['document_knowledge_links_count'] = 0
+                
+                stats['density_stats'] = {
+                    'questions': question_count,
+                    'knowledge_points': kp_count,
+                    'question_links': qk_links,
+                    'avg_kp_per_question': round(qk_links / question_count, 2) if question_count > 0 else 0,
+                    'avg_questions_per_kp': round(qk_links / kp_count, 2) if kp_count > 0 else 0
+                }
+            except Exception as e:
+                stats['density_stats'] = f'ERROR: {str(e)}'
+            
+            return stats
 
     def get_orphaned_knowledge_points_count(self) -> int:
         """取得孤立知識點的數量（不刪除，僅統計）"""

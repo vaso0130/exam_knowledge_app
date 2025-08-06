@@ -77,8 +77,6 @@ class NoteAIClient:
                 try:
                     parsed_json = json.loads(cleaned_response)
                     if isinstance(parsed_json, dict):
-                        # 驗證和修復內容欄位
-                        parsed_json = self._ensure_organized_content(parsed_json)
                         return parsed_json
                 except json.JSONDecodeError as e:
                     print(f"直接JSON解析失敗: {e}")
@@ -89,7 +87,6 @@ class NoteAIClient:
                         try:
                             parsed_json = json.loads(fixed_json)
                             if isinstance(parsed_json, dict):
-                                parsed_json = self._ensure_organized_content(parsed_json)
                                 return parsed_json
                         except json.JSONDecodeError as inner_e:
                             print(f"修復後JSON解析仍失敗: {inner_e}")
@@ -99,64 +96,42 @@ class NoteAIClient:
             from ..utils.json_parser import extract_json_from_text
             extracted_json = extract_json_from_text(cleaned_response)
             if extracted_json and isinstance(extracted_json, dict):
-                extracted_json = self._ensure_organized_content(extracted_json)
                 return extracted_json
             elif extracted_json and isinstance(extracted_json, list):
                 return {
                     'data': extracted_json, 
-                    'organized_content': '列表格式的整理結果：\n' + '\n'.join([str(item) for item in extracted_json])
+                    'parsing_note': '解析到列表格式的數據'
                 }
             
             # 嘗試從原始回應中提取有用信息
             if cleaned_response and len(cleaned_response.strip()) > 10:
                 # 如果AI回應看起來像是結構化內容但不是JSON
-                structured_content = self._extract_structured_content(cleaned_response)
-                if structured_content:
-                    return structured_content
+                # 在調用 _extract_structured_content 之前，先確保它不是有效的JSON
+                if not (cleaned_response.startswith('{') and cleaned_response.endswith('}')):
+                    structured_content = self._extract_structured_content(cleaned_response)
+                    if structured_content:
+                        return structured_content
                     
-                # 最後的備用：將整個回應作為organized_content
+                # 最後的備用：返回錯誤信息，不再生成organized_content
                 return {
-                    'organized_content': cleaned_response,
+                    'error': 'JSON解析失敗，請重新生成',
                     'raw_response': raw_response,
-                    'parsing_note': '無法解析為JSON格式，使用原始AI回應作為內容'
+                    'parsing_note': '無法解析為有效的JSON格式'
                 }
             
             # 完全失敗的情況  
             return {
                 'error': 'Failed to parse JSON response', 
                 'raw_response': raw_response,
-                'organized_content': f'AI回應解析失敗。原始回應: {raw_response[:200]}...'
+                'parsing_note': f'AI回應解析失敗。原始回應: {raw_response[:200]}...'
             }
             
         except Exception as e:
             return {
                 'error': str(e),
-                'organized_content': f'AI處理過程中發生錯誤: {str(e)}'
+                'parsing_note': f'AI處理過程中發生錯誤: {str(e)}'
             }
 
-    def _ensure_organized_content(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """確保數據有organized_content欄位"""
-        if not data.get('organized_content'):
-            # 嘗試從其他欄位生成organized_content
-            content_sources = [
-                'formatted_content', 'simple_explanation', 'memory_story',
-                'content', 'result', 'text', 'summary', 'description'
-            ]
-            
-            for field in content_sources:
-                if data.get(field):
-                    if isinstance(data[field], str):
-                        data['organized_content'] = data[field]
-                        break
-                    elif isinstance(data[field], list):
-                        data['organized_content'] = '\n'.join([str(item) for item in data[field]])
-                        break
-            
-            # 如果仍然沒有，嘗試合成一個
-            if not data.get('organized_content'):
-                data['organized_content'] = self._synthesize_content_from_data(data)
-        
-        return data
 
     def _fix_common_json_issues(self, json_str: str) -> str:
         """修復常見的JSON格式問題"""
@@ -165,12 +140,22 @@ class NoteAIClient:
             json_str = re.sub(r',\s*}', '}', json_str)
             json_str = re.sub(r',\s*]', ']', json_str)
             
+            # 修復缺失的逗號（在引號後面跟著換行和引號的情況）
+            json_str = re.sub(r'"\s*\n\s*"', '",\n"', json_str)
+            json_str = re.sub(r'"\s*\n\s*[a-zA-Z_][a-zA-Z0-9_]*":', '",\n"', json_str)
+            
             # 修復單引號為雙引號
             json_str = re.sub(r"'([^']*)':", r'"\1":', json_str)
             json_str = re.sub(r":\s*'([^']*)'", r': "\1"', json_str)
             
             # 修復未加引號的鍵
             json_str = re.sub(r'(\w+):', r'"\1":', json_str)
+            
+            # 修復缺失逗號的對象屬性（特別針對answers欄位）
+            json_str = re.sub(r'"\s*(\n\s*"[^"]+":)', r'",\1', json_str)
+            
+            # 移除可能的重複逗號
+            json_str = re.sub(r',,+', ',', json_str)
             
             return json_str
         except:
@@ -179,8 +164,22 @@ class NoteAIClient:
     def _extract_structured_content(self, text: str) -> Dict[str, Any]:
         """從非JSON格式的結構化文本中提取內容"""
         try:
-            # 如果文本包含明顯的結構標記
-            if '**' in text or '##' in text or '*' in text or '1.' in text:
+            # 首先檢查是否看起來像JSON但解析失敗了
+            text_stripped = text.strip()
+            if (text_stripped.startswith('{') and text_stripped.endswith('}')) or (text_stripped.startswith('[') and text_stripped.endswith(']')):
+                # 這看起來像JSON，不應該被當作Markdown處理
+                # 但需要進一步確認是否真的是JSON格式
+                try:
+                    # 嘗試解析JSON以確認
+                    json.loads(text_stripped)
+                    # 如果成功解析，絕對不應該作為Markdown處理
+                    return None
+                except json.JSONDecodeError:
+                    # 如果解析失敗，可能是格式不正確的JSON，繼續檢查是否是Markdown
+                    pass
+                
+            # 如果文本包含明顯的結構標記，並且確定不是有效的JSON格式
+            if ('**' in text or '##' in text or '1.' in text) and not (text_stripped.startswith('{') and text_stripped.endswith('}')):
                 return {
                     'organized_content': text,
                     'content_type': 'markdown',
@@ -190,32 +189,7 @@ class NoteAIClient:
         except:
             return None
 
-    def _synthesize_content_from_data(self, data: Dict[str, Any]) -> str:
-        """從數據字典合成organized_content"""
-        try:
-            content_parts = []
-            
-            # 根據不同的欄位類型組合內容
-            field_priorities = [
-                'title', 'main_points', 'basic_questions', 'memory_story',
-                'simple_explanation', 'key_concepts', 'summary'
-            ]
-            
-            for field in field_priorities:
-                if data.get(field):
-                    if isinstance(data[field], str):
-                        content_parts.append(f"**{field.replace('_', ' ').title()}:**\n{data[field]}")
-                    elif isinstance(data[field], list):
-                        items = '\n'.join([f"- {item}" for item in data[field]])
-                        content_parts.append(f"**{field.replace('_', ' ').title()}:**\n{items}")
-            
-            if content_parts:
-                return '\n\n'.join(content_parts)
-            else:
-                return f"整理結果包含 {len(data)} 個欄位，請查看詳細資料。"
-                
-        except Exception as e:
-            return f"內容合成失敗: {str(e)}"
+
 
     def analyze_note_content(self, content: str) -> Dict[str, Any]:
         """
@@ -335,9 +309,7 @@ class NoteAIClient:
         2. JSON 中的 `mindmap_data` 必須是一個包含 `name` 和 `children` 的巢狀物件
         3. 每個節點都必須有 `name` 屬性，而 `children` 是可選的
         4. 節點名稱應簡潔明了，控制在20個字以內，避免過長文字
-        5. 樹的深度應控制在3-4層，確保結構層次清晰
-        6. 一級節點數量應為3-5個，二級節點數量為2-4個，以確保良好的分佈
-        7. 最終的樹結構應該水平均衡分佈，讓整體結構更加平衡美觀
+        5. 最終的樹結構應該水平均衡分佈，讓整體結構更加平衡美觀
 
         **--- JSON 格式範例 START ---**
         {{
@@ -382,8 +354,7 @@ class NoteAIClient:
                         ]
                     }}
                 ]
-            }},
-            "organized_content": "### 雲端計算基礎\\n- **服務模式**: SaaS, PaaS, IaaS\\n- **部署模型**: 公有雲, 私有雲, 混合雲\\n- **關鍵技術**: 虛擬化, 分佈式系統"
+            }}
         }}
         **--- JSON 格式範例 END ---**
 
@@ -426,8 +397,7 @@ class NoteAIClient:
                     "definition": "概念定義2"
                 }}
             ],
-            "learning_tips": "學習本主題的建議和技巧",
-            "organized_content": "按層次整理的完整內容摘要"
+            "learning_tips": "學習本主題的建議和技巧"
         }}
 
         嚴格規範：
@@ -461,8 +431,7 @@ class NoteAIClient:
             "step_by_step": ["步驟1說明", "步驟2說明", "步驟3說明"],
             "examples": ["具體例子1", "具體例子2"],
             "potential_gaps": ["可能的理解盲點1", "盲點2"],
-            "teaching_points": ["教學重點1", "重點2", "重點3"],
-            "organized_content": "費曼技巧整理後的完整內容，包含簡單解釋、類比、步驟說明和例子"
+            "teaching_points": ["教學重點1", "重點2", "重點3"]
         }}
 
         目標是讓程式可以完全處理這個JSON格式，所以請不要回傳多餘的東西。
@@ -495,8 +464,7 @@ class NoteAIClient:
                 "什麼是萊布尼茲的二進位系統？": "這是一個由德國哲學家和數學家萊布尼茲推廣的進位制，它只使用0和1兩個數字來表示所有數值。這是現代計算機運作的基礎。",
                 "二進位系統使用哪兩個數字？": "0 和 1。"
             }},
-            "learning_progression": "建議先從基礎問題開始，確保理解核心定義，然後進入中級問題進行應用練習，最後挑戰高級和批判性思考問題以深化理解。",
-            "organized_content": "### 問答式學習\\n\\n**基礎問題**\\n- 什麼是萊布尼茲的二進位系統？\\n  - **答案**: 這是一個由德國哲學家和數學家萊布尼茲推廣的進位制...\\n\\n..."
+            "learning_progression": "建議先從基礎問題開始，確保理解核心定義，然後進入中級問題進行應用練習，最後挑戰高級和批判性思考問題以深化理解。"
         }}
         **--- JSON 格式範例 END ---**
 
@@ -508,28 +476,234 @@ class NoteAIClient:
         ---
 
         問題要有層次性，從簡單到複雜，幫助深度理解。
-        請**務必**以以下 JSON 格式回傳，**必須**是有效的JSON結構，包含：
+        
+        **嚴格 JSON 格式要求**：
+        回傳的必須是完全符合以下結構的有效 JSON 格式，不得有任何額外文字、說明或標記：
+        
         {{
-            "basic_questions": ["基礎問題1", "基礎問題2", "基礎問題3", "基礎問題4", "基礎問題5"],
-            "intermediate_questions": ["中級問題1", "中級問題2", "中級問題3"],
-            "advanced_questions": ["高級問題1", "高級問題2"],
-            "critical_thinking": ["批判性思考問題1", "批判性思考問題2"],
+            "basic_questions": [
+                "基礎問題1",
+                "基礎問題2", 
+                "基礎問題3",
+                "基礎問題4",
+                "基礎問題5"
+            ],
+            "intermediate_questions": [
+                "中級問題1",
+                "中級問題2",
+                "中級問題3"
+            ],
+            "advanced_questions": [
+                "高級問題1",
+                "高級問題2"
+            ],
+            "critical_thinking": [
+                "批判性思考問題1",
+                "批判性思考問題2"
+            ],
             "answers": {{
-                "基礎問題1": "詳細答案",
-                "基礎問題2": "詳細答案",
-                "中級問題1": "詳細答案"
-                "中級問題2": "詳細答案"
-                "高級問題1": "詳細答案",
-                "批判性思考問題1": "詳細答案"
+                "基礎問題1": "詳細答案1",
+                "基礎問題2": "詳細答案2",
+                "基礎問題3": "詳細答案3",
+                "基礎問題4": "詳細答案4",
+                "基礎問題5": "詳細答案5",
+                "中級問題1": "詳細答案1",
+                "中級問題2": "詳細答案2",
+                "中級問題3": "詳細答案3",
+                "高級問題1": "詳細答案1",
+                "高級問題2": "詳細答案2",
+                "批判性思考問題1": "詳細答案1",
+                "批判性思考問題2": "詳細答案2"
             }},
-            "learning_progression": "學習進度建議的內容",
-            "organized_content": "問答式整理的完整內容，包含所有問題和答案"
+            "learning_progression": "學習進度建議的內容"
         }}
-
-        回傳的必須是有效的JSON格式，好讓程式直接處理這個JSON，所以請勿回傳不是JSON格式內容外的東西與說明。
+        
+        **重要提醒**：
+        1. 確保 JSON 格式完全正確，所有引號、逗號、括號都正確配對
+        2. answers 欄位必須包含所有問題的對應答案
+        3. 每個問題的答案都要詳細且有價值
+        4. 不要在 JSON 前後添加任何解釋、標記或多餘文字
+        5. 回傳內容只能是純 JSON，不可包含其他任何內容
+        6. 範例的題數只是範例，不代表每次都要生成出同樣題數的問答，可以多也可以少。
         """
         # 問答式學習：使用主模型（需要複雜的問題設計）
-        return self._safe_ai_call(prompt, "qa_learning", use_simple_model=False)
+        result = self._safe_ai_call(prompt, "qa_learning", use_simple_model=False)
+        
+        # 使用輔助模型進行二次格式化和驗證
+        if result.get('success', False) and not result.get('error'):
+            result = self._post_process_qa_learning_result(result)
+        
+        return result
+
+    def _post_process_qa_learning_result(self, qa_result: Dict[str, Any]) -> Dict[str, Any]:
+        """對問答式學習結果進行驗證，只在必要時使用輔助模型修復"""
+        try:
+            # 如果原始結果成功且包含必要的結構化數據，直接返回
+            if (qa_result.get('success') and 
+                not qa_result.get('error') and
+                qa_result.get('basic_questions') and
+                qa_result.get('answers')):
+                
+                # 驗證數據完整性
+                if self._validate_qa_structure(qa_result):
+                    qa_result['post_processed'] = False  # 標記為未經後處理
+                    qa_result['validation_note'] = '原始結果結構完整，直接使用'
+                    return qa_result
+            
+            # 如果原始結果有問題但包含 organized_content，嘗試用輔助模型修復
+            if (qa_result.get('success') and 
+                qa_result.get('organized_content') and 
+                not qa_result.get('basic_questions')):
+                
+                print("⚠️ 檢測到舊格式 organized_content，嘗試用輔助模型解析...")
+                formatted_result = self._format_qa_content_with_ai(qa_result)
+                if formatted_result.get('success'):
+                    return formatted_result
+                
+            # 如果以上都失敗，返回原始結果
+            return qa_result
+            
+        except Exception as e:
+            print(f"後處理問答式學習結果時發生錯誤: {e}")
+            return qa_result
+
+    def _validate_qa_structure(self, qa_data: Dict[str, Any]) -> bool:
+        """驗證問答式學習數據結構的完整性"""
+        try:
+            # 檢查必要欄位
+            if not qa_data.get('basic_questions') or not qa_data.get('answers'):
+                return False
+                
+            # 檢查基礎問題是否為列表且非空
+            basic_questions = qa_data.get('basic_questions', [])
+            if not isinstance(basic_questions, list) or len(basic_questions) == 0:
+                return False
+                
+            # 檢查答案字典是否包含基礎問題的答案
+            answers = qa_data.get('answers', {})
+            if not isinstance(answers, dict):
+                return False
+                
+            # 至少要有一些基礎問題的答案
+            basic_answers_count = sum(1 for q in basic_questions if q in answers)
+            if basic_answers_count == 0:
+                return False
+                
+            return True
+            
+        except Exception:
+            return False
+
+    def _format_qa_content_with_ai(self, raw_qa_data: Dict[str, Any]) -> Dict[str, Any]:
+        """使用輔助模型格式化問答式學習內容"""
+        try:
+            # 構建給AI的提示，要求其格式化和驗證問答內容
+            format_prompt = f"""
+            請將以下問答式學習內容格式化成標準的JSON格式。這是一個格式化任務，確保輸出符合規範。
+
+            原始內容：
+            ---
+            {json.dumps(raw_qa_data, ensure_ascii=False, indent=2)}
+            ---
+
+            請回傳嚴格符合以下結構的 JSON 格式，**不得有任何額外文字或標記**：
+
+            {{
+                "basic_questions": [
+                    "基礎問題1",
+                    "基礎問題2",
+                    "基礎問題3"
+                ],
+                "intermediate_questions": [
+                    "中級問題1", 
+                    "中級問題2"
+                ],
+                "advanced_questions": [
+                    "高級問題1",
+                    "高級問題2"
+                ],
+                "critical_thinking": [
+                    "批判性思考問題1",
+                    "批判性思考問題2"
+                ],
+                "answers": {{
+                    "基礎問題1": "詳細答案1",
+                    "基礎問題2": "詳細答案2",
+                    "基礎問題3": "詳細答案3",
+                    "中級問題1": "詳細答案1",
+                    "中級問題2": "詳細答案2",
+                    "高級問題1": "詳細答案1",
+                    "高級問題2": "詳細答案2",
+                    "批判性思考問題1": "詳細答案1",
+                    "批判性思考問題2": "詳細答案2"
+                }},
+                "learning_progression": "學習進度建議"
+            }}
+
+            **格式化要求**：
+            1. 確保所有問題都有對應的答案
+            2. 移除任何無效或空白的問題
+            3. 確保answers物件包含所有問題的答案
+            4. 確保JSON格式完全正確，無語法錯誤
+            5. 只回傳JSON，不要包含任何其他文字
+
+            請處理並格式化上述內容。
+            """
+            
+            # 使用輔助模型進行格式化（簡單的格式處理任務）
+            formatted_response = self._run_async(
+                self.gemini_client.generate_async_simple(format_prompt, is_json=True)
+            )
+            
+            # 清理和解析回應
+            cleaned_response = formatted_response.strip()
+            
+            # 移除可能的標記
+            prefixes_to_remove = ['```json', '```JSON', '```', 'json', 'JSON']
+            suffixes_to_remove = ['```', '```json', '```JSON']
+            
+            for prefix in prefixes_to_remove:
+                if cleaned_response.startswith(prefix):
+                    cleaned_response = cleaned_response[len(prefix):].strip()
+                    break
+                    
+            for suffix in suffixes_to_remove:
+                if cleaned_response.endswith(suffix):
+                    cleaned_response = cleaned_response[:-len(suffix)].strip()
+                    break
+            
+            # 嘗試解析格式化後的JSON
+            if cleaned_response.startswith('{') and cleaned_response.endswith('}'):
+                try:
+                    formatted_data = json.loads(cleaned_response)
+                    
+                    # 驗證必要欄位
+                    required_fields = ['basic_questions', 'answers']
+                    if all(field in formatted_data for field in required_fields):
+                        return {
+                            **formatted_data,
+                            'success': True,
+                            'model_used': 'simple',
+                            'post_processed': True,
+                            'formatting_note': '已通過輔助模型二次格式化和驗證'
+                        }
+                except json.JSONDecodeError as e:
+                    print(f"輔助模型格式化後的JSON解析失敗: {e}")
+                    print(f"格式化後內容: {cleaned_response[:500]}...")
+            
+            # 格式化失敗，返回錯誤
+            return {
+                'error': 'AI格式化失敗',
+                'success': False,
+                'raw_formatted_response': cleaned_response[:500] + '...' if len(cleaned_response) > 500 else cleaned_response
+            }
+            
+        except Exception as e:
+            print(f"使用AI格式化問答內容時發生錯誤: {e}")
+            return {
+                'error': f'格式化過程發生錯誤: {str(e)}',
+                'success': False
+            }
 
     def organize_with_comparison(self, content: str) -> Dict[str, Any]:
         """對比分析整理 - 找出關鍵概念間的異同和關聯"""
@@ -588,8 +762,7 @@ class NoteAIClient:
                     "pros": ["彈性高", "可表現複雜關係"],
                     "cons": ["實作較複雜", "維護成本高"]
                 }}
-                ],
-                "organized_content": "# 對比分析整理\n\n## 關鍵概念\n- 概念A\n- 概念B\n- 概念C\n\n## 相似點\n- 概念A與概念B都屬於資料結構，皆可用於資料儲存與檢索。\n- 三者皆可用於解決排序問題。\n\n## 差異點\n- 概念A是線性結構，概念B是樹狀結構。\n- 概念C支援多重父節點，A與B僅有單一父節點。\n\n## 關聯性\n- 概念A可視為概念B的特殊情況。\n- 概念C可與A或B結合應用於複雜場景。\n\n## 對比表格\n| 項目 | 概念A | 概念B | 概念C |\n|---|---|---|---|\n| 結構類型 | 線性 | 樹狀 | 圖狀 |\n| 應用場景 | 簡單資料儲存 | 階層資料管理 | 複雜關聯建模 |\n\n## 優缺點分析\n- **概念A**\n  - 優點：實作簡單、存取速度快\n  - 缺點：彈性較低、不適合複雜關聯\n- **概念B**\n  - 優點：階層清楚、易於擴展\n  - 缺點：搜尋效率依結構而異\n- **概念C**\n  - 優點：彈性高、可表現複雜關係\n  - 缺點：實作較複雜、維護成本高"
+                ]
             }}
             **--- JSON 格式範例 END ---**
 
@@ -626,8 +799,7 @@ class NoteAIClient:
             ],
             "visual_imagery": "整個圖書館充滿古典氣息，但裝有現代科技裝置。陽光從彩色玻璃窗射入，在地板上形成二進位碼的圖案。",
             "memory_cues": ["每當看到黑白對比時，聯想到二進位的0和1", "看到電腦時，想像內部的電流如何表示數據"],
-            "practice_routine": "每天睡前，在腦海中走過圖書館的每個區域，回顧每個關鍵錨點。每週實際寫出至少三個二進位轉換範例鞏固記憶。",
-            "organized_content": "# 記憶宮殿：二進位系統與計算機基礎\\n\\n## 故事背景\\n想像一個古老的圖書館，每個書架代表一個重要概念...\\n\\n## 空間佈局\\n整個記憶宮殿是一座三層樓的圖書館..."
+            "practice_routine": "每天睡前，在腦海中走過圖書館的每個區域，回顧每個關鍵錨點。每週實際寫出至少三個二進位轉換範例鞏固記憶。"
         }}
         **--- JSON 格式範例 END ---**
 
@@ -649,8 +821,7 @@ class NoteAIClient:
             ],
             "visual_imagery": "生動的視覺想像描述",
             "memory_cues": ["記憶提示1", "提示2", "提示3"],
-            "practice_routine": "記憶練習和復習建議",
-            "organized_content": "記憶宮殿法整理的完整內容，包含故事、空間佈局和記憶技巧"
+            "practice_routine": "記憶練習和復習建議"
         }}
 
         請特別注意，`key_anchors` 必須是一個包含物件的陣列，每個物件都有 anchor、content 和 visual 三個屬性，如範例所示。
@@ -1098,21 +1269,10 @@ class NoteAIClient:
                     'error': response_data['error'],
                     'operation_type': operation_type,
                     'success': False,
-                    'organized_content': f'AI 整理失敗：{response_data["error"]}',
                     'model_used': 'simple' if use_simple_model else 'primary'
                 }
             response_data['success'] = True
             response_data['model_used'] = 'simple' if use_simple_model else 'primary'
-            
-            # 確保格式化功能有有效的 organized_content
-            if operation_type == "format_enhance" and not response_data.get('organized_content'):
-                if response_data.get('formatted_content'):
-                    response_data['organized_content'] = response_data['formatted_content']
-                elif response_data.get('data'):
-                    # 如果AI返回的是包裝在data中的內容
-                    response_data['organized_content'] = str(response_data['data'])
-                else:
-                    response_data['organized_content'] = '格式化處理完成，但缺少整理後的內容。'
             
             return response_data
         except Exception as e:
@@ -1121,7 +1281,6 @@ class NoteAIClient:
                 'error': str(e),
                 'operation_type': operation_type,
                 'success': False,
-                'organized_content': f'AI 整理失敗：{str(e)}',
                 'model_used': 'simple' if use_simple_model else 'primary'
             }
 

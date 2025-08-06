@@ -86,28 +86,50 @@ class ContentFlow:
                 guidance_level=question_data.get('guidance_level')
             )
 
-            # 3. 處理知識點 (CPU/I/O 混合)
+            # 3. 處理知識點 (CPU/I/O 混合) - 改進的批量處理
             knowledge_points = question_data.get('knowledge_points', [])
             if knowledge_points:
                 print(f"    🔗 為題目 {question_id} 關聯 {len(knowledge_points)} 個知識點")
-                successful_links = 0
+                
+                # 預處理：去重和清理知識點名稱
+                unique_kps = []
+                kp_names_seen = set()
                 for kp_name in knowledge_points:
+                    kp_clean = kp_name.strip()
+                    if kp_clean and kp_clean.lower() not in kp_names_seen:
+                        unique_kps.append(kp_clean)
+                        kp_names_seen.add(kp_clean.lower())
+                
+                print(f"    📝 去重後剩餘 {len(unique_kps)} 個知識點")
+                
+                # 批量處理知識點關聯
+                successful_links = 0
+                failed_links = 0
+                
+                for kp_name in unique_kps:
                     try:
+                        # 獲取或創建知識點
                         kp_id = self.db.add_or_get_knowledge_point(
-                            name=kp_name.strip(),
+                            name=kp_name,
                             subject=subject,
                             description=f"來自{'模擬題' if is_generated_question else '考題'}生成"
                         )
+                        
+                        # 安全地建立關聯
                         if self.db.link_question_to_knowledge_point(question_id, kp_id):
                             successful_links += 1
+                        else:
+                            failed_links += 1
+                            
                     except Exception as e:
+                        failed_links += 1
                         print(f"    ⚠️ 關聯知識點 '{kp_name}' 時發生錯誤: {e}")
                         continue
                 
                 if successful_links > 0:
-                    print(f"    ✅ 成功關聯 {successful_links}/{len(knowledge_points)} 個知識點")
-                else:
-                    print(f"    ⚠️ 無法關聯任何知識點，可能存在資料庫約束問題")
+                    print(f"    ✅ 成功關聯 {successful_links}/{len(unique_kps)} 個知識點")
+                if failed_links > 0:
+                    print(f"    ⚠️ {failed_links} 個知識點關聯失敗（可能已存在或其他錯誤）")
 
             # 4. 生成心智圖 (I/O 密集型)
             mindmap_result = await self.mindmap_flow.generate_and_save_mindmap(question_id)
