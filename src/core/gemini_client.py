@@ -54,6 +54,43 @@ class GeminiClient:
         parsed_json = extract_json_from_text(raw_response)
         return parsed_json
 
+    async def generate_text_async(self, prompt: str, use_simple_model: bool = False) -> Dict[str, str]:
+        """
+        生成純文本回應，返回字典格式 {'text': '生成的文本'}
+        
+        Args:
+            prompt: 提示詞
+            use_simple_model: 是否使用輔助模型 (簡單任務，節省成本)
+            
+        Returns:
+            包含文本的字典 {'text': '生成的文本'}
+        """
+        try:
+            # 設置純文本生成配置
+            text_generation_config = genai.types.GenerationConfig(
+                temperature=0.3,
+                top_p=0.9,
+                max_output_tokens=4096
+            )
+            
+            # 根據參數選擇模型
+            model = self.secondary_model if use_simple_model else self.model
+            
+            response = await asyncio.to_thread(
+                model.generate_content,
+                prompt,
+                generation_config=text_generation_config
+            )
+            
+            if response and response.text:
+                return {'text': response.text, 'success': True}
+            
+            return {'text': '', 'success': False, 'error': '生成空回應'}
+            
+        except Exception as e:
+            print(f"文本生成錯誤: {e}")
+            return {'text': '', 'success': False, 'error': str(e)}
+    
     async def _generate_with_intermediate_model(self, prompt: str) -> Optional[Dict[str, Any]]:
         """使用中級模型 (gemini-2.5-flash-lite) 進行JSON解析 - 用於內容摘要和知識點提取"""
         try:
@@ -86,6 +123,25 @@ class GeminiClient:
             return response.text
         except Exception as e:
             print(f"Gemini API 錯誤: {e}")
+            return ""
+            
+    async def generate_advanced(self, prompt: str) -> str:
+        """使用高級模型生成純文本回應，適用於內容增強等高品質要求的場景"""
+        try:
+            # 使用主模型但調整設定，避免產生JSON格式
+            config = genai.types.GenerationConfig(
+                temperature=0.3,
+                top_p=0.9,
+                max_output_tokens=8192
+            )
+            response = await asyncio.to_thread(
+                self.model.generate_content,
+                prompt,
+                generation_config=config
+            )
+            return response.text
+        except Exception as e:
+            print(f"Gemini API (高級模型) 錯誤: {e}")
             return ""
 
     async def generate_async_simple(self, prompt: str, is_json: bool = True) -> str:
