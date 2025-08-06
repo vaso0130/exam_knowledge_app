@@ -716,10 +716,18 @@ class NoteManager:
         try:
             # 調用AI客戶端進行文字偵測
             detection_result = self.ai_client.detect_and_suggest_text(content, context)
-            
+
+            # 確保 has_suggestions 欄位可靠存在
+            detection_result['has_suggestions'] = bool(
+                detection_result.get('suggestions') or
+                detection_result.get('quick_fixes') or
+                detection_result.get('content_enhancements') or
+                detection_result.get('formatting_tips')
+            )
+
             # 記錄偵測日誌（可選，用於改進功能）
             self._log_text_detection(user_id, content, detection_result)
-            
+
             return detection_result
             
         except Exception as e:
