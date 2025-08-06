@@ -424,6 +424,20 @@ class NoteManager:
         try:
             quiz_result = self.ai_client.generate_interactive_quiz(note['content'])
             
+            # 確保 options 是陣列格式
+            if 'questions' in quiz_result:
+                for question in quiz_result['questions']:
+                    if 'options' in question and not isinstance(question['options'], list):
+                        # 如果 options 不是陣列，將其轉換為陣列
+                        if isinstance(question['options'], dict):
+                            # 例如 {A: '選項1', B: '選項2'} 轉換為 ['選項1', '選項2']
+                            # 或者保持 ABCD 順序: [options['A'], options['B'], ...]
+                            keys = sorted(question['options'].keys())
+                            question['options'] = [question['options'][k] for k in keys if k in question['options']]
+                        else:
+                            # 如果是其他類型，設置為空陣列
+                            question['options'] = []
+            
             # 保存選擇題結果
             self.db_manager.save_ai_analysis(user_id, note_id, 'interactive_quiz', quiz_result)
             
@@ -439,7 +453,22 @@ class NoteManager:
         """獲取已保存的選擇題"""
         analyses = self.db_manager.get_ai_analysis(user_id, note_id, 'interactive_quiz')
         if analyses:
-            return analyses[0]['result']  # 返回最新的選擇題
+            quiz_result = analyses[0]['result']
+            
+            # 確保 options 是陣列格式
+            if 'questions' in quiz_result:
+                for question in quiz_result['questions']:
+                    if 'options' in question and not isinstance(question['options'], list):
+                        # 如果 options 不是陣列，將其轉換為陣列
+                        if isinstance(question['options'], dict):
+                            # 例如 {A: '選項1', B: '選項2'} 轉換為 ['選項1', '選項2']
+                            keys = sorted(question['options'].keys())
+                            question['options'] = [question['options'][k] for k in keys if k in question['options']]
+                        else:
+                            # 如果是其他類型，設置為空陣列
+                            question['options'] = []
+                            
+            return quiz_result  # 返回修正後的最新選擇題
         return None
 
     # === 從題庫/教材生成筆記 ===

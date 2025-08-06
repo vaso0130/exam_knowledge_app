@@ -506,7 +506,8 @@ class NoteAIClient:
         ---
         {content}
         ---
-        
+
+        問題要有層次性，從簡單到複雜，幫助深度理解。
         請**務必**以以下 JSON 格式回傳，**必須**是有效的JSON結構，包含：
         {{
             "basic_questions": ["基礎問題1", "基礎問題2", "基礎問題3", "基礎問題4", "基礎問題5"],
@@ -515,13 +516,17 @@ class NoteAIClient:
             "critical_thinking": ["批判性思考問題1", "批判性思考問題2"],
             "answers": {{
                 "基礎問題1": "詳細答案",
-                "基礎問題2": "詳細答案"
+                "基礎問題2": "詳細答案",
+                "中級問題1": "詳細答案"
+                "中級問題2": "詳細答案"
+                "高級問題1": "詳細答案",
+                "批判性思考問題1": "詳細答案"
             }},
             "learning_progression": "學習進度建議的內容",
             "organized_content": "問答式整理的完整內容，包含所有問題和答案"
         }}
 
-        問題要有層次性，從簡單到複雜，幫助深度理解。回傳的必須是有效的JSON格式，好讓程式直接處理這個JSON，所以請勿回傳不是JSON格式內容外的東西。
+        回傳的必須是有效的JSON格式，好讓程式直接處理這個JSON，所以請勿回傳不是JSON格式內容外的東西與說明。
         """
         # 問答式學習：使用主模型（需要複雜的問題設計）
         return self._safe_ai_call(prompt, "qa_learning", use_simple_model=False)
@@ -699,7 +704,7 @@ class NoteAIClient:
         請以 JSON 格式回傳，包含：
         1. `questions`: 問題列表，每個問題包含：
            - `question`: 問題內容
-           - `options`: 4個選項（A、B、C、D）
+           - `options`: 必須是陣列格式的4個選項 ["選項1", "選項2", "選項3", "選項4"]
            - `correct_answer`: 正確答案（A/B/C/D）
            - `explanation`: 詳細解釋
            - `difficulty`: 難易度（easy/medium/hard）
@@ -753,6 +758,15 @@ class NoteAIClient:
         Returns:
             生成的筆記內容（Markdown格式）
         """
+        # 檢查是否是從題庫連結過來的筆記生成請求
+        if 'question_text' in context:
+            return self._generate_smart_note_from_question(context)
+        else:
+            # 普通筆記生成請求
+            return self._generate_smart_note_without_question(context)
+            
+    def _generate_smart_note_from_question(self, context: Dict[str, Any]) -> str:
+        """從題目生成筆記（用於題庫連結過來的筆記）"""
         question_text = context.get('question_text', '')
         answer_text = context.get('answer_text', '')
         user_content = context.get('user_content', '').strip()
@@ -882,6 +896,121 @@ class NoteAIClient:
         
         try:
             # 使用非同步呼叫獲取生成結果 - 修正為正確的方法名稱
+            response = self._run_async(self.gemini_client.generate_async(prompt, is_json=False))
+            return response
+        except Exception as e:
+            print(f"Error generating smart note content: {e}")
+            # 如果AI生成失敗，返回一個基本的模板
+            return f"生成失敗: {str(e)}"
+
+    def _generate_smart_note_without_question(self, context: Dict[str, Any]) -> str:
+        """
+        智能生成筆記內容，結合使用者現有內容和提示（適用於新建筆記）
+        
+        Args:
+            context: 包含 user_content, user_prompt, title 的字典
+        
+        Returns:
+            生成的筆記內容（Markdown格式）
+        """
+        user_content = context.get('user_content', '').strip()
+        user_prompt = context.get('user_prompt', '').strip()
+        title = context.get('title', '')
+        
+        # 如果使用者沒有提供任何內容，則無法生成
+        if not user_content:
+            return "請先提供一些筆記內容，AI才能幫助優化和擴充您的筆記。"
+        
+        # 構建智能提示 - 專為已有筆記內容設計
+        prompt = f"""
+        你是一位頂尖的學習輔助 AI，你的任務是幫助使用者優化和擴充現有的筆記內容。
+
+        # 原始資訊
+
+        ## 筆記標題:
+        {title}
+
+        ## 使用者現有的筆記內容:
+        ```
+        {user_content}
+        ```
+        
+        {"## 使用者特別要求:\n" + user_prompt if user_prompt else ""}
+
+        請基於使用者的現有內容，生成一份完整且有價值的筆記，以下是嚴格要求：
+
+        1. **優化現有內容**：
+           - 保留使用者的原始觀點和結構
+           - 修正可能的錯誤或不準確之處
+           - 改善文字表達和邏輯流程
+           - 補充缺失的背景知識和細節
+           
+        2. **擴充筆記深度**：
+           - 添加相關的學術背景和理論基礎
+           - 提供更多專業術語和解釋
+           - 補充實用的例子和應用場景
+           - 加入不同觀點或方法的比較
+           
+        3. **提升筆記結構**：
+           - 優化 Markdown 層次結構
+           - 使用適當的標題層級組織內容
+           - 添加列表、表格等增強可讀性
+           - 適當使用 emoji 增加視覺提示
+           
+        4. **增強學習價值**：
+           - 添加記憶技巧和學習方法
+           - 設計自我測試問題
+           - 提供延伸閱讀建議
+           - 關聯其他相關知識領域
+           
+        {"5. **特別注意使用者要求**：" + user_prompt if user_prompt else "5. **進階學習資源**：\n           - 提供進階學習的建議\n           - 設計思考問題\n           - 建議實踐或應用方向"}
+
+        重要提醒：
+        1. 請直接創建完整的筆記內容，不要包含任何前言、說明或解釋
+        2. 保留使用者原有筆記的核心內容和觀點，在此基礎上優化和擴充
+        3. 使用適合學習的格式，包括標題、列表、表格等
+        4. 內容必須既全面又深入，能真正幫助學習者掌握知識
+
+        # 任務指示
+
+        請根據以上「原始資訊」與要求還有提醒，生成一份完整的 Markdown 格式筆記。
+        **你的輸出必須嚴格遵循以下「筆記結構」，並用深入、原創的內容填充所有區塊。不要包含任何引言或額外的解釋。**
+
+        ---
+
+        # 筆記結構 (你的最終輸出)
+
+        # 「{title}」學習筆記
+
+        ## 📚 核心知識與背景
+        [在此部分，總結和擴展筆記主題的核心知識點和學科背景]
+
+        ## 📝 增強學習筆記 
+        [**這部分最重要**：保留並擴充使用者的現有筆記內容。確保原始觀點保留，同時補充相關知識、修正可能的不準確之處。]
+        
+        {user_content}
+
+        ## 🔍 深入分析
+        [在此部分，提供更深入的概念解析、原理說明或方法論]
+        
+        ## 💡 應用與實踐
+        [在此部分，提供實際應用案例、操作步驟或實踐建議]
+
+        ## 🧠 學習技巧與擴展
+        [提供 2-3 個記憶技巧、學習方法或相關資源]
+        - **記憶技巧**: [提供具體的記憶方法]
+        - **擴展學習**: [建議相關主題或資源]
+        
+        ## 📌 重點整理
+        [創建一個表格，總結筆記中的關鍵點]
+        | 關鍵概念 | 重要性 | 應用場景 |
+        |---|---|---|
+        | [概念1] | [用 1-5 顆 ⭐ 評估] | [說明適用場景] |
+        | [概念2] | [用 1-5 顆 ⭐ 評估] | [說明適用場景] |
+        """
+        
+        try:
+            # 使用非同步呼叫獲取生成結果
             response = self._run_async(self.gemini_client.generate_async(prompt, is_json=False))
             return response
         except Exception as e:

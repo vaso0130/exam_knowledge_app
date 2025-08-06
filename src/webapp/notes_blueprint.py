@@ -40,17 +40,73 @@ def create_note():
     """Handles the creation of a new note."""
     if request.method == 'POST':
         user_id = g.current_user['id']
+        action = request.form.get('action')
+        
+        # 處理智能AI生成請求 (AJAX)
+        if action == 'smart_ai_generate':
+            try:
+                ai_prompt = request.form.get('ai_prompt', '')
+                current_content = request.form.get('current_content', '')
+                title = request.form.get('title', '')
+                
+                # 準備生成筆記的資料
+                generation_context = {
+                    'user_content': current_content,
+                    'user_prompt': ai_prompt,
+                    'title': title
+                }
+                
+                # 呼叫智能筆記生成方法
+                generated_content = note_manager.generate_smart_note_content(
+                    user_id=user_id,
+                    context=generation_context
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'generated_content': generated_content
+                })
+                
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+                
+        # 處理一般表單提交
         title = request.form.get('title')
         content = request.form.get('content')
+        smart_ai_mode = request.form.get('smart_ai_mode') == 'on'
         
         # AI 功能選項
         enable_ai_analysis = request.form.get('enable_ai_analysis') == 'on'
         enable_ai_organization = request.form.get('enable_ai_organization') == 'on'
         organization_types = request.form.getlist('organization_types')
 
-        if not title or not content:
+        # 如果啟用智能AI模式且內容為空，則不要求必填
+        if not title or (not content and not smart_ai_mode):
             flash("標題和內容不能為空。", "danger")
             return render_template('notes/note_edit.html', title="新增筆記")
+
+        # 如果內容為空但啟用了智能AI模式，先生成內容
+        if not content and smart_ai_mode:
+            try:
+                ai_prompt = request.form.get('ai_prompt', '')
+                generation_context = {
+                    'user_content': '',
+                    'user_prompt': ai_prompt,
+                    'title': title
+                }
+                content = note_manager.generate_smart_note_content(user_id=user_id, context=generation_context)
+            except Exception as e:
+                flash(f"AI生成內容失敗：{str(e)}", "danger")
+                return render_template(
+                    'notes/note_edit.html',
+                    title="新增筆記",
+                    note=None,
+                    default_title=title,
+                    default_content=''
+                )
 
         # 建立筆記（包含 AI 分析選項）
         note_id = note_manager.create_new_note(
@@ -283,7 +339,13 @@ def note_detail(note_id):
     # 獲取可用的 AI 整理方式
     organization_types = note_manager.get_available_organization_types()
     
-    return render_template('notes/note_detail.html', note=note, organization_types=organization_types, title=note['title'])
+    # 查詢從此筆記生成的模擬題
+    from ..core.database import DatabaseManager
+    db = DatabaseManager()
+    mock_questions = db.get_questions_by_note_id(note_id)
+    
+    return render_template('notes/note_detail.html', note=note, organization_types=organization_types, 
+                         mock_questions=mock_questions, title=note['title'])
 
 @notes_bp.route('/<string:note_id>/suggestions')
 def get_note_suggestions_api(note_id):
@@ -333,6 +395,128 @@ def get_pre_generated_results(note_id):
         return jsonify({
             'success': False,
             'error': str(e)
+        }), 500
+
+@notes_bp.route('/<string:note_id>/generate-mock-questions', methods=['POST'])
+def generate_mock_questions(note_id):
+    """API endpoint to generate mock exam questions from note content and add them to the question database."""
+    user_id = g.current_user['id']
+    
+    try:
+        # 獲取筆記內容
+        note = note_manager.get_note_details(user_id, note_id)
+        if not note:
+            return jsonify({
+                'success': False,
+                'error': '找不到指定的筆記'
+            }), 404
+        
+        note_content = note.get('content', '')
+        note_title = note.get('title', '')
+        
+        if not note_content:
+            return jsonify({
+                'success': False,
+                'error': '筆記內容為空'
+            }), 400
+        
+        # 從請求中獲取主題（如果有的話）
+        subject = request.form.get('subject', '')
+        if not subject and note.get('ai_keywords'):
+            # 如果未提供主題，嘗試從筆記關鍵字中推斷
+            if len(note['ai_keywords']) > 0:
+                subject = note['ai_keywords'][0]  # 使用第一個關鍵字作為主題
+        
+        # 使用 GeminiClient 和 ContentFlow 生成模擬題
+        from ..core.database import DatabaseManager
+        from ..core.gemini_client import GeminiClient
+        from ..flows.content_flow import ContentFlow
+        import asyncio
+        
+        gemini_client = GeminiClient()
+        db = DatabaseManager()
+        content_flow = ContentFlow(gemini_client, db)
+        
+        # 使用 asyncio 執行非同步任務
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # 生成模擬題
+            questions = loop.run_until_complete(gemini_client.generate_questions_from_text(note_content, subject))
+            
+            if not questions:
+                return jsonify({
+                    'success': False,
+                    'error': '生成模擬題失敗'
+                }), 500
+            
+            # 將模擬題添加到題庫
+            added_questions = []
+            
+            # 創建一個臨時文檔來關聯這些問題 (使用筆記ID作為文檔ID)
+            doc_id = None
+            
+            # 使用 ContentFlow 處理每個問題 (與學習資料生成的問題流程一致)
+            for i, question in enumerate(questions):
+                # 準備問題數據
+                question_data = {
+                    'title': question.get('title', '模擬題'),
+                    'question': question.get('question', ''),  # 注意這裡用 'question' 而不是 'question_text'
+                    'answer': question.get('answer', ''),
+                    'subject': subject,
+                    'difficulty': question.get('difficulty', ''),
+                    'knowledge_points': question.get('knowledge_points', []),
+                    'source_type': 'note',
+                    'source_note_id': note_id,
+                    'source_note_title': note_title
+                }
+                
+                # 使用 ContentFlow 處理問題 (會自動執行答案生成、心智圖生成和題目摘要)
+                try:
+                    result = loop.run_until_complete(content_flow._process_single_question_concurrently(
+                        question_data=question_data,
+                        doc_id=doc_id,
+                        subject=subject,
+                        question_index=i+1,
+                        is_generated_question=True
+                    ))
+                    
+                    if result and result.get('success') and result.get('id'):
+                        # 記錄答案來源為筆記
+                        db.edit_question(
+                            result['id'], 
+                            subject, 
+                            result['stem'], 
+                            result['answer'], 
+                            None, 
+                            f"筆記：{note_title} (ID: {note_id})"
+                        )
+                        
+                        # 記錄成功添加的問題
+                        added_questions.append({
+                            'id': result['id'],
+                            'title': question_data['title']
+                        })
+                except Exception as e:
+                    print(f"處理模擬題 {i+1} 時發生錯誤: {e}")
+                    continue
+            
+            return jsonify({
+                'success': True,
+                'message': f'成功生成並添加了 {len(added_questions)} 道模擬題到題庫',
+                'questions': added_questions
+            })
+            
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'生成模擬題時發生錯誤: {str(e)}'
         }), 500
 
 @notes_bp.route('/<string:note_id>/organizations')
@@ -485,6 +669,44 @@ def edit_note(note_id):
     user_id = g.current_user['id']
     
     if request.method == 'POST':
+        action = request.form.get('action')
+        
+        # 處理智能AI生成請求 (AJAX)
+        if action == 'smart_ai_generate':
+            try:
+                ai_prompt = request.form.get('ai_prompt', '')
+                current_content = request.form.get('current_content', '')
+                title = request.form.get('title', '')
+                
+                # 獲取當前筆記內容
+                note = note_manager.get_note_details(user_id, note_id)
+                
+                # 準備生成筆記的資料
+                generation_context = {
+                    'user_content': current_content,
+                    'user_prompt': ai_prompt,
+                    'title': title,
+                    'original_note': note
+                }
+                
+                # 呼叫智能筆記生成方法
+                generated_content = note_manager.generate_smart_note_content(
+                    user_id=user_id,
+                    context=generation_context
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'generated_content': generated_content
+                })
+                
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
+        # 處理一般保存請求
         updates = {
             'title': request.form.get('title'),
             'content': request.form.get('content')
@@ -492,6 +714,7 @@ def edit_note(note_id):
         
         # 檢查是否需要重新分析
         enable_ai_reanalysis = request.form.get('enable_ai_reanalysis') == 'on'
+        smart_ai_mode = request.form.get('smart_ai_mode') == 'on'
         
         if not updates['title'] or not updates['content']:
             flash("標題和內容不能為空。", "danger")

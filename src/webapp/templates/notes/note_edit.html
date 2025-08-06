@@ -41,7 +41,6 @@
 
                 <div class="mb-3">
                     <label for="content" class="form-label"><strong>內容 (支援 Markdown)</strong></label>
-                    {% if source_question %}
                     <div class="mb-2">
                         <div class="d-flex align-items-center">
                             <div class="form-check form-switch me-3">
@@ -64,13 +63,16 @@
                         <div class="mt-1">
                             <small class="text-muted">
                                 <i class="fas fa-info-circle me-1"></i>
+                                {% if source_question %}
                                 AI將結合題目、答案和您的指示來生成筆記內容。即使內容區為空也能生成！
+                                {% else %}
+                                AI將結合您現有的筆記內容和指示來優化或擴充筆記。請先輸入一些內容，再點擊「AI生成筆記」按鈕！
+                                {% endif %}
                             </small>
                         </div>
                     </div>
-                    {% endif %}
                     <textarea class="form-control" id="content" name="content" rows="15"
-                              {% if not source_question %}required{% endif %}
+                              {% if not source_question %}placeholder="請先在此輸入一些筆記內容，然後可以使用AI輔助功能來優化和擴充..."{% endif %}
                               {% if source_question %}placeholder="在此輸入您的筆記內容，或留空讓AI為您生成..."{% endif %}>{{ note.content if note else default_content }}</textarea>
                 </div>
 

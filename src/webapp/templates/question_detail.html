@@ -14,7 +14,35 @@
                     {% if question.subject %}
                     <a href="/questions?subject={{ question.subject }}" class="btn btn-outline-primary btn-sm">查看同科目</a>
                     {% endif %}
+                    
+                    {% if related_notes %}
+                    <div class="btn-group">
+                        <a href="{{ url_for('notes.note_detail', note_id=related_notes[0].id) }}" class="btn btn-success btn-sm">
+                            <i class="fas fa-book me-1"></i> 
+                            {# 檢查第一個筆記是否是來源筆記 #}
+                            {% if related_notes[0].is_source|default(false) %}查看來源筆記{% else %}查看筆記{% endif %}
+                        </a>
+                        {% if related_notes|length > 1 %}
+                        <button type="button" class="btn btn-success btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
+                            <span class="visually-hidden">Toggle Dropdown</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            {% for note in related_notes %}
+                                <li>
+                                    <a class="dropdown-item" href="{{ url_for('notes.note_detail', note_id=note.id) }}">
+                                        {% if note.is_source %}<span class="badge bg-info me-1">來源</span>{% endif %}
+                                        {{ note.title|truncate(30) }}
+                                        <small class="text-muted d-block">{{ note.created_at|format_datetime }}</small>
+                                    </a>
+                                </li>
+                                {% if not loop.last %}<li><hr class="dropdown-divider"></li>{% endif %}
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                    {% else %}
                     <a href="{{ url_for('notes.create_note_from_question', question_id=question.id) }}" class="btn btn-warning btn-sm">為此題建立筆記</a>
+                    {% endif %}
                 </div>
             </div>
             <div class="card-body">
@@ -22,7 +50,7 @@
                 <div class="mb-4 content-question">
                     <h3 class="border-bottom pb-2 mb-3">🎯 題目內容</h3>
                     <div class="question-content markdown-content">
-                        {{ question_html|markdown }}
+                        {{ question_html|safe }}
                     </div>
                 </div>
 
@@ -52,7 +80,7 @@
                     </div>
                     
                     <div class="answer-content markdown-content">
-                        {{ answer_html|markdown }}
+                        {{ answer_html|safe }}
                     </div>
 
                     <!-- 答案來源 -->
@@ -615,6 +643,17 @@
                             <a href="{{ url_for('original_document', doc_id=question.document_id) }}"
                                 class="btn btn-sm btn-outline-info mt-1">
                                 📜 檢視原始文件
+                            </a>
+                            {% elif question.answer_sources and '筆記：' in question.answer_sources and '(ID:' in question.answer_sources %}
+                            {% set note_info = question.answer_sources.split('(ID:')[1].split(')')[0].strip() %}
+                            <a href="{{ url_for('notes.note_detail', note_id=note_info) }}"
+                                class="text-decoration-none">
+                                📝 {{ question.answer_sources.split('(ID:')[0].replace('筆記：', '').strip() }}
+                            </a>
+                            <br>
+                            <a href="{{ url_for('notes.note_detail', note_id=note_info) }}"
+                                class="btn btn-sm btn-outline-info mt-1">
+                                📝 檢視原始筆記
                             </a>
                             {% else %}
                             未知

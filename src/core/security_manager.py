@@ -6,10 +6,15 @@ v3.0 安全管理器
 import secrets
 import hashlib
 import bcrypt
+import os
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
 from .database import DatabaseManager
+
+# 載入環境變數
+load_dotenv()
 
 
 class SecurityManager:
@@ -20,10 +25,14 @@ class SecurityManager:
         self.max_failed_attempts = 3  # 最大失敗嘗試次數
         self.lockout_window_minutes = 60  # 鎖定時間窗口（分鐘）
         
+        # 從環境變數取得邀請碼設定
+        admin_invite_code = os.getenv("ADMIN_INVITE_CODE", "我想要在資訊局準時下班")
+        viewer_invite_code = os.getenv("VIEWER_INVITE_CODE", "資訊處理高考三級合格")
+        
         # 邀請碼設定
         self.invitation_codes = {
-            "我想要在資訊局準時下班": "admin",  # 管理員邀請碼
-            "資訊處理高考三級合格": "viewer"     # 檢視者邀請碼
+            admin_invite_code: "admin",   # 管理員邀請碼
+            viewer_invite_code: "viewer"  # 檢視者邀請碼
         }
     
     # === 邀請碼驗證 ===

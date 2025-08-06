@@ -626,8 +626,8 @@ function initializeContentTabs() {
         }
 
         // 只有在沒有特殊格式的情況下，才顯示通用的organized_content
-        // 費曼法、問答式學習、記憶宮殿法、層次化筆記和格式化增強都有特殊排版，所以不顯示通用內容
-        const hasSpecialFormat = ['feynman', 'qa_learning', 'memory_palace', 'format_enhance', 'hierarchical'].includes(type);
+        // 費曼法、問答式學習、記憶宮殿法、層次化筆記、對比分析整理和格式化增強都有特殊排版，所以不顯示通用內容
+        const hasSpecialFormat = ['feynman', 'qa_learning', 'memory_palace', 'format_enhance', 'hierarchical', 'comparison'].includes(type);
 
         if (result.organized_content && !hasSpecialFormat) {
             // 使用 Markdown 渲染，就像題庫參考答案一樣
@@ -1212,6 +1212,115 @@ function initializeContentTabs() {
 
             // 關閉記憶宮殿容器
             html += `</div>`;
+        } else if (type === 'comparison') {
+            // 對比分析整理的特殊顯示
+            html += '<div class="comparison-container p-3 border rounded">';
+
+            // 關鍵概念
+            if (result.key_concepts && Array.isArray(result.key_concepts)) {
+                html += '<h6><i class="fas fa-key me-2 text-primary"></i>關鍵概念</h6>';
+                html += '<div class="mb-4">';
+                html += '<div class="d-flex flex-wrap">';
+                result.key_concepts.forEach(concept => {
+                    html += `<span class="badge bg-primary m-1 p-2">${concept}</span>`;
+                });
+                html += '</div>';
+                html += '</div>';
+            }
+
+            // 相似點
+            if (result.similarities && Array.isArray(result.similarities)) {
+                html += '<h6><i class="fas fa-equals me-2 text-success"></i>相似點</h6>';
+                html += '<ul class="list-group mb-4">';
+                result.similarities.forEach(similarity => {
+                    html += `<li class="list-group-item list-group-item-success">${renderMarkdown(similarity)}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            // 差異點
+            if (result.differences && Array.isArray(result.differences)) {
+                html += '<h6><i class="fas fa-not-equal me-2 text-danger"></i>差異點</h6>';
+                html += '<ul class="list-group mb-4">';
+                result.differences.forEach(difference => {
+                    html += `<li class="list-group-item list-group-item-danger">${renderMarkdown(difference)}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            // 關聯性
+            if (result.relationships && Array.isArray(result.relationships)) {
+                html += '<h6><i class="fas fa-project-diagram me-2 text-info"></i>關聯性</h6>';
+                html += '<ul class="list-group mb-4">';
+                result.relationships.forEach(relationship => {
+                    html += `<li class="list-group-item list-group-item-info">${renderMarkdown(relationship)}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            // 對比表格
+            if (result.comparison_table && Array.isArray(result.comparison_table)) {
+                html += '<h6><i class="fas fa-table me-2 text-warning"></i>對比表格</h6>';
+                html += '<div class="table-responsive mb-4">';
+                html += '<table class="table table-bordered table-striped">';
+                
+                // 表頭
+                if (result.comparison_table.length > 0) {
+                    html += '<thead class="table-light"><tr>';
+                    const headers = Object.keys(result.comparison_table[0]);
+                    headers.forEach(header => {
+                        html += `<th>${header}</th>`;
+                    });
+                    html += '</tr></thead>';
+                    
+                    // 表內容
+                    html += '<tbody>';
+                    result.comparison_table.forEach(row => {
+                        html += '<tr>';
+                        headers.forEach(header => {
+                            html += `<td>${row[header]}</td>`;
+                        });
+                        html += '</tr>';
+                    });
+                    html += '</tbody>';
+                }
+                
+                html += '</table>';
+                html += '</div>';
+            }
+
+            // 優缺點分析
+            if (result.pros_and_cons && Array.isArray(result.pros_and_cons)) {
+                html += '<h6><i class="fas fa-balance-scale me-2 text-primary"></i>優缺點分析</h6>';
+                html += '<div class="row row-cols-1 row-cols-md-2 g-4 mb-4">';
+                
+                result.pros_and_cons.forEach(item => {
+                    html += `
+                    <div class="col">
+                        <div class="card h-100">
+                            <div class="card-header bg-light">
+                                <h5 class="card-title mb-0">${item.concept}</h5>
+                            </div>
+                            <div class="card-body">
+                                <h6 class="text-success"><i class="fas fa-thumbs-up me-2"></i>優點</h6>
+                                <ul class="mb-3">
+                                ${Array.isArray(item.pros) ? item.pros.map(pro => `<li>${pro}</li>`).join('') : ''}
+                                </ul>
+                                
+                                <h6 class="text-danger"><i class="fas fa-thumbs-down me-2"></i>缺點</h6>
+                                <ul>
+                                ${Array.isArray(item.cons) ? item.cons.map(con => `<li>${con}</li>`).join('') : ''}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                });
+                
+                html += '</div>';
+            }
+
+            html += '</div>'; // 關閉容器
         } else if (type === 'format_enhance') {
             // 格式化與補強直接使用 Markdown 渲染展示內容
             if (result.formatted_content) {
@@ -1479,13 +1588,35 @@ function initializeContentTabs() {
 
     // 顯示測驗
     function displayQuiz(quiz) {
-        const resultDiv = document.getElementById('quiz-result');
         const contentDiv = document.getElementById('quiz-content');
+        const closeBtn = document.getElementById('quiz-close-btn');
 
-        let html = '<h6 class="text-success"><i class="fas fa-question-circle me-2"></i>互動式測驗</h6>';
+        let html = '';
 
         if (quiz.questions) {
             quiz.questions.forEach((q, index) => {
+                // 確保 options 始終是數組
+                if (!Array.isArray(q.options)) {
+                    console.warn(`Question ${index + 1} options is not an array. Converting...`);
+                    if (typeof q.options === 'string') {
+                        // 嘗試解析 JSON 字符串
+                        try {
+                            q.options = JSON.parse(q.options);
+                            if (!Array.isArray(q.options)) {
+                                q.options = [q.options.toString()];
+                            }
+                        } catch (e) {
+                            // 如果解析失敗，將字符串轉為單元素數組
+                            q.options = [q.options];
+                        }
+                    } else if (q.options === null || q.options === undefined) {
+                        q.options = ['無選項'];
+                    } else {
+                        // 如果是其他類型，轉換為字符串並放入數組
+                        q.options = [q.options.toString()];
+                    }
+                }
+                
                 html += `
                 <div class="card mb-3">
                     <div class="card-header">
@@ -1519,17 +1650,35 @@ function initializeContentTabs() {
         }
 
         contentDiv.innerHTML = html;
-        resultDiv.style.display = 'block';
-        resultDiv.scrollIntoView({ behavior: 'smooth' });
+        closeBtn.classList.remove('d-none'); // 顯示關閉按鈕
+        document.querySelector('.card-header h5 i').classList.remove('fa-question-circle');
+        document.querySelector('.card-header h5 i').classList.add('fa-check-circle');
+        document.getElementById('quiz-controls').classList.add('d-none'); // 隱藏測驗控制區
+        
+        // 滾動到測驗區域
+        contentDiv.scrollIntoView({ behavior: 'smooth' });
     }
 
     // 顯示答案
     function showAnswer(questionIndex, correctAnswer, explanation) {
+        // 使用HTML實體進行轉義
+        const escapedCorrectAnswer = correctAnswer.replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+            
+        const escapedExplanation = explanation.replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+            
         const answerDiv = document.getElementById(`answer-${questionIndex}`);
         answerDiv.innerHTML = `
         <div class="alert alert-info">
-            <strong>正確答案：${correctAnswer}</strong><br>
-            <small>${explanation}</small>
+            <strong>正確答案：${escapedCorrectAnswer}</strong><br>
+            <small>${escapedExplanation}</small>
         </div>
     `;
         answerDiv.style.display = 'block';
@@ -1542,7 +1691,88 @@ function initializeContentTabs() {
 
     // 隱藏測驗結果
     function hideQuizResult() {
-        document.getElementById('quiz-result').style.display = 'none';
+        document.getElementById('quiz-content').innerHTML = '';
+        document.getElementById('quiz-close-btn').classList.add('d-none');
+        document.getElementById('quiz-controls').classList.remove('d-none');
+        document.querySelector('.card-header h5 i').classList.remove('fa-check-circle');
+        document.querySelector('.card-header h5 i').classList.add('fa-question-circle');
+    }
+    
+    // 生成模擬題並加入題庫
+    function generateMockQuestions() {
+        if (!currentNoteId) {
+            showAlert('無法獲取筆記ID', 'danger');
+            return;
+        }
+        
+        // 顯示處理中提示
+        const resultDiv = document.getElementById('mock-questions-result');
+        resultDiv.innerHTML = `
+            <div class="alert alert-info">
+                <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
+                正在生成模擬題，請稍候...
+            </div>
+        `;
+        resultDiv.style.display = 'block';
+        
+        // 禁用生成按鈕，避免重複點擊
+        const generateBtn = document.getElementById('generate-questions-btn');
+        generateBtn.disabled = true;
+        
+        // 發送請求
+        fetch(`/notes/${currentNoteId}/generate-mock-questions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // 成功生成模擬題
+                let questionLinks = '';
+                if (data.questions && data.questions.length > 0) {
+                    questionLinks = '<ul class="mt-2">';
+                    data.questions.forEach(q => {
+                        questionLinks += `<li><a href="/question/${q.id}" target="_blank">${q.title}</a></li>`;
+                    });
+                    questionLinks += '</ul>';
+                }
+                
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        ${data.message}
+                        ${questionLinks}
+                    </div>
+                `;
+            } else {
+                // 生成失敗
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        生成模擬題失敗: ${data.error || '未知錯誤'}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('生成模擬題時發生錯誤:', error);
+            resultDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    處理請求時發生錯誤，請稍後重試
+                </div>
+            `;
+        })
+        .finally(() => {
+            // 恢復按鈕狀態
+            generateBtn.disabled = false;
+            
+            // 滾動到結果區域
+            resultDiv.scrollIntoView({ behavior: 'smooth' });
+        });
     }
 
     // 簡單的 Markdown 渲染函數

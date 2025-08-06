@@ -321,15 +321,46 @@ class DatabaseManager:
 
     def get_all_questions_with_source(self) -> List[Dict[str, Any]]:
         with self._session_scope() as session:
-            results = session.query(Question, Document.title).join(Document).order_by(Question.created_at.desc()).all()
-            return [
+            # 查詢關聯文件的問題
+            results_with_doc = session.query(Question, Document.title).join(
+                Document, Question.document_id == Document.id, isouter=False
+            ).order_by(Question.created_at.desc()).all()
+            
+            # 查詢無關聯文件的問題 (如從筆記生成的模擬題)
+            results_without_doc = session.query(Question).filter(
+                Question.document_id.is_(None)
+            ).order_by(Question.created_at.desc()).all()
+            
+            # 處理有文件的問題
+            questions_list = [
                 {
                     "id": q.id, "subject": q.subject, "title": q.title,
                     "question_text": q.question_text, "answer_text": q.answer_text,
                     "difficulty": q.difficulty, "guidance_level": q.guidance_level,
-                    "doc_title": doc_title, "created_at": q.created_at
-                } for q, doc_title in results
+                    "doc_title": doc_title, "created_at": q.created_at,
+                    "answer_sources": q.answer_sources  # 添加答案來源欄位
+                } for q, doc_title in results_with_doc
             ]
+            
+            # 處理無文件的問題 (如從筆記生成的模擬題)
+            for q in results_without_doc:
+                # 檢查 answer_sources 欄位是否包含筆記資訊
+                doc_title = None
+                if q.answer_sources and "筆記：" in q.answer_sources:
+                    doc_title = q.answer_sources
+                
+                questions_list.append({
+                    "id": q.id, "subject": q.subject, "title": q.title,
+                    "question_text": q.question_text, "answer_text": q.answer_text,
+                    "difficulty": q.difficulty, "guidance_level": q.guidance_level,
+                    "doc_title": doc_title, "created_at": q.created_at,
+                    "answer_sources": q.answer_sources
+                })
+            
+            # 按創建時間排序
+            questions_list.sort(key=lambda x: x["created_at"], reverse=True)
+            
+            return questions_list
 
     def get_question_by_id(self, question_id: str) -> Optional[Dict[str, Any]]:
         with self._session_scope() as session:
@@ -504,6 +535,23 @@ class DatabaseManager:
                     "question_text": q.question_text, "answer_text": q.answer_text,
                     "difficulty": q.difficulty, "guidance_level": q.guidance_level,
                     "created_at": q.created_at
+                } for q in questions
+            ]
+            
+    def get_questions_by_note_id(self, note_id: str) -> List[Dict[str, Any]]:
+        """獲取由特定筆記生成的模擬題"""
+        with self._session_scope() as session:
+            # 查詢 answer_sources 欄位包含此筆記 ID 的問題
+            questions = session.query(Question).filter(
+                Question.answer_sources.like(f"%筆記：%(ID: {note_id})%")
+            ).order_by(Question.created_at.desc()).all()
+            
+            return [
+                {
+                    "id": q.id, "subject": q.subject, "title": q.title,
+                    "question_text": q.question_text, "answer_text": q.answer_text,
+                    "difficulty": q.difficulty, "guidance_level": q.guidance_level,
+                    "created_at": q.created_at, "answer_sources": q.answer_sources
                 } for q in questions
             ]
     

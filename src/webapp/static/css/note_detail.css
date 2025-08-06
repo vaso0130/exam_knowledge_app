@@ -100,6 +100,50 @@
     font-size: 0.9em;
 }
 
+/* 互動式測驗區域樣式 */
+#quiz-content {
+    max-height: 600px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+@media (max-width: 768px) {
+    #quiz-content {
+        max-height: 400px;
+    }
+}
+
+#quiz-content .card {
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    margin-bottom: 15px;
+}
+
+#quiz-content .card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    padding: 10px 15px;
+}
+
+#quiz-content .options {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+#quiz-content .form-check {
+    margin-bottom: 8px;
+    padding-left: 30px;
+}
+
+#quiz-content .form-check-input {
+    margin-top: 6px;
+}
+
+#quiz-content .alert {
+    margin-bottom: 0;
+    padding: 10px 15px;
+}
+
 /* 強調樣式 */
 .note-content strong {
     color: #2c5530;
