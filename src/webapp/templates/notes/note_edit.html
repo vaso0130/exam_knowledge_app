@@ -17,27 +17,8 @@
             {% if source_question %}
             <div class="mb-3">
                 <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="collapse"
-                      // 新增：套用內容增強 - 設為全局函數
-        window.applyContentEnhancement = function(enhancement) {
-            const cursorPos = contentEl.selectionStart;
-            const content = contentEl.value;
-
-            // 在游標位置插入增強內容
-            const beforeCursor = content.substring(0, cursorPos);
-            const afterCursor = content.substring(cursorPos);
-
-            const newContent = beforeCursor + '\n\n' + enhancement + '\n\n' + afterCursor;
-
-            contentEl.value = newContent;
-            updatePreview();
-
-            // 將游標移到插入內容的末尾
-            const newCursorPos = cursorPos + enhancement.length + 4;
-            contentEl.setSelectionRange(newCursorPos, newCursorPos);
-            contentEl.focus();
-        };t="#source-question" aria-expanded="false" aria-controls="source-question">
-                    顯示/隱藏來源題目
-                </button>
+                        data-bs-target="#source-question" aria-expanded="false"
+                        aria-controls="source-question">顯示/隱藏來源題目</button>
                 <div class="collapse mt-2" id="source-question">
                     <div class="card card-body">
                         <h6 class="mb-2">題目</h6>
