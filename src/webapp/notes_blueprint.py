@@ -1,7 +1,9 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify, Response
 from ..notes.note_manager import NoteManager
 from ..webapp.auth_middleware import require_admin
 from ..core.database import DatabaseManager
+import json
+import traceback
 
 
 # Define the blueprint for the notes system
@@ -38,17 +40,73 @@ def create_note():
     """Handles the creation of a new note."""
     if request.method == 'POST':
         user_id = g.current_user['id']
+        action = request.form.get('action')
+        
+        # 處理智能AI生成請求 (AJAX)
+        if action == 'smart_ai_generate':
+            try:
+                ai_prompt = request.form.get('ai_prompt', '')
+                current_content = request.form.get('current_content', '')
+                title = request.form.get('title', '')
+                
+                # 準備生成筆記的資料
+                generation_context = {
+                    'user_content': current_content,
+                    'user_prompt': ai_prompt,
+                    'title': title
+                }
+                
+                # 呼叫智能筆記生成方法
+                generated_content = note_manager.generate_smart_note_content(
+                    user_id=user_id,
+                    context=generation_context
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'generated_content': generated_content
+                })
+                
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+                
+        # 處理一般表單提交
         title = request.form.get('title')
         content = request.form.get('content')
+        smart_ai_mode = request.form.get('smart_ai_mode') == 'on'
         
         # AI 功能選項
         enable_ai_analysis = request.form.get('enable_ai_analysis') == 'on'
         enable_ai_organization = request.form.get('enable_ai_organization') == 'on'
         organization_types = request.form.getlist('organization_types')
 
-        if not title or not content:
+        # 如果啟用智能AI模式且內容為空，則不要求必填
+        if not title or (not content and not smart_ai_mode):
             flash("標題和內容不能為空。", "danger")
             return render_template('notes/note_edit.html', title="新增筆記")
+
+        # 如果內容為空但啟用了智能AI模式，先生成內容
+        if not content and smart_ai_mode:
+            try:
+                ai_prompt = request.form.get('ai_prompt', '')
+                generation_context = {
+                    'user_content': '',
+                    'user_prompt': ai_prompt,
+                    'title': title
+                }
+                content = note_manager.generate_smart_note_content(user_id=user_id, context=generation_context)
+            except Exception as e:
+                flash(f"AI生成內容失敗：{str(e)}", "danger")
+                return render_template(
+                    'notes/note_edit.html',
+                    title="新增筆記",
+                    note=None,
+                    default_title=title,
+                    default_content=''
+                )
 
         # 建立筆記（包含 AI 分析選項）
         note_id = note_manager.create_new_note(
@@ -281,7 +339,13 @@ def note_detail(note_id):
     # 獲取可用的 AI 整理方式
     organization_types = note_manager.get_available_organization_types()
     
-    return render_template('notes/note_detail.html', note=note, organization_types=organization_types, title=note['title'])
+    # 查詢從此筆記生成的模擬題
+    from ..core.database import DatabaseManager
+    db = DatabaseManager()
+    mock_questions = db.get_questions_by_note_id(note_id)
+    
+    return render_template('notes/note_detail.html', note=note, organization_types=organization_types, 
+                         mock_questions=mock_questions, title=note['title'])
 
 @notes_bp.route('/<string:note_id>/suggestions')
 def get_note_suggestions_api(note_id):
@@ -331,6 +395,178 @@ def get_pre_generated_results(note_id):
         return jsonify({
             'success': False,
             'error': str(e)
+        }), 500
+
+@notes_bp.route('/<string:note_id>/generate-mock-questions', methods=['POST'])
+def generate_mock_questions(note_id):
+    """API endpoint to generate mock exam questions from note content and add them to the question database."""
+    user_id = g.current_user['id']
+    
+    try:
+        # 獲取筆記內容
+        note = note_manager.get_note_details(user_id, note_id)
+        if not note:
+            return jsonify({
+                'success': False,
+                'error': '找不到指定的筆記'
+            }), 404
+        
+        note_content = note.get('content', '')
+        note_title = note.get('title', '')
+        
+        if not note_content:
+            return jsonify({
+                'success': False,
+                'error': '筆記內容為空'
+            }), 400
+        
+        # 從請求中獲取主題（如果有的話）
+        subject = request.form.get('subject', '')
+        if not subject and note.get('ai_keywords'):
+            # 如果未提供主題，嘗試從筆記關鍵字中推斷
+            if len(note['ai_keywords']) > 0:
+                subject = note['ai_keywords'][0]  # 使用第一個關鍵字作為主題
+        
+        # 使用 GeminiClient 和 ContentFlow 生成模擬題
+        from ..core.database import DatabaseManager
+        from ..core.gemini_client import GeminiClient
+        from ..flows.content_flow import ContentFlow
+        import asyncio
+        import concurrent.futures
+        
+        gemini_client = GeminiClient()
+        db = DatabaseManager()
+        content_flow = ContentFlow(gemini_client, db)
+        
+        # 使用 asyncio 執行非同步任務
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # 生成模擬題
+            questions = loop.run_until_complete(gemini_client.generate_questions_from_text(note_content, subject))
+            
+            if not questions:
+                return jsonify({
+                    'success': False,
+                    'error': '生成模擬題失敗'
+                }), 500
+            
+            # 將模擬題添加到題庫
+            added_questions = []
+            
+            # 創建一個臨時文檔來關聯這些問題 (使用筆記ID作為文檔ID)
+            doc_id = None
+            
+            print(f"開始處理 {len(questions)} 道模擬題，從筆記 '{note_title}' (ID: {note_id}) 生成")
+            
+            # 準備所有問題數據並去重知識點
+            question_data_list = []
+            for i, question in enumerate(questions):
+                # 準備問題數據
+                question_data = {
+                    'title': question.get('title', f'模擬題 {i+1}'),
+                    'question': question.get('question', ''),  # 注意這裡用 'question' 而不是 'question_text'
+                    'answer': question.get('answer', ''),
+                    'subject': subject,
+                    'difficulty': question.get('difficulty', ''),
+                    'knowledge_points': question.get('knowledge_points', []),
+                    'source_type': 'note',
+                    'source_note_id': note_id,
+                    'source_note_title': note_title
+                }
+                
+                # 對問題數據進行預處理，去除可能的重複知識點
+                if 'knowledge_points' in question_data and question_data['knowledge_points']:
+                    # 使用集合去重，保持順序，並確保清理空白和特殊字符
+                    unique_kps = []
+                    kp_set = set()
+                    for kp in question_data['knowledge_points']:
+                        if kp:  # 確保不是 None 或空值
+                            kp_clean = str(kp).strip()
+                            if kp_clean and kp_clean.lower() not in kp_set:
+                                unique_kps.append(kp_clean)
+                                kp_set.add(kp_clean.lower())
+                    
+                    question_data['knowledge_points'] = unique_kps
+                    print(f"  📝 題目 {i+1}: 原始知識點 {len(question.get('knowledge_points', []))} 個，去重後 {len(unique_kps)} 個")
+                else:
+                    question_data['knowledge_points'] = []
+                
+                question_data_list.append((question_data, i+1))
+            
+            # 使用並行處理來處理所有問題
+            async def process_all_questions():
+                """並行處理所有模擬題"""
+                tasks = []
+                for question_data, question_index in question_data_list:
+                    task = content_flow._process_single_question_concurrently(
+                        question_data=question_data,
+                        doc_id=doc_id,
+                        subject=subject,
+                        question_index=question_index,
+                        is_generated_question=True
+                    )
+                    tasks.append(task)
+                
+                # 等待所有任務完成
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                return results
+            
+            # 執行並行處理
+            results = loop.run_until_complete(process_all_questions())
+            
+            # 處理結果
+            for i, result in enumerate(results):
+                try:
+                    if isinstance(result, Exception):
+                        error_msg = str(result)
+                        print(f"處理模擬題 {i+1} 時發生錯誤: {result}")
+                        
+                        # 如果是知識點重複錯誤，嘗試記錄更多詳情
+                        if "Duplicate entry" in error_msg and "knowledge_point" in error_msg:
+                            original_kps = question_data_list[i][0].get('knowledge_points', [])
+                            print(f"  📋 題目 {i+1} 的知識點: {original_kps}")
+                        continue
+                        
+                    if result and result.get('success') and result.get('id'):
+                        # 記錄答案來源為筆記
+                        db.edit_question(
+                            result['id'], 
+                            subject, 
+                            result['stem'], 
+                            result['answer'], 
+                            None, 
+                            f"筆記：{note_title} (ID: {note_id})"
+                        )
+                        
+                        # 記錄成功添加的問題
+                        added_questions.append({
+                            'id': result['id'],
+                            'title': question_data_list[i][0]['title']
+                        })
+                    else:
+                        print(f"處理模擬題 {i+1} 失敗: 結果無效或缺少必要欄位")
+                        
+                except Exception as e:
+                    print(f"處理模擬題 {i+1} 結果時發生錯誤: {e}")
+                    continue
+            
+            return jsonify({
+                'success': True,
+                'message': f'成功生成並添加了 {len(added_questions)} 道模擬題到題庫',
+                'questions': added_questions
+            })
+            
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'生成模擬題時發生錯誤: {str(e)}'
         }), 500
 
 @notes_bp.route('/<string:note_id>/organizations')
@@ -430,6 +666,30 @@ def generate_quiz(note_id):
             'error': str(e)
         }), 500
 
+@notes_bp.route('/<string:note_id>/apply-formatted-content', methods=['POST'])
+def apply_formatted_content(note_id):
+    """API endpoint to apply formatted content to the original note."""
+    user_id = g.current_user['id']
+    analysis_id = request.json.get('analysis_id')
+    
+    if not analysis_id:
+        return jsonify({
+            'success': False,
+            'error': '必須提供 analysis_id 參數'
+        }), 400
+        
+    try:
+        result = note_manager.apply_formatted_content(user_id, note_id, analysis_id)
+        return jsonify(result)
+    except Exception as e:
+        print(f"應用格式化內容時發生錯誤: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'應用格式化內容時發生錯誤: {str(e)}'
+        }), 500
+
 @notes_bp.route('/<string:note_id>/quiz')
 def get_saved_quiz(note_id):
     """API endpoint to get saved quiz for a note."""
@@ -459,6 +719,44 @@ def edit_note(note_id):
     user_id = g.current_user['id']
     
     if request.method == 'POST':
+        action = request.form.get('action')
+        
+        # 處理智能AI生成請求 (AJAX)
+        if action == 'smart_ai_generate':
+            try:
+                ai_prompt = request.form.get('ai_prompt', '')
+                current_content = request.form.get('current_content', '')
+                title = request.form.get('title', '')
+                
+                # 獲取當前筆記內容
+                note = note_manager.get_note_details(user_id, note_id)
+                
+                # 準備生成筆記的資料
+                generation_context = {
+                    'user_content': current_content,
+                    'user_prompt': ai_prompt,
+                    'title': title,
+                    'original_note': note
+                }
+                
+                # 呼叫智能筆記生成方法
+                generated_content = note_manager.generate_smart_note_content(
+                    user_id=user_id,
+                    context=generation_context
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'generated_content': generated_content
+                })
+                
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
+        # 處理一般保存請求
         updates = {
             'title': request.form.get('title'),
             'content': request.form.get('content')
@@ -466,6 +764,7 @@ def edit_note(note_id):
         
         # 檢查是否需要重新分析
         enable_ai_reanalysis = request.form.get('enable_ai_reanalysis') == 'on'
+        smart_ai_mode = request.form.get('smart_ai_mode') == 'on'
         
         if not updates['title'] or not updates['content']:
             flash("標題和內容不能為空。", "danger")
@@ -484,6 +783,78 @@ def edit_note(note_id):
         return redirect(url_for('.note_list'))
         
     return render_template('notes/note_edit.html', note=note, title="編輯筆記")
+
+@notes_bp.route('/detect-text', methods=['POST'])
+def detect_text():
+    """處理AI文字偵測請求 - 即時分析用戶輸入並提供建議，或生成增強內容"""
+    try:
+        user_id = g.current_user['id']
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': '缺少請求數據'
+            }), 400
+        
+        # 檢查是否為內容增強生成請求
+        if data.get('action') == 'generate_enhancement':
+            enhancement_request = data.get('enhancement_request', '')
+            current_content = data.get('current_content', '')
+            title = data.get('title', '')
+            context = data.get('context', {})
+            
+            if not enhancement_request:
+                return jsonify({
+                    'success': False,
+                    'error': '缺少增強請求參數'
+                }), 400
+            
+            # 調用AI生成增強內容
+            enhancement_result = note_manager.generate_enhancement_content(
+                user_id=user_id,
+                enhancement_request=enhancement_request,
+                current_content=current_content,
+                title=title,
+                context=context
+            )
+            
+            return jsonify({
+                'success': True,
+                'generated_content': enhancement_result.get('generated_content', ''),
+                **enhancement_result
+            })
+        
+        # 原有的文字偵測功能
+        content = data.get('content')
+        if not content:
+            return jsonify({
+                'success': False,
+                'error': '缺少內容參數'
+            }), 400
+        
+        context = data.get('context', {})
+        
+        # 調用AI文字偵測功能
+        detection_result = note_manager.detect_and_suggest_text(
+            user_id=user_id,
+            content=content,
+            context=context
+        )
+        
+        return jsonify({
+            'success': True,
+            'has_suggestions': detection_result.get('has_suggestions', False),
+            **detection_result
+        })
+        
+    except Exception as e:
+        print(f"AI處理錯誤: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'has_suggestions': False
+        }), 500
 
 @notes_bp.route('/<string:note_id>/delete', methods=['POST'])
 def delete_note(note_id):

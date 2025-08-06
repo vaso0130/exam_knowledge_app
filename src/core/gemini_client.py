@@ -76,7 +76,7 @@ class GeminiClient:
             config = self.generation_config if is_json else genai.types.GenerationConfig(
                 temperature=0.3,
                 top_p=0.9,
-                max_output_tokens=4096
+                max_output_tokens=8192
             )
             response = await asyncio.to_thread(
                 self.model.generate_content,
@@ -139,7 +139,7 @@ class GeminiClient:
             2.  **完整提取I**：將從一個頂層題號開始，直到下一個頂層題號出現之前（或文件結束）的所有內容，視為**一個完整的大題**。
             3.  **完整提取II**：如果出現承上題、接上題、延續上題、根據上題、基於前題等，無視頂層題號，將兩個大題目視為同一題，如果沒有出現承上題、接上題、延續上題、根據上題、基於前題等關鍵字，**請勿將他們視為同一題**。
         
-        **目標**：將一個邏輯上完整的大題（包含所有子問題）放在一個 `stem` 內。    
+        **目標**：將一個邏輯上完整的大題（包含所有子問題）放在一個 `stem` 內，並且記得刪除最頂級的題號。    
         
         ---
 
@@ -192,6 +192,18 @@ class GeminiClient:
                 (三) 台灣的文化特徵是什麼？
                 ```
                 不管是段落換行還是子題目換行，換行請必須一定要使用兩個連續的換行符（\n\n）來分隔
+
+                以下是綜整範例:
+                **題目原始內容：**一、台灣是一個多山國家，依據這格條件回答下列問題:(一) 台灣的地理特徵是什麼？(二) 台灣的氣候特徵是什麼？(三) 台灣的文化特徵是什麼？
+
+                應輸出成：
+                ```
+                台灣是一個多山國家，依據這格條件回答下列問題:\n\n
+                (一) 台灣的地理特徵是什麼？\n\n
+                (二) 台灣的氣候特徵是什麼？\n\n
+                (三) 台灣的文化特徵是什麼？
+                ```
+
         ---
 
         ### IV. 輸入文本
@@ -273,7 +285,7 @@ class GeminiClient:
         """
         根據完整文本內容生成高品質申論模擬題，並為每個問題自動標註知識點標籤
         專注於生成需要深入分析和應用的題目，而非單純複述知識
-        使用中級模型 (gemini-2.5-flash-lite) 進行題目生成
+        使用主要模型進行題目生成，提高穩定性和品質
         """
         prompt = f"""
         你是一位專業的{subject}科申論題出題專家。請根據提供的學習資料，設計2-4道高品質的申論模擬題。
@@ -344,7 +356,7 @@ class GeminiClient:
             ]
         }}
         """
-        parsed_json = await self._generate_with_intermediate_model(prompt)
+        parsed_json = await self._generate_with_json_parsing(prompt)
         return parsed_json.get("questions", []) if parsed_json else []
 
     async def generate_answer(self, question_text: str) -> Optional[Dict[str, Any]]:

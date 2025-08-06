@@ -1,4 +1,3 @@
-
 {% extends "layout.html" %}
 {% from "_form_helpers.html" import render_field, render_ai_field, render_tags_field %}
 
@@ -17,7 +16,26 @@
         <div class="card-body">
             {% if source_question %}
             <div class="mb-3">
-                <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#source-question" aria-expanded="false" aria-controls="source-question">
+                <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="collapse"
+                      // 新增：套用內容增強 - 設為全局函數
+        window.applyContentEnhancement = function(enhancement) {
+            const cursorPos = contentEl.selectionStart;
+            const content = contentEl.value;
+
+            // 在游標位置插入增強內容
+            const beforeCursor = content.substring(0, cursorPos);
+            const afterCursor = content.substring(cursorPos);
+
+            const newContent = beforeCursor + '\n\n' + enhancement + '\n\n' + afterCursor;
+
+            contentEl.value = newContent;
+            updatePreview();
+
+            // 將游標移到插入內容的末尾
+            const newCursorPos = cursorPos + enhancement.length + 4;
+            contentEl.setSelectionRange(newCursorPos, newCursorPos);
+            contentEl.focus();
+        };t="#source-question" aria-expanded="false" aria-controls="source-question">
                     顯示/隱藏來源題目
                 </button>
                 <div class="collapse mt-2" id="source-question">
@@ -36,27 +54,36 @@
             <form method="POST" action="">
                 <div class="mb-3">
                     <label for="title" class="form-label"><strong>標題</strong></label>
-                    <input type="text" class="form-control" id="title" name="title" value="{{ note.title if note else default_title }}" required>
+                    <input type="text" class="form-control" id="title" name="title"
+                        value="{{ note.title if note else default_title }}" required>
                 </div>
 
                 <div class="mb-3">
                     <label for="content" class="form-label"><strong>內容 (支援 Markdown)</strong></label>
-                    {% if source_question %}
                     <div class="mb-2">
                         <div class="d-flex align-items-center">
+
                             <div class="form-check form-switch me-3">
-                                <input class="form-check-input" type="checkbox" id="smart_ai_mode" name="smart_ai_mode" checked>
+                                <input class="form-check-input" type="checkbox" id="enable_ai_text_detection"
+                                    name="enable_ai_text_detection">
+                                <label class="form-check-label" for="enable_ai_text_detection">
+                                    <small><i class="fas fa-search me-1"></i>🔍 AI智慧偵測</small>
+                                </label>
+                            </div>
+                            <div class="form-check form-switch me-3">
+                                <input class="form-check-input" type="checkbox" id="smart_ai_mode" name="smart_ai_mode"
+                                    checked>
                                 <label class="form-check-label" for="smart_ai_mode">
-                                    <small><i class="fas fa-magic me-1"></i>智能AI輔助模式</small>
+                                    <small><i class="fas fa-magic me-1"></i>AI 補充功能</small>
                                 </label>
                             </div>
                             <div id="ai-assist-controls" class="flex-grow-1">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text"><i class="fas fa-robot"></i></span>
-                                    <input type="text" class="form-control" id="ai_prompt" name="ai_prompt" 
-                                           placeholder="給AI的額外指示（例如：請特別關注重點概念、請用簡單易懂的方式說明...）">
+                                    <input type="text" class="form-control" id="ai_prompt" name="ai_prompt"
+                                        placeholder="給AI的額外指示（例如：請特別關注重點概念、請用簡單易懂的方式說明...）">
                                     <button type="button" class="btn btn-warning" id="generate-smart-content">
-                                        <i class="fas fa-magic me-1"></i>🚀 AI生成筆記
+                                        🚀 AI生成筆記
                                     </button>
                                 </div>
                             </div>
@@ -64,14 +91,37 @@
                         <div class="mt-1">
                             <small class="text-muted">
                                 <i class="fas fa-info-circle me-1"></i>
+                                {% if source_question %}
                                 AI將結合題目、答案和您的指示來生成筆記內容。即使內容區為空也能生成！
+                                {% else %}
+                                AI將結合您現有的筆記內容和指示來優化或擴充筆記。請先輸入一些內容，再點擊「AI生成筆記」按鈕！
+                                {% endif %}
+                                <br><strong>🔍 AI文字偵測：</strong>開啟後將即時分析您的輸入並提供智慧建議（類似VS Code IntelliSense）
                             </small>
                         </div>
                     </div>
-                    {% endif %}
-                    <textarea class="form-control" id="content" name="content" rows="15"
-                              {% if not source_question %}required{% endif %}
-                              {% if source_question %}placeholder="在此輸入您的筆記內容，或留空讓AI為您生成..."{% endif %}>{{ note.content if note else default_content }}</textarea>
+                    <textarea class="form-control" id="content" name="content" rows="15" {% if not source_question
+                        %}placeholder="請先在此輸入一些筆記內容，然後可以使用AI輔助功能來優化和擴充..." {% endif %} {% if source_question
+                        %}placeholder="在此輸入您的筆記內容，或留空讓AI為您生成..." {% endif
+                        %}>{{ note.content if note else default_content }}</textarea>
+
+                    <!-- AI文字偵測建議區域 -->
+                    <div id="ai-suggestions-container" class="mt-2" style="display: none;">
+                        <div class="card border-info">
+                            <div class="card-header bg-info text-white py-2">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-lightbulb me-1"></i>🔍 AI智慧建議
+                                    <button type="button" class="btn btn-sm btn-outline-light float-end"
+                                        onclick="$('#ai-suggestions-container').hide();">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </h6>
+                            </div>
+                            <div class="card-body" id="ai-suggestions-content">
+                                <!-- AI建議內容將動態加載到這裡 -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- AI 功能選項 -->
@@ -85,7 +135,8 @@
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="form-check form-switch mb-2">
-                                    <input class="form-check-input" type="checkbox" id="enable_ai_analysis" name="enable_ai_analysis" checked>
+                                    <input class="form-check-input" type="checkbox" id="enable_ai_analysis"
+                                        name="enable_ai_analysis" checked>
                                     <label class="form-check-label" for="enable_ai_analysis">
                                         <strong>AI 智慧助理</strong>
                                         <small class="text-muted d-block">自動生成摘要、關鍵字、相關建議</small>
@@ -94,7 +145,8 @@
                             </div>
                             <div class="col-md-6">
                                 <div class="form-check form-switch mb-2">
-                                    <input class="form-check-input" type="checkbox" id="enable_ai_organization" name="enable_ai_organization">
+                                    <input class="form-check-input" type="checkbox" id="enable_ai_organization"
+                                        name="enable_ai_organization">
                                     <label class="form-check-label" for="enable_ai_organization">
                                         <strong>AI 整理功能</strong>
                                         <small class="text-muted d-block">預先生成6種整理方式</small>
@@ -107,7 +159,8 @@
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="form-check form-switch mb-2">
-                                    <input class="form-check-input" type="checkbox" id="enable_ai_reanalysis" name="enable_ai_reanalysis">
+                                    <input class="form-check-input" type="checkbox" id="enable_ai_reanalysis"
+                                        name="enable_ai_reanalysis">
                                     <label class="form-check-label" for="enable_ai_reanalysis">
                                         <strong>重新分析內容</strong>
                                         <small class="text-muted d-block">重新生成摘要、關鍵字、相關建議</small>
@@ -129,7 +182,7 @@
                             </div>
                         </div>
                         {% endif %}
-                        
+
                         {% if not note %}
                         <!-- AI 整理方式選擇（僅在新建筆記時顯示） -->
                         <div id="organization-options" class="mt-3" style="display: none;">
@@ -137,13 +190,15 @@
                             <div class="row">
                                 <div class="col-md-4">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="org_mindmap" name="organization_types" value="mindmap" checked>
+                                        <input class="form-check-input" type="checkbox" id="org_mindmap"
+                                            name="organization_types" value="mindmap" checked>
                                         <label class="form-check-label" for="org_mindmap">
                                             <small><i class="fas fa-sitemap me-1"></i>心智圖結構化</small>
                                         </label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="org_hierarchical" name="organization_types" value="hierarchical" checked>
+                                        <input class="form-check-input" type="checkbox" id="org_hierarchical"
+                                            name="organization_types" value="hierarchical" checked>
                                         <label class="form-check-label" for="org_hierarchical">
                                             <small><i class="fas fa-list me-1"></i>層次化整理</small>
                                         </label>
@@ -151,13 +206,15 @@
                                 </div>
                                 <div class="col-md-4">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="org_feynman" name="organization_types" value="feynman">
+                                        <input class="form-check-input" type="checkbox" id="org_feynman"
+                                            name="organization_types" value="feynman">
                                         <label class="form-check-label" for="org_feynman">
                                             <small><i class="fas fa-lightbulb me-1"></i>費曼技巧</small>
                                         </label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="org_qa_learning" name="organization_types" value="qa_learning">
+                                        <input class="form-check-input" type="checkbox" id="org_qa_learning"
+                                            name="organization_types" value="qa_learning">
                                         <label class="form-check-label" for="org_qa_learning">
                                             <small><i class="fas fa-question me-1"></i>問答式學習</small>
                                         </label>
@@ -165,19 +222,22 @@
                                 </div>
                                 <div class="col-md-4">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="org_comparison" name="organization_types" value="comparison">
+                                        <input class="form-check-input" type="checkbox" id="org_comparison"
+                                            name="organization_types" value="comparison">
                                         <label class="form-check-label" for="org_comparison">
                                             <small><i class="fas fa-balance-scale me-1"></i>對比分析</small>
                                         </label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="org_memory_palace" name="organization_types" value="memory_palace">
+                                        <input class="form-check-input" type="checkbox" id="org_memory_palace"
+                                            name="organization_types" value="memory_palace">
                                         <label class="form-check-label" for="org_memory_palace">
                                             <small><i class="fas fa-home me-1"></i>記憶宮殿法</small>
                                         </label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="org_format_enhance" name="organization_types" value="format_enhance">
+                                        <input class="form-check-input" type="checkbox" id="org_format_enhance"
+                                            name="organization_types" value="format_enhance">
                                         <label class="form-check-label" for="org_format_enhance">
                                             <small><i class="fas fa-magic me-1"></i>格式化與補強</small>
                                         </label>
@@ -192,7 +252,7 @@
                         {% endif %}
                     </div>
                 </div>
-                
+
                 <!-- Simple live preview (optional, can be enhanced with JS) -->
                 <div class="mb-4">
                     <h5 class="mb-2">即時預覽</h5>
@@ -204,7 +264,8 @@
                 </button>
                 {% if source_question %}
                 <div class="btn-group ms-2" role="group">
-                    <button type="button" class="btn btn-outline-info" data-bs-toggle="collapse" data-bs-target="#source-question" aria-expanded="false">
+                    <button type="button" class="btn btn-outline-info" data-bs-toggle="collapse"
+                        data-bs-target="#source-question" aria-expanded="false">
                         <i class="fas fa-eye me-1"></i> 查看題目
                     </button>
                 </div>
@@ -218,26 +279,99 @@
 {% block scripts %}
 {{ super() }}
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+    /* AI建議框樣式增強 */
+    .hover-bg:hover {
+        background-color: rgba(0, 123, 255, 0.05) !important;
+        transition: background-color 0.2s ease;
+    }
+
+    #ai-suggestions-container .card {
+        border-left: 4px solid #17a2b8;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    #ai-suggestions-container .btn {
+        transition: all 0.2s ease;
+    }
+
+    #ai-suggestions-container .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    /* 文字偵測狀態邊框動畫 */
+    .ai-analyzing {
+        border-left: 3px solid #ffc107 !important;
+        animation: pulse-border 1.5s infinite;
+    }
+
+    @keyframes pulse-border {
+        0% {
+            border-left-color: #ffc107;
+        }
+
+        50% {
+            border-left-color: #ffed4e;
+        }
+
+        100% {
+            border-left-color: #ffc107;
+        }
+    }
+
+    .ai-suggestions-active {
+        border-left: 3px solid #28a745 !important;
+    }
+
+    .ai-detection-enabled {
+        border-left: 3px solid #007bff !important;
+    }
+
+    /* 建議項目動畫 */
+    #ai-suggestions-content>div {
+        animation: slideInUp 0.3s ease-out;
+    }
+
+    @keyframes slideInUp {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         const contentEl = document.getElementById('content');
         const previewEl = document.getElementById('preview');
+        
+        // 設為全局變數供其他函數使用
+        window.contentEl = contentEl;
+        window.previewEl = previewEl;
 
         function updatePreview() {
             previewEl.innerHTML = marked.parse(contentEl.value);
         }
+        
+        // 設為全局函數
+        window.updatePreview = updatePreview;
 
         contentEl.addEventListener('input', updatePreview);
-        
+
         // Initial preview
         updatePreview();
 
         // AI 整理功能選項控制
         const enableOrgCheckbox = document.getElementById('enable_ai_organization');
         const orgOptionsDiv = document.getElementById('organization-options');
-        
+
         if (enableOrgCheckbox && orgOptionsDiv) {
-            enableOrgCheckbox.addEventListener('change', function() {
+            enableOrgCheckbox.addEventListener('change', function () {
                 orgOptionsDiv.style.display = this.checked ? 'block' : 'none';
             });
         }
@@ -246,23 +380,23 @@
         const smartAiMode = document.getElementById('smart_ai_mode');
         const aiAssistControls = document.getElementById('ai-assist-controls');
         const generateBtn = document.getElementById('generate-smart-content');
-        
+
         if (smartAiMode && aiAssistControls) {
-            smartAiMode.addEventListener('change', function() {
+            smartAiMode.addEventListener('change', function () {
                 aiAssistControls.style.display = this.checked ? 'block' : 'none';
             });
         }
 
         // AI智能生成按鈕
         if (generateBtn) {
-            generateBtn.addEventListener('click', function() {
+            generateBtn.addEventListener('click', function () {
                 const aiPrompt = document.getElementById('ai_prompt').value;
                 const currentContent = contentEl.value;
-                
+
                 // 顯示載入狀態
                 generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>AI生成中...';
                 generateBtn.disabled = true;
-                
+
                 // 發送AJAX請求到後端
                 fetch(window.location.href, {
                     method: 'POST',
@@ -276,51 +410,779 @@
                         'title': document.getElementById('title').value
                     })
                 })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // 更新內容區域
+                            contentEl.value = data.generated_content;
+                            updatePreview();
+
+                            // 顯示成功提示
+                            showAlert('success', 'AI已成功生成筆記內容！');
+                        } else {
+                            showAlert('error', 'AI生成失敗：' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        showAlert('error', '發生錯誤：' + error.message);
+                    })
+                    .finally(() => {
+                        // 恢復按鈕狀態
+                        generateBtn.innerHTML = '<i class="fas fa-magic me-1"></i>🚀 AI生成筆記';
+                        generateBtn.disabled = false;
+                    });
+            });
+        }
+
+        // ===== AI文字偵測功能 =====
+        let textDetectionEnabled = false;
+        let detectionTimeout = null;
+        let suggestionPopover = null;
+        
+        // 設為全局變數
+        window.textDetectionEnabled = textDetectionEnabled;
+
+        // 初始化AI文字偵測
+        const textDetectionCheckbox = document.getElementById('enable_ai_text_detection');
+        if (textDetectionCheckbox) {
+            textDetectionCheckbox.addEventListener('change', function () {
+                textDetectionEnabled = this.checked;
+                window.textDetectionEnabled = textDetectionEnabled; // 同步全局變數
+
+                if (textDetectionEnabled) {
+                    // 啟用文字偵測
+                    enableTextDetection();
+                    showAlert('success', '🔍 AI文字偵測已啟用！系統將即時分析您的輸入並提供建議。');
+                } else {
+                    // 停用文字偵測
+                    disableTextDetection();
+                    showAlert('info', 'AI文字偵測已停用。');
+                }
+            });
+        }
+
+        function enableTextDetection() {
+            if (!contentEl) return;
+
+            // 監聽內容變化
+            contentEl.addEventListener('input', handleTextInput);
+            contentEl.addEventListener('keyup', handleTextInput);
+
+            // 添加視覺提示
+            contentEl.classList.add('ai-detection-enabled');
+        }
+
+        function disableTextDetection() {
+            if (!contentEl) return;
+
+            // 移除事件監聽器
+            contentEl.removeEventListener('input', handleTextInput);
+            contentEl.removeEventListener('keyup', handleTextInput);
+
+            // 移除視覺提示
+            contentEl.classList.remove('ai-detection-enabled', 'ai-analyzing', 'ai-suggestions-active');
+
+            // 隱藏任何顯示的建議
+            hideSuggestions();
+        }
+
+        function handleTextInput() {
+            if (!window.textDetectionEnabled) return;
+
+            // 清除上一個計時器
+            if (detectionTimeout) {
+                clearTimeout(detectionTimeout);
+            }
+
+            // 設定新的計時器（防抖，1.5秒後觸發分析）
+            detectionTimeout = setTimeout(() => {
+                analyzeTextContent();
+            }, 1500);
+        }
+
+        function analyzeTextContent() {
+            const content = contentEl.value.trim();
+
+            // 如果內容太短，不進行分析
+            if (content.length < 10) {
+                hideSuggestions();
+                return;
+            }
+
+            // 顯示分析中狀態
+            showAnalyzing();
+
+            // 發送分析請求
+            fetch(`/notes/detect-text`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    content: content,
+                    context: {
+                        title: document.getElementById('title').value,
+                        existing_content: content
+                    }
+                })
+            })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.success) {
-                        // 更新內容區域
-                        contentEl.value = data.generated_content;
-                        updatePreview();
-                        
-                        // 顯示成功提示
-                        showAlert('success', 'AI已成功生成筆記內容！');
+                    if (data.success && data.has_suggestions) {
+                        showSuggestions(data);
                     } else {
-                        showAlert('error', 'AI生成失敗：' + data.error);
+                        hideSuggestions();
                     }
                 })
                 .catch(error => {
-                    showAlert('error', '發生錯誤：' + error.message);
-                })
-                .finally(() => {
-                    // 恢復按鈕狀態
-                    generateBtn.innerHTML = '<i class="fas fa-magic me-1"></i>🚀 AI生成筆記';
-                    generateBtn.disabled = false;
+                    console.error('AI文字偵測錯誤:', error);
+                    hideSuggestions();
                 });
+        }
+
+        function showAnalyzing() {
+            // 顯示分析中狀態
+            contentEl.classList.remove('ai-detection-enabled', 'ai-suggestions-active');
+            contentEl.classList.add('ai-analyzing');
+
+            // 如果已有建議框，顯示分析中狀態
+            const suggestionContainer = document.getElementById('ai-suggestions-container');
+            const suggestionContent = document.getElementById('ai-suggestions-content');
+            if (suggestionContainer && suggestionContent) {
+                suggestionContent.innerHTML = '<div class="text-center p-3"><i class="fas fa-spinner fa-spin me-2 text-warning"></i><strong>AI正在分析您的內容...</strong></div>';
+                suggestionContainer.style.display = 'block';
+            }
+        }
+
+        function showSuggestions(data) {
+            // 顯示有建議狀態
+            contentEl.classList.remove('ai-detection-enabled', 'ai-analyzing');
+            contentEl.classList.add('ai-suggestions-active');
+
+            // 使用新的建議容器
+            const suggestionContainer = document.getElementById('ai-suggestions-container');
+            const suggestionContent = document.getElementById('ai-suggestions-content');
+
+            if (!suggestionContainer || !suggestionContent) {
+                console.error('找不到建議顯示容器');
+                return;
+            }
+
+            // 構建建議內容
+            let html = '';
+
+            // 顯示智慧建議 - 可一鍵應用
+            if (data.suggestions && data.suggestions.length > 0) {
+                html += '<div class="mb-3"><strong>💡 智慧建議：</strong></div>';
+                data.suggestions.forEach((suggestion, index) => {
+                    const iconClass = suggestion.icon === 'format' ? 'fa-align-left' :
+                        suggestion.icon === 'spell' ? 'fa-spell-check' :
+                            suggestion.icon === 'structure' ? 'fa-sitemap' : 'fa-plus-circle';
+                    const priorityClass = suggestion.priority === 'high' ? 'text-danger' :
+                        suggestion.priority === 'medium' ? 'text-warning' : 'text-info';
+
+                    html += `
+                        <div class="d-flex align-items-center justify-content-between mb-2 p-3 border rounded hover-bg">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="fas ${iconClass} ${priorityClass} me-2"></i>
+                                    <strong>${suggestion.title}</strong>
+                                    <span class="badge bg-${suggestion.priority === 'high' ? 'danger' : suggestion.priority === 'medium' ? 'warning' : 'info'} ms-2">${suggestion.priority}</span>
+                                </div>
+                                <div class="text-muted small">${suggestion.description}</div>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm ms-3" onclick="applySuggestion(${index}, '${suggestion.type}'); return false;">
+                                <i class="fas fa-magic me-1"></i>一鍵套用
+                            </button>
+                        </div>
+                    `;
+                });
+            }
+
+            // 顯示快速修正 - 精確替換
+            if (data.quick_fixes && data.quick_fixes.length > 0) {
+                html += '<div class="mb-3 mt-4"><strong>⚡ 快速修正：</strong></div>';
+                data.quick_fixes.forEach((fix, index) => {
+                    // 避免字符串中的引號問題
+                    const originalText = fix.original.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                    const suggestedText = fix.suggested.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                    
+                    html += `
+                        <div class="d-flex align-items-center justify-content-between mb-2 p-3 border border-warning rounded">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                                    <strong>${fix.issue}</strong>
+                                </div>
+                                <div class="small">
+                                    <span class="text-decoration-line-through text-muted">${fix.original}</span>
+                                    <i class="fas fa-arrow-right mx-2 text-success"></i>
+                                    <span class="text-success fw-bold">${fix.suggested}</span>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-success btn-sm ms-3" onclick="applyQuickFix('${originalText}', '${suggestedText}'); return false;">
+                                <i class="fas fa-check me-1"></i>立即修正
+                            </button>
+                        </div>
+                    `;
+                });
+            }
+
+            // 顯示內容增強建議 - 智能插入
+            if (data.content_enhancements && data.content_enhancements.length > 0) {
+                html += '<div class="mb-3 mt-4"><strong>📈 內容增強建議：</strong></div>';
+                data.content_enhancements.forEach((enhancement, index) => {
+                    // 避免字符串中的引號問題，並使用data-attribute
+                    const enhancementText = enhancement.suggestion.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                    
+                    html += `
+                        <div class="d-flex align-items-center justify-content-between mb-2 p-3 border border-info rounded">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="fas fa-lightbulb text-info me-2"></i>
+                                    <strong>內容建議</strong>
+                                </div>
+                                <div class="small text-muted mb-1">${enhancement.reason}</div>
+                                <div class="small">${enhancement.suggestion}</div>
+                            </div>
+                            <button type="button" class="btn btn-info btn-sm ms-3" data-enhancement="${enhancementText}" onclick="applyContentEnhancementFromButton(this); return false;">
+                                <i class="fas fa-plus me-1"></i>加入內容
+                            </button>
+                        </div>
+                    `;
+                });
+            }
+
+            // 顯示格式化建議 - 自動格式化
+            if (data.formatting_tips && data.formatting_tips.length > 0) {
+                html += '<div class="mb-3 mt-4"><strong>📝 格式化建議：</strong></div>';
+                data.formatting_tips.forEach((tip, index) => {
+                    const tipText = tip.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                    
+                    html += `
+                        <div class="d-flex align-items-center justify-content-between mb-2 p-3 border border-secondary rounded">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="fas fa-edit text-secondary me-2"></i>
+                                    <strong>格式化建議</strong>
+                                </div>
+                                <div class="small">${tip}</div>
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm ms-3" data-tip="${tip.replace(/'/g, "\\'").replace(/"/g, '\\"')}" onclick="applyFormattingFromButton(this); return false;">
+                                <i class="fas fa-paint-brush me-1"></i>套用格式
+                            </button>
+                        </div>
+                    `;
+                });
+            }
+
+            if (html) {
+                suggestionContent.innerHTML = html;
+                suggestionContainer.style.display = 'block';
+
+                // 添加一個總覽按鈕
+                html = `
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <strong>🎯 AI偵測到 ${(data.suggestions?.length || 0) + (data.quick_fixes?.length || 0) + (data.content_enhancements?.length || 0)} 個改進建議</strong>
+                        </div>
+                        <button type="button" class="btn btn-success btn-sm" onclick="applyAllSuggestions(); return false;">
+                            <i class="fas fa-magic me-1"></i>一鍵套用全部
+                        </button>
+                    </div>
+                ` + html;
+                suggestionContent.innerHTML = html;
+
+                // 儲存建議資料供後續使用
+                window.currentSuggestionData = data;
+            } else {
+                hideSuggestions();
+            }
+        }
+
+        function hideSuggestions() {
+            contentEl.classList.remove('ai-analyzing', 'ai-suggestions-active');
+            if (window.textDetectionEnabled) {
+                contentEl.classList.add('ai-detection-enabled');
+            }
+
+            const suggestionContainer = document.getElementById('ai-suggestions-container');
+            if (suggestionContainer) {
+                suggestionContainer.style.display = 'none';
+            }
+        }
+
+        // 將函數設為全局，以便onclick可以調用
+        window.applyQuickFix = function(original, suggested) {
+            console.log('applyQuickFix called with:', original, suggested);
+            
+            // 在內容中找到並替換文字
+            const currentContent = contentEl.value;
+            const newContent = currentContent.replace(original, suggested);
+
+            if (newContent !== currentContent) {
+                contentEl.value = newContent;
+                updatePreview();
+                showAlert('success', `✅ 已修正：「${original}」→「${suggested}」`);
+
+                // 重新觸發分析，看看還有沒有其他建議
+                if (window.textDetectionEnabled) {
+                    setTimeout(() => analyzeTextContent(), 1000);
+                }
+            } else {
+                showAlert('warning', '未找到需要修正的內容');
+            }
+            
+            return false;
+        };
+
+        // 新增：套用智慧建議 - 設為全局函數
+        window.applySuggestion = function(index, type) {
+            console.log('applySuggestion called with:', index, type);
+            
+            const data = window.currentSuggestionData;
+            if (!data || !data.suggestions || !data.suggestions[index]) {
+                showAlert('error', '建議資料不完整');
+                return false;
+            }
+
+            const suggestion = data.suggestions[index];
+            console.log('Applying suggestion:', suggestion);
+
+            // 根據建議類型執行不同的操作
+            switch (type) {
+                case '格式優化':
+                    applyFormatOptimization(suggestion);
+                    break;
+                case '錯字修正':
+                    // 這個通常會在 quick_fixes 裡
+                    showAlert('info', '請使用下方的「快速修正」功能');
+                    break;
+                case '內容補強':
+                    applyContentEnhancement(suggestion.description);
+                    break;
+                case '結構建議':
+                    applyStructureSuggestion(suggestion);
+                    break;
+                default:
+                    // 預設行為：在游標位置插入建議
+                    insertSuggestionAtCursor(suggestion.description);
+            }
+
+            showAlert('success', `✅ 已套用建議：${suggestion.title}`);
+            return false;
+        };
+
+        // 新增：套用格式優化
+        function applyFormatOptimization(suggestion) {
+            const content = contentEl.value;
+            let newContent = content;
+
+            // 基本的格式優化規則
+            if (suggestion.title.includes('標題格式')) {
+                // 優化標題格式
+                newContent = optimizeHeaders(content);
+            } else if (suggestion.title.includes('列表格式')) {
+                // 優化列表格式
+                newContent = optimizeLists(content);
+            } else if (suggestion.title.includes('段落')) {
+                // 優化段落間距
+                newContent = optimizeParagraphs(content);
+            }
+
+            if (newContent !== content) {
+                contentEl.value = newContent;
+                updatePreview();
+            }
+        }
+
+        // 新增：套用內容增強
+        function applyContentEnhancement(enhancement) {
+            const cursorPos = contentEl.selectionStart;
+            const content = contentEl.value;
+
+            // 在游標位置插入增強內容
+            const beforeCursor = content.substring(0, cursorPos);
+            const afterCursor = content.substring(cursorPos);
+
+            const newContent = beforeCursor + '\n\n' + enhancement + '\n\n' + afterCursor;
+
+            contentEl.value = newContent;
+            updatePreview();
+
+            // 將游標移到插入內容的末尾
+            const newCursorPos = cursorPos + enhancement.length + 4;
+            contentEl.setSelectionRange(newCursorPos, newCursorPos);
+            contentEl.focus();
+            
+            showAlert('success', '✅ 內容已加入！');
+        }
+
+        // 新增：從按鈕套用內容增強 - 設為全局函數 (AI生成實際內容)
+        window.applyContentEnhancementFromButton = function(button) {
+            const enhancementReason = button.getAttribute('data-enhancement');
+            if (enhancementReason) {
+                // 顯示載入狀態
+                button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>AI生成中...';
+                button.disabled = true;
+                
+                // 調用AI生成實際內容
+                generateEnhancementContent(enhancementReason, button);
+            } else {
+                showAlert('error', '無法獲取增強內容');
+            }
+            return false;
+        };
+
+        // 新增：AI生成增強內容
+        function generateEnhancementContent(enhancementReason, button) {
+            const currentContent = contentEl.value;
+            const title = document.getElementById('title').value;
+            
+            // 發送AI請求生成實際內容
+            fetch('/notes/detect-text', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'generate_enhancement',
+                    enhancement_request: enhancementReason,
+                    current_content: currentContent,
+                    title: title,
+                    context: {
+                        title: title,
+                        existing_content: currentContent
+                    }
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.generated_content) {
+                    // 將生成的內容插入到游標位置
+                    applyContentEnhancement(data.generated_content);
+                    showAlert('success', '✅ AI已生成並加入增強內容！');
+                } else {
+                    // 如果AI生成失敗，則直接插入建議文字作為備案
+                    applyContentEnhancement(enhancementReason);
+                    showAlert('warning', '使用了建議文字，您可以進一步編輯。');
+                }
+            })
+            .catch(error => {
+                console.error('AI內容生成錯誤:', error);
+                // 錯誤時使用原始建議
+                applyContentEnhancement(enhancementReason);
+                showAlert('warning', 'AI生成失敗，已插入建議文字。');
+            })
+            .finally(() => {
+                // 恢復按鈕狀態
+                button.innerHTML = '<i class="fas fa-plus me-1"></i>加入內容';
+                button.disabled = false;
             });
         }
-        
-        // 顯示提示訊息的功能
-        function showAlert(type, message) {
+
+        // 新增：套用格式化建議 - 設為全局函數 (實際執行格式化)
+        window.applyFormatting = function(tip) {
+            const content = contentEl.value;
+            let newContent = content;
+
+            // 根據格式化建議類型執行具體格式化操作
+            if (tip.includes('粗體') || tip.includes('強調關鍵詞')) {
+                newContent = applyBoldFormatting(content);
+            } else if (tip.includes('標題') || tip.includes('章節')) {
+                newContent = applyHeaderFormatting(content);
+            } else if (tip.includes('列表') || tip.includes('條列')) {
+                newContent = applyListFormatting(content);
+            } else if (tip.includes('Markdown')) {
+                newContent = enhanceMarkdownFormatting(content);
+            } else if (tip.includes('標點符號')) {
+                newContent = fixPunctuation(content);
+            } else if (tip.includes('間距')) {
+                newContent = optimizeSpacing(content);
+            } else if (tip.includes('代碼') || tip.includes('程式')) {
+                newContent = applyCodeFormatting(content);
+            } else {
+                // 通用格式化
+                newContent = applyGeneralFormatting(content);
+            }
+
+            if (newContent !== content) {
+                contentEl.value = newContent;
+                updatePreview();
+                showAlert('success', '✅ 格式化完成');
+            } else {
+                showAlert('info', '內容已是最佳格式');
+            }
+        };
+
+        // 新增：套用粗體格式化
+        function applyBoldFormatting(content) {
+            // 自動識別並加粗關鍵詞
+            const keywords = ['重要', '關鍵', '核心', '重點', '主要', 'CIA', 'CPR', 'AI', 'API', 'HTTP', 'HTTPS'];
+            let newContent = content;
+            
+            keywords.forEach(keyword => {
+                // 避免重複加粗
+                const regex = new RegExp(`(?<!\\*\\*)\\b${keyword}\\b(?!\\*\\*)`, 'gi');
+                newContent = newContent.replace(regex, `**${keyword}**`);
+            });
+            
+            return newContent;
+        }
+
+        // 新增：套用標題格式化
+        function applyHeaderFormatting(content) {
+            let newContent = content;
+            const lines = newContent.split('\n');
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                // 識別可能的標題行（短行且在段落後）
+                if (line.length > 0 && line.length < 50 && 
+                    !line.startsWith('#') && 
+                    !line.startsWith('-') &&
+                    !line.startsWith('*') &&
+                    !line.includes('。')) {
+                    
+                    // 判斷是否應該是標題
+                    const nextLine = i < lines.length - 1 ? lines[i + 1].trim() : '';
+                    if (nextLine.length > 0) {
+                        lines[i] = `## ${line}`;
+                    }
+                }
+            }
+            
+            return lines.join('\n');
+        }
+
+        // 新增：套用列表格式化
+        function applyListFormatting(content) {
+            let newContent = content;
+            const lines = newContent.split('\n');
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                // 識別可能的列表項目
+                if (line.length > 0 && 
+                    !line.startsWith('#') && 
+                    !line.startsWith('-') &&
+                    !line.startsWith('*') &&
+                    !line.startsWith('1.') &&
+                    line.includes('、')) {
+                    
+                    lines[i] = `- ${line.replace('、', ': ')}`;
+                }
+            }
+            
+            return lines.join('\n');
+        }
+
+        // 新增：套用代碼格式化
+        function applyCodeFormatting(content) {
+            let newContent = content;
+            
+            // 自動識別代碼片段並加上代碼格式
+            const codePatterns = [
+                /\b(function|class|def|var|let|const|import|export)\s+\w+/gi,
+                /\b\w+\.\w+\(\)/gi,
+                /\b[A-Z_]+\b/g // 常數
+            ];
+            
+            codePatterns.forEach(pattern => {
+                newContent = newContent.replace(pattern, match => {
+                    if (!match.includes('`')) {
+                        return `\`${match}\``;
+                    }
+                    return match;
+                });
+            });
+            
+            return newContent;
+        }
+
+        // 新增：通用格式化
+        function applyGeneralFormatting(content) {
+            let newContent = content;
+            
+            // 1. 優化標點符號
+            newContent = fixPunctuation(newContent);
+            
+            // 2. 優化間距
+            newContent = optimizeSpacing(newContent);
+            
+            // 3. 優化段落
+            newContent = optimizeParagraphs(newContent);
+            
+            // 4. 增強Markdown
+            newContent = enhanceMarkdownFormatting(newContent);
+            
+            return newContent;
+        }
+
+        // 新增：從按鈕套用格式化建議 - 設為全局函數
+        window.applyFormattingFromButton = function(button) {
+            const tip = button.getAttribute('data-tip');
+            if (tip) {
+                applyFormatting(tip);
+            } else {
+                showAlert('error', '無法獲取格式化建議');
+            }
+            return false;
+        };
+
+        // 新增：套用結構建議
+        function applyStructureSuggestion(suggestion) {
+            // 這裡可以實現結構重組邏輯
+            const content = contentEl.value;
+
+            if (suggestion.description.includes('增加標題')) {
+                insertSuggestionAtCursor('## 新章節標題\n\n');
+            } else if (suggestion.description.includes('分段')) {
+                // 自動分段
+                const newContent = autoCreateParagraphs(content);
+                contentEl.value = newContent;
+                updatePreview();
+            }
+        }
+
+        // 新增：在游標位置插入建議
+        function insertSuggestionAtCursor(text) {
+            const cursorPos = contentEl.selectionStart;
+            const content = contentEl.value;
+
+            const beforeCursor = content.substring(0, cursorPos);
+            const afterCursor = content.substring(cursorPos);
+
+            const newContent = beforeCursor + text + afterCursor;
+
+            contentEl.value = newContent;
+            updatePreview();
+
+            // 將游標移到插入內容的末尾
+            const newCursorPos = cursorPos + text.length;
+            contentEl.setSelectionRange(newCursorPos, newCursorPos);
+            contentEl.focus();
+        }
+
+        // 新增：一鍵套用全部建議 - 設為全局函數
+        window.applyAllSuggestions = function() {
+            console.log('applyAllSuggestions called');
+            
+            const data = window.currentSuggestionData;
+            if (!data) {
+                showAlert('warning', '沒有可套用的建議');
+                return false;
+            }
+
+            let appliedCount = 0;
+
+            // 套用所有快速修正
+            if (data.quick_fixes && data.quick_fixes.length > 0) {
+                console.log('Applying quick fixes:', data.quick_fixes);
+                data.quick_fixes.forEach(fix => {
+                    const currentContent = contentEl.value;
+                    const newContent = currentContent.replace(fix.original, fix.suggested);
+                    if (newContent !== currentContent) {
+                        contentEl.value = newContent;
+                        appliedCount++;
+                    }
+                });
+            }
+
+            // 套用格式化建議
+            if (data.formatting_tips && data.formatting_tips.length > 0) {
+                console.log('Applying formatting tips:', data.formatting_tips);
+                let content = contentEl.value;
+                content = enhanceMarkdownFormatting(content);
+                content = fixPunctuation(content);
+                content = optimizeSpacing(content);
+                contentEl.value = content;
+                appliedCount++;
+            }
+
+            updatePreview();
+            showAlert('success', `✅ 已套用 ${appliedCount} 項建議！`);
+
+            // 隱藏建議框
+            setTimeout(() => {
+                hideSuggestions();
+            }, 2000);
+            
+            return false;
+        };
+
+        // 輔助函數：優化標題格式
+        function optimizeHeaders(content) {
+            return content.replace(/^(\s*)#+\s*/gm, (match, spaces) => {
+                const level = match.trim().split('#').length - 1;
+                return spaces + '#'.repeat(level) + ' ';
+            });
+        }
+
+        // 輔助函數：優化列表格式
+        function optimizeLists(content) {
+            return content.replace(/^(\s*)-\s*/gm, '$1- ');
+        }
+
+        // 輔助函數：優化段落間距
+        function optimizeParagraphs(content) {
+            return content.replace(/\n{3,}/g, '\n\n');
+        }
+
+        // 輔助函數：增強Markdown格式 - 設為全局函數
+        window.enhanceMarkdownFormatting = function(content) {
+            // 確保代碼塊格式正確
+            content = content.replace(/```(\w+)?\n/g, '```$1\n');
+            // 確保粗體格式正確
+            content = content.replace(/\*\*([^*]+)\*\*/g, '**$1**');
+            return content;
+        };
+
+        // 輔助函數：修正標點符號 - 設為全局函數
+        window.fixPunctuation = function(content) {
+            // 中文標點符號優化
+            content = content.replace(/，\s+/g, '，');
+            content = content.replace(/。\s+/g, '。');
+            content = content.replace(/\s+，/g, '，');
+            content = content.replace(/\s+。/g, '。');
+            return content;
+        };
+
+        // 輔助函數：優化間距 - 設為全局函數
+        window.optimizeSpacing = function(content) {
+            // 中英文之間自動加空格
+            content = content.replace(/([\u4e00-\u9fff])([a-zA-Z])/g, '$1 $2');
+            content = content.replace(/([a-zA-Z])([\u4e00-\u9fff])/g, '$1 $2');
+            return content;
+        };
+
+        // 輔助函數：自動創建段落
+        function autoCreateParagraphs(content) {
+            // 在句號後自動分段（如果沒有換行的話）
+            return content.replace(/。([^\n])/g, '。\n\n$1');
+        }
+
+        // 顯示提示訊息的功能 - 設為全局函數
+        window.showAlert = function(type, message) {
             const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show`;
+            alertDiv.className = `alert alert-${type === 'success' ? 'success' : type === 'error' ? 'danger' : type === 'warning' ? 'warning' : 'info'} alert-dismissible fade show`;
             alertDiv.innerHTML = `
-                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
                 ${message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             `;
-            
+
             // 插入到表單前面
             const form = document.querySelector('form');
             form.parentNode.insertBefore(alertDiv, form);
-            
+
             // 3秒後自動消失
             setTimeout(() => {
                 if (alertDiv.parentNode) {
                     alertDiv.remove();
                 }
             }, 3000);
-        }
+        };
     });
 </script>
 {% endblock %}

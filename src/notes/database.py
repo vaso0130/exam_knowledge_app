@@ -10,94 +10,16 @@ from sqlalchemy.orm import sessionmaker, joinedload, relationship
 from sqlalchemy.exc import SQLAlchemyError
 
 # Import shared components from the main application
-from ..core.database import Base, engine, User, KnowledgePoint
+from ..core.database import (
+    Base, engine, User, KnowledgePoint,
+    UserNote, NoteCategory, NoteCategoryLink, 
+    NoteKnowledgeLink, NoteRelationship, NoteAIAnalysis
+)
 
-# === Notes System Models ===
-
-class UserNote(Base):
-    __tablename__ = "user_notes"
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    title = Column(String(200), nullable=False)
-    content = Column(Text, nullable=False)
-    content_type = Column(String(20), default='markdown')
-    tags = Column(Text)  # JSON array as string
-    ai_summary = Column(Text)
-    ai_keywords = Column(Text)  # JSON as string
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    is_archived = Column(Integer, default=0)
-
-    user = relationship("User")
-    categories = relationship("NoteCategory", secondary="note_category_links", back_populates="notes")
-
-class NoteCategory(Base):
-    __tablename__ = "note_categories"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    name = Column(String(100), nullable=False)
-    description = Column(Text)
-    color = Column(String(7))  # HEX color code
-    icon = Column(String(50))
-    parent_id = Column(Integer, ForeignKey("note_categories.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    user = relationship("User")
-    notes = relationship("UserNote", secondary="note_category_links", back_populates="categories")
-    parent = relationship("NoteCategory", remote_side=[id])
-
-class NoteCategoryLink(Base):
-    __tablename__ = "note_category_links"
-    note_id = Column(String(36), ForeignKey("user_notes.id", ondelete="CASCADE"), primary_key=True)
-    category_id = Column(Integer, ForeignKey("note_categories.id", ondelete="CASCADE"), primary_key=True)
-
-class NoteKnowledgeLink(Base):
-    __tablename__ = "note_knowledge_links"
-    note_id = Column(String(36), ForeignKey("user_notes.id", ondelete="CASCADE"), primary_key=True)
-    knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), primary_key=True)
-    relevance_score = Column(Float, default=0.8)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    note = relationship("UserNote")
-    knowledge_point = relationship("KnowledgePoint")
-
-class NoteRelationship(Base):
-    __tablename__ = "note_relationships"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    source_note_id = Column(String(36), ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
-    target_note_id = Column(String(36), ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
-    relationship_type = Column(String(50), nullable=False)  # 'related', 'reference', 'follows'
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    source_note = relationship("UserNote", foreign_keys=[source_note_id])
-    target_note = relationship("UserNote", foreign_keys=[target_note_id])
-
-class NoteAIAnalysis(Base):
-    __tablename__ = "note_ai_analysis"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    note_id = Column(String(36), ForeignKey("user_notes.id", ondelete="CASCADE"), nullable=False)
-    analysis_type = Column(String(50), nullable=False)  # 'summary', 'keywords', 'knowledge_links', 'suggestions'
-    result = Column(Text, nullable=False)  # JSON as string
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    note = relationship("UserNote")
+# === Notes System Database Manager ===
 
 # Use the same session management as the main application
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-@contextmanager
-def get_db_session():
-    """Provides a transactional scope around a series of operations."""
-    session = SessionLocal()
-    try:
-        yield session
-        session.commit()
-    except SQLAlchemyError as e:
-        session.rollback()
-        print(f"Notes Database Error: {e}")
-        raise
-    finally:
-        session.close()
 
 class NotesDatabaseManager:
     """
@@ -113,11 +35,25 @@ class NotesDatabaseManager:
         """Initialize notes-related tables"""
         Base.metadata.create_all(bind=engine)
 
+    @contextmanager
+    def get_db_session(self):
+        """Provides a transactional scope around a series of operations."""
+        session = SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except SQLAlchemyError as e:
+            session.rollback()
+            print(f"Notes Database Error: {e}")
+            raise
+        finally:
+            session.close()
+
     # === Note CRUD Operations ===
 
     def create_note(self, user_id: int, title: str, content: str, **kwargs) -> Optional[str]:
         """Creates a new note for a specific user."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             note = UserNote(
                 user_id=user_id,
                 title=title,
@@ -134,7 +70,7 @@ class NotesDatabaseManager:
 
     def get_note_by_id(self, user_id: int, note_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves a single note by its ID, ensuring it belongs to the user."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             note = session.query(UserNote).filter(
                 UserNote.id == note_id,
                 UserNote.user_id == user_id
@@ -144,9 +80,9 @@ class NotesDatabaseManager:
         return None
 
     def get_note_with_all_relations(self, user_id: int, note_id: str) -> Optional[Dict[str, Any]]:
-        """優化版：一次查詢獲取筆記及所有相關資料"""
-        with get_db_session() as session:
-            # 主查詢：獲取筆記
+        """通過一次查詢獲取筆記及其相關信息"""
+        with self.get_db_session() as session:
+            # 主查詢獲取筆記
             note = session.query(UserNote).filter(
                 UserNote.id == note_id,
                 UserNote.user_id == user_id
@@ -157,9 +93,9 @@ class NotesDatabaseManager:
             
             note_data = self._note_to_dict(note)
             
-            # 批量獲取所有相關資料
+            # ?��??��??�?�相?��???
             try:
-                # 相關知識點
+                # ?��??��?�?
                 knowledge_points = session.query(KnowledgePoint, NoteKnowledgeLink.relevance_score).join(
                     NoteKnowledgeLink, KnowledgePoint.id == NoteKnowledgeLink.knowledge_point_id
                 ).filter(NoteKnowledgeLink.note_id == note_id).all()
@@ -172,7 +108,7 @@ class NotesDatabaseManager:
                     'relevance_score': score
                 } for kp, score in knowledge_points]
                 
-                # AI 分析結果
+                # AI ?��?結�?
                 ai_analyses = session.query(NoteAIAnalysis).filter(
                     NoteAIAnalysis.note_id == note_id
                 ).order_by(NoteAIAnalysis.created_at.desc()).all()
@@ -184,7 +120,7 @@ class NotesDatabaseManager:
                     'created_at': analysis.created_at.isoformat()
                 } for analysis in ai_analyses]
                 
-                # 相關筆記（暫時返回空，這個查詢比較複雜）
+                # 相關筆記（暫時保持空白，這個查詢比較複雜）
                 note_data['related_notes'] = []
                 
             except Exception as e:
@@ -197,7 +133,7 @@ class NotesDatabaseManager:
 
     def get_all_notes_for_user(self, user_id: int, include_archived: bool = False) -> List[Dict[str, Any]]:
         """Retrieves all notes for a specific user."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             query = session.query(UserNote).filter(UserNote.user_id == user_id)
             if not include_archived:
                 query = query.filter(UserNote.is_archived == 0)
@@ -206,7 +142,7 @@ class NotesDatabaseManager:
 
     def update_note(self, user_id: int, note_id: str, **updates) -> bool:
         """Updates a note's content and other attributes."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             note = session.query(UserNote).filter(
                 UserNote.id == note_id,
                 UserNote.user_id == user_id
@@ -229,7 +165,7 @@ class NotesDatabaseManager:
 
     def delete_note(self, user_id: int, note_id: str) -> bool:
         """Deletes a note, ensuring it belongs to the user."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             note = session.query(UserNote).filter(
                 UserNote.id == note_id,
                 UserNote.user_id == user_id
@@ -244,7 +180,7 @@ class NotesDatabaseManager:
 
     def create_category(self, user_id: int, name: str, **kwargs) -> Optional[int]:
         """Creates a new category for a user."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             category = NoteCategory(
                 user_id=user_id,
                 name=name,
@@ -259,7 +195,7 @@ class NotesDatabaseManager:
 
     def get_all_categories_for_user(self, user_id: int) -> List[Dict[str, Any]]:
         """Retrieves all categories for a specific user."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             categories = session.query(NoteCategory).filter(
                 NoteCategory.user_id == user_id
             ).order_by(NoteCategory.name).all()
@@ -267,7 +203,7 @@ class NotesDatabaseManager:
 
     def link_note_to_category(self, user_id: int, note_id: str, category_id: int) -> bool:
         """Associates a note with a category, verifying ownership."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             # Verify user owns both the note and the category
             note_exists = session.query(UserNote.id).filter_by(id=note_id, user_id=user_id).first()
             category_exists = session.query(NoteCategory.id).filter_by(id=category_id, user_id=user_id).first()
@@ -282,7 +218,7 @@ class NotesDatabaseManager:
 
     def link_note_to_knowledge_point(self, user_id: int, note_id: str, knowledge_point_id: int, relevance_score: float = 0.8) -> bool:
         """Links a note to a knowledge point with relevance score."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             # Verify user owns the note
             note_exists = session.query(UserNote.id).filter_by(id=note_id, user_id=user_id).first()
             # Verify knowledge point exists
@@ -300,7 +236,7 @@ class NotesDatabaseManager:
 
     def get_related_knowledge_points(self, user_id: int, note_id: str) -> List[Dict[str, Any]]:
         """Get knowledge points related to a specific note."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             results = session.query(KnowledgePoint, NoteKnowledgeLink.relevance_score).join(
                 NoteKnowledgeLink, KnowledgePoint.id == NoteKnowledgeLink.knowledge_point_id
             ).join(
@@ -322,7 +258,7 @@ class NotesDatabaseManager:
 
     def save_ai_analysis(self, user_id: int, note_id: str, analysis_type: str, result: dict) -> Optional[int]:
         """Save AI analysis result for a note."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             # Verify user owns the note
             note_exists = session.query(UserNote.id).filter_by(id=note_id, user_id=user_id).first()
             
@@ -339,7 +275,7 @@ class NotesDatabaseManager:
 
     def update_ai_analysis(self, user_id: int, note_id: str, analysis_id: int, result: dict) -> bool:
         """Update an existing AI analysis result."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             # Verify user owns the note and analysis
             analysis = session.query(NoteAIAnalysis).join(
                 UserNote, NoteAIAnalysis.note_id == UserNote.id
@@ -358,7 +294,7 @@ class NotesDatabaseManager:
 
     def delete_ai_analysis(self, user_id: int, note_id: str, analysis_id: int) -> bool:
         """Delete an AI analysis result."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             # Verify user owns the note and analysis
             analysis = session.query(NoteAIAnalysis).join(
                 UserNote, NoteAIAnalysis.note_id == UserNote.id
@@ -376,7 +312,7 @@ class NotesDatabaseManager:
 
     def get_ai_analysis_by_id(self, user_id: int, note_id: str, analysis_id: int) -> Optional[Dict[str, Any]]:
         """Get a specific AI analysis result by ID."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             analysis = session.query(NoteAIAnalysis).join(
                 UserNote, NoteAIAnalysis.note_id == UserNote.id
             ).filter(
@@ -396,7 +332,7 @@ class NotesDatabaseManager:
 
     def get_ai_analysis_by_type(self, user_id: int, note_id: str, analysis_type: str) -> List[Dict[str, Any]]:
         """Get all AI analysis results of a specific type for a note."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             analyses = session.query(NoteAIAnalysis).join(
                 UserNote, NoteAIAnalysis.note_id == UserNote.id
             ).filter(
@@ -414,7 +350,7 @@ class NotesDatabaseManager:
 
     def count_ai_analyses(self, user_id: int, note_id: str) -> Dict[str, int]:
         """Count AI analyses by type for a note."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             result = session.query(
                 NoteAIAnalysis.analysis_type,
                 func.count(NoteAIAnalysis.id).label('count')
@@ -429,7 +365,7 @@ class NotesDatabaseManager:
 
     def get_ai_analysis(self, user_id: int, note_id: str, analysis_type: str = None) -> List[Dict[str, Any]]:
         """Get AI analysis results for a note."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             query = session.query(NoteAIAnalysis).join(
                 UserNote, NoteAIAnalysis.note_id == UserNote.id
             ).filter(
@@ -440,7 +376,7 @@ class NotesDatabaseManager:
             if analysis_type:
                 query = query.filter(NoteAIAnalysis.analysis_type == analysis_type)
             
-            # 確保一致的排序：首先按分析類型，然後按創建時間降序
+            # 確�?一?��??��?：�??��??��?類�?，然後�??�建?��??��?
             analyses = query.order_by(
                 NoteAIAnalysis.analysis_type,
                 NoteAIAnalysis.created_at.desc()
@@ -449,22 +385,22 @@ class NotesDatabaseManager:
             results = []
             for analysis in analyses:
                 try:
-                    # 安全地解析JSON結果
+                    # 安全?�解?�JSON結�?
                     result_data = {}
                     if analysis.result:
                         result_data = json.loads(analysis.result)
                         
-                    # 驗證結果數據的完整性
+                    # 驗�?結�??��??��??��?
                     if isinstance(result_data, dict):
-                        # 確保有organized_content欄位
+                        # 確�??�organized_content欄�?
                         if not result_data.get('organized_content'):
-                            # 嘗試從其他欄位生成
+                            # ?�試從其他�?位�???
                             for field in ['formatted_content', 'content', 'summary', 'text']:
                                 if result_data.get(field):
                                     result_data['organized_content'] = result_data[field]
                                     break
                             else:
-                                result_data['organized_content'] = '整理結果資料不完整'
+                                result_data['organized_content'] = '無結構化資料'
                     
                     results.append({
                         'id': analysis.id,
@@ -474,11 +410,11 @@ class NotesDatabaseManager:
                     })
                 except (json.JSONDecodeError, TypeError) as e:
                     print(f"Error parsing analysis result for ID {analysis.id}: {e}")
-                    # 添加錯誤記錄但不中斷處理
+                    # 添�??�誤記�?但�?中斷?��?
                     results.append({
                         'id': analysis.id,
                         'analysis_type': analysis.analysis_type,
-                        'result': {'error': f'資料解析錯誤: {str(e)}', 'organized_content': '資料解析失敗'},
+                        'result': {'error': f'資�?�???�誤: {str(e)}', 'organized_content': '資�?�??失�?'},
                         'created_at': analysis.created_at.isoformat()
                     })
             
@@ -489,7 +425,7 @@ class NotesDatabaseManager:
     def create_note_relationship(self, user_id: int, source_note_id: str, target_note_id: str, 
                                 relationship_type: str = 'related') -> bool:
         """Create a relationship between two notes."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             # Verify user owns both notes
             source_exists = session.query(UserNote.id).filter_by(id=source_note_id, user_id=user_id).first()
             target_exists = session.query(UserNote.id).filter_by(id=target_note_id, user_id=user_id).first()
@@ -507,7 +443,7 @@ class NotesDatabaseManager:
 
     def get_related_notes(self, user_id: int, note_id: str) -> List[Dict[str, Any]]:
         """Get notes related to a specific note."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             # Get relationships where this note is the source
             outgoing = session.query(UserNote, NoteRelationship.relationship_type).join(
                 NoteRelationship, UserNote.id == NoteRelationship.target_note_id
@@ -537,7 +473,7 @@ class NotesDatabaseManager:
     def search_notes(self, user_id: int, query: str, tags: List[str] = None, 
                     category_id: int = None) -> List[Dict[str, Any]]:
         """Search notes by content, title, tags, or category."""
-        with get_db_session() as session:
+        with self.get_db_session() as session:
             db_query = session.query(UserNote).filter(UserNote.user_id == user_id)
 
             # Text search in title and content

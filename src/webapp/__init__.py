@@ -742,13 +742,117 @@ def create_app():
         md.reset()
         answer_html = md.convert(answer_text)
         
+        # 檢查用戶是否已為此題目建立筆記
+        related_notes = []
+        if g.current_user:
+            # 從 NoteAIAnalysis 表中尋找引用此問題的筆記
+            from .notes_blueprint import note_manager
+            try:
+                from sqlalchemy import text
+                with note_manager.db_manager.get_db_session() as session:
+                    # 先嘗試精確的 ID 匹配
+                    query = text("""
+                    SELECT un.id, un.title, un.created_at 
+                    FROM note_ai_analysis naa 
+                    JOIN user_notes un ON naa.note_id = un.id 
+                    WHERE naa.analysis_type = 'source_question' 
+                    AND un.user_id = :user_id 
+                    AND naa.result LIKE :question_id_pattern
+                    ORDER BY un.created_at DESC
+                    """)
+                    
+                    result = session.execute(query, {
+                        'user_id': g.current_user['id'],
+                        'question_id_pattern': f'%"id": "{q_id}"%'
+                    })
+                    
+                    related_notes = [
+                        {
+                            'id': row[0],
+                            'title': row[1],
+                            'created_at': row[2],
+                            'match_type': 'exact_id'
+                        } 
+                        for row in result
+                    ]
+                    
+                    # 如果沒有找到精確匹配，嘗試按題目文字內容匹配
+                    if not related_notes and q.get('question_text'):
+                        # 取題目文字的前50個字元作為匹配模式
+                        question_snippet = q['question_text'][:50].strip()
+                        if len(question_snippet) > 10:  # 確保有足夠的文字內容
+                            content_query = text("""
+                            SELECT un.id, un.title, un.created_at 
+                            FROM note_ai_analysis naa 
+                            JOIN user_notes un ON naa.note_id = un.id 
+                            WHERE naa.analysis_type = 'source_question' 
+                            AND un.user_id = :user_id 
+                            AND naa.result LIKE :question_text_pattern
+                            ORDER BY un.created_at DESC
+                            LIMIT 3
+                            """)
+                            
+                            result = session.execute(content_query, {
+                                'user_id': g.current_user['id'],
+                                'question_text_pattern': f'%{question_snippet}%'
+                            })
+                            
+                            related_notes.extend([
+                                {
+                                    'id': row[0],
+                                    'title': row[1],
+                                    'created_at': row[2],
+                                    'match_type': 'content'
+                                } 
+                                for row in result
+                            ])
+            except Exception as e:
+                print(f"Error fetching related notes: {e}")
+                
+        # 解析答案來源，檢查是否來自筆記
+        source_note_id = None
+        if q.get('answer_sources') and '筆記：' in q['answer_sources'] and '(ID:' in q['answer_sources']:
+            try:
+                source_note_id = q['answer_sources'].split('(ID:')[1].split(')')[0].strip()
+                # 驗證筆記存在
+                if source_note_id:
+                    # 如果來源筆記不在已關聯筆記中，可能需要特殊處理
+                    source_note_exists = False
+                    for note in related_notes:
+                        if note['id'] == source_note_id:
+                            source_note_exists = True
+                            break
+                    
+                    # 如果來源筆記不在關聯筆記中，可能需要從資料庫中獲取
+                    if not source_note_exists:
+                        try:
+                            # 取得來源筆記信息（不需要檢查用戶權限，因為這是公開顯示的）
+                            with note_manager.db_manager.get_db_session() as session:
+                                note_query = text("""
+                                SELECT id, title, created_at FROM user_notes WHERE id = :note_id
+                                """)
+                                note_result = session.execute(note_query, {'note_id': source_note_id}).fetchone()
+                                
+                                if note_result:
+                                    related_notes.append({
+                                        'id': note_result[0],
+                                        'title': note_result[1],
+                                        'created_at': note_result[2],
+                                        'is_source': True
+                                    })
+                        except Exception as e:
+                            print(f"Error fetching source note: {e}")
+            except Exception as e:
+                print(f"Error parsing source note ID: {e}")
+        
         return render_template('question_detail.html', 
                              question=q, 
                              question_html=question_html,
                              answer_html=answer_html,
                              mindmap_code=q.get('mindmap_code'),
                              question_summary=q.get('question_summary'),
-                             solving_tips=q.get('solving_tips'))
+                             solving_tips=q.get('solving_tips'),
+                             related_notes=related_notes)
 
     # === 非同步處理相關路由 ===
     

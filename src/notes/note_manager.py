@@ -372,6 +372,47 @@ class NoteManager:
             {'type': 'format_enhance', 'name': '格式化與補強', 'description': '整理格式、補充資料、修正錯字'}
         ]
 
+    # === 格式化與補強應用功能 ===
+    
+    def apply_formatted_content(self, user_id: int, note_id: str, analysis_id: int) -> Dict[str, Any]:
+        """將格式化與補強的內容應用到原始筆記"""
+        # 驗證使用者對筆記的訪問權限
+        note = self.db_manager.get_note_by_id(user_id, note_id)
+        if not note:
+            return {'success': False, 'error': '筆記不存在或無權限訪問'}
+        
+        # 獲取格式化結果
+        analysis = self.db_manager.get_note_ai_analysis_by_id(analysis_id)
+        if not analysis:
+            return {'success': False, 'error': '找不到指定的格式化結果'}
+            
+        # 驗證分析結果屬於該筆記
+        if analysis['note_id'] != note_id:
+            return {'success': False, 'error': '格式化結果與筆記不匹配'}
+            
+        # 驗證分析類型是格式化與補強
+        if not analysis['analysis_type'].endswith('format_enhance'):
+            return {'success': False, 'error': '指定的分析結果不是格式化與補強類型'}
+        
+        # 從結果中提取格式化內容
+        result = analysis['result']
+        formatted_content = result.get('formatted_content')
+        
+        if not formatted_content:
+            return {'success': False, 'error': '格式化結果中未找到格式化內容'}
+        
+        # 更新筆記內容
+        update_success = self.db_manager.update_note(user_id, note_id, content=formatted_content)
+        
+        if update_success:
+            return {
+                'success': True, 
+                'message': '筆記內容已成功更新為格式化版本',
+                'note_id': note_id
+            }
+        else:
+            return {'success': False, 'error': '更新筆記內容失敗'}
+    
     # === 互動式選擇題功能 ===
 
     def generate_quiz_for_note(self, user_id: int, note_id: str) -> Dict[str, Any]:
@@ -382,6 +423,20 @@ class NoteManager:
 
         try:
             quiz_result = self.ai_client.generate_interactive_quiz(note['content'])
+            
+            # 確保 options 是陣列格式
+            if 'questions' in quiz_result:
+                for question in quiz_result['questions']:
+                    if 'options' in question and not isinstance(question['options'], list):
+                        # 如果 options 不是陣列，將其轉換為陣列
+                        if isinstance(question['options'], dict):
+                            # 例如 {A: '選項1', B: '選項2'} 轉換為 ['選項1', '選項2']
+                            # 或者保持 ABCD 順序: [options['A'], options['B'], ...]
+                            keys = sorted(question['options'].keys())
+                            question['options'] = [question['options'][k] for k in keys if k in question['options']]
+                        else:
+                            # 如果是其他類型，設置為空陣列
+                            question['options'] = []
             
             # 保存選擇題結果
             self.db_manager.save_ai_analysis(user_id, note_id, 'interactive_quiz', quiz_result)
@@ -398,7 +453,22 @@ class NoteManager:
         """獲取已保存的選擇題"""
         analyses = self.db_manager.get_ai_analysis(user_id, note_id, 'interactive_quiz')
         if analyses:
-            return analyses[0]['result']  # 返回最新的選擇題
+            quiz_result = analyses[0]['result']
+            
+            # 確保 options 是陣列格式
+            if 'questions' in quiz_result:
+                for question in quiz_result['questions']:
+                    if 'options' in question and not isinstance(question['options'], list):
+                        # 如果 options 不是陣列，將其轉換為陣列
+                        if isinstance(question['options'], dict):
+                            # 例如 {A: '選項1', B: '選項2'} 轉換為 ['選項1', '選項2']
+                            keys = sorted(question['options'].keys())
+                            question['options'] = [question['options'][k] for k in keys if k in question['options']]
+                        else:
+                            # 如果是其他類型，設置為空陣列
+                            question['options'] = []
+                            
+            return quiz_result  # 返回修正後的最新選擇題
         return None
 
     # === 從題庫/教材生成筆記 ===
@@ -462,29 +532,59 @@ class NoteManager:
             return fallback_content
 
     def _create_fallback_content(self, context: Dict[str, Any]) -> str:
-        """創建備用內容模板，當AI生成失敗時使用"""
+        """創建增強版備用內容模板，當AI生成失敗時使用"""
         question_text = context.get('question_text', '')
         answer_text = context.get('answer_text', '')
         user_content = context.get('user_content', '')
         user_prompt = context.get('user_prompt', '')
         
-        fallback = f"""# {context.get('title', '筆記')}
+        fallback = f"""# {context.get('title', '學習筆記')}
 
-## 📚 原始題目
+## 📚 知識背景與脈絡
+
+這個題目涉及的核心知識點包括：
+- 從題目中提取關鍵概念
+- 分析題目與答案間的關聯
+- 理解相關學科知識框架
+
+## 🔍 概念剖析
+
+### 核心概念
+題目關注的重點：
+```
 {question_text}
+```
 
-## ✅ 參考答案
+### 解答要點
+參考答案的關鍵信息：
+```
 {answer_text}
+```
 
-## 📝 筆記內容
-{user_content if user_content else '（請在此處添加您的筆記內容）'}
+## � 解題思路與方法
 
-## 💡 學習要點
-- 請仔細分析題目要求
-- 理解答案的關鍵概念
-- 總結重要知識點
+1. 首先理解問題的關鍵點
+2. 分析可能的解題策略
+3. 應用相關知識點
+4. 驗證結果的正確性
 
-{f"## 🎯 特別提醒\\n{user_prompt}" if user_prompt else ""}
+## 📌 重點整理
+
+| 知識點 | 重要性 | 常見考點 |
+|-------|------|--------|
+| 待補充... | ⭐⭐⭐ | 題目中的關鍵概念 |
+| 待補充... | ⭐⭐ | 解答中的重要方法 |
+
+## �📝 個人學習筆記
+{user_content if user_content else "在這裡記錄您的學習心得和重點整理。"}
+
+## 🧠 記憶技巧與擴展學習
+
+- 將本題知識點與其他相關概念連結
+- 創建思維導圖幫助記憶關鍵信息
+- 嘗試用自己的話解釋核心概念
+
+{f"## 🎯 學習指引\\n{user_prompt}" if user_prompt else ""}
 """
         return fallback
 
@@ -598,4 +698,96 @@ class NoteManager:
     def get_related_notes(self, user_id: int, note_id: str) -> List[Dict[str, Any]]:
         """獲取相關筆記"""
         return self.db_manager.get_related_notes(user_id, note_id)
+
+    # === AI文字偵測功能 ===
+
+    def detect_and_suggest_text(self, user_id: int, content: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        AI文字偵測 - 即時分析用戶輸入的文字內容並提供智慧建議
+        
+        Args:
+            user_id: 用戶ID
+            content: 要分析的文字內容
+            context: 上下文信息（如筆記標題、已有內容等）
+        
+        Returns:
+            包含建議的字典
+        """
+        try:
+            # 調用AI客戶端進行文字偵測
+            detection_result = self.ai_client.detect_and_suggest_text(content, context)
+            
+            # 記錄偵測日誌（可選，用於改進功能）
+            self._log_text_detection(user_id, content, detection_result)
+            
+            return detection_result
+            
+        except Exception as e:
+            print(f"AI文字偵測失敗: {e}")
+            return {
+                'suggestions': [],
+                'quick_fixes': [],
+                'content_enhancements': [],
+                'formatting_tips': [],
+                'has_suggestions': False,
+                'error': str(e)
+            }
+    
+    def _log_text_detection(self, user_id: int, content: str, result: Dict[str, Any]) -> None:
+        """
+        記錄文字偵測的使用情況（可選功能，用於改進AI建議品質）
+        
+        Args:
+            user_id: 用戶ID
+            content: 分析的內容
+            result: 偵測結果
+        """
+        try:
+            # 這裡可以記錄到資料庫或日誌文件
+            # 暫時只做簡單的控制台記錄
+            suggestions_count = len(result.get('suggestions', []))
+            if suggestions_count > 0:
+                print(f"用戶 {user_id} 的文字偵測產生了 {suggestions_count} 個建議")
+        except Exception as e:
+            # 日誌記錄失敗不應該影響主要功能
+            print(f"記錄文字偵測日誌失敗: {e}")
+
+    def generate_enhancement_content(self, user_id: int, enhancement_request: str, current_content: str, title: str = "", context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        根據增強建議生成實際內容
+        
+        Args:
+            user_id: 用戶ID  
+            enhancement_request: 增強建議的描述
+            current_content: 目前的筆記內容
+            title: 筆記標題
+            context: 額外的上下文資訊
+            
+        Returns:
+            包含生成內容的字典
+        """
+        try:
+            print(f"為用戶 {user_id} 生成內容增強：{enhancement_request}")
+            
+            # 調用AI客戶端生成增強內容
+            enhancement_result = self.ai_client.generate_content_enhancement(
+                enhancement_request=enhancement_request,
+                current_content=current_content,
+                title=title,
+                context=context or {}
+            )
+            
+            # 記錄生成的內容用於追蹤
+            if enhancement_result.get('generated_content'):
+                print(f"成功生成內容，長度: {len(enhancement_result['generated_content'])} 字符")
+            
+            return enhancement_result
+            
+        except Exception as e:
+            print(f"內容增強生成錯誤: {e}")
+            return {
+                'generated_content': enhancement_request,  # 失敗時返回原始建議
+                'success': False,
+                'error': str(e)
+            }
 
