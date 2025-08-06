@@ -784,6 +784,78 @@ def edit_note(note_id):
         
     return render_template('notes/note_edit.html', note=note, title="編輯筆記")
 
+@notes_bp.route('/detect-text', methods=['POST'])
+def detect_text():
+    """處理AI文字偵測請求 - 即時分析用戶輸入並提供建議，或生成增強內容"""
+    try:
+        user_id = g.current_user['id']
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': '缺少請求數據'
+            }), 400
+        
+        # 檢查是否為內容增強生成請求
+        if data.get('action') == 'generate_enhancement':
+            enhancement_request = data.get('enhancement_request', '')
+            current_content = data.get('current_content', '')
+            title = data.get('title', '')
+            context = data.get('context', {})
+            
+            if not enhancement_request:
+                return jsonify({
+                    'success': False,
+                    'error': '缺少增強請求參數'
+                }), 400
+            
+            # 調用AI生成增強內容
+            enhancement_result = note_manager.generate_enhancement_content(
+                user_id=user_id,
+                enhancement_request=enhancement_request,
+                current_content=current_content,
+                title=title,
+                context=context
+            )
+            
+            return jsonify({
+                'success': True,
+                'generated_content': enhancement_result.get('generated_content', ''),
+                **enhancement_result
+            })
+        
+        # 原有的文字偵測功能
+        content = data.get('content')
+        if not content:
+            return jsonify({
+                'success': False,
+                'error': '缺少內容參數'
+            }), 400
+        
+        context = data.get('context', {})
+        
+        # 調用AI文字偵測功能
+        detection_result = note_manager.detect_and_suggest_text(
+            user_id=user_id,
+            content=content,
+            context=context
+        )
+        
+        return jsonify({
+            'success': True,
+            'has_suggestions': detection_result.get('has_suggestions', False),
+            **detection_result
+        })
+        
+    except Exception as e:
+        print(f"AI處理錯誤: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'has_suggestions': False
+        }), 500
+
 @notes_bp.route('/<string:note_id>/delete', methods=['POST'])
 def delete_note(note_id):
     """Handles the deletion of a note."""

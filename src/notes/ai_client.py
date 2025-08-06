@@ -1258,6 +1258,164 @@ class NoteAIClient:
         # 從教材生成筆記：使用主模型（需要教學性整理）
         return self._safe_ai_call(prompt, "note_from_materials", use_simple_model=False)
 
+    # === AI 文字偵測功能 ===
+
+    def detect_and_suggest_text(self, content: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        AI文字偵測 - 即時分析用戶輸入的文字內容並提供智慧建議
+        類似 VS Code IntelliSense 的即時建議功能
+        
+        Args:
+            content: 用戶輸入的文字內容
+            context: 額外的上下文信息（如筆記標題、已有內容等）
+        
+        Returns:
+            包含各種建議的字典
+        """
+        # 如果內容太短，不進行分析
+        if not content or len(content.strip()) < 10:
+            return {
+                'suggestions': [],
+                'has_suggestions': False,
+                'analysis_note': '內容太短，無需分析'
+            }
+        
+        # 獲取上下文信息
+        note_title = context.get('title', '') if context else ''
+        existing_content = context.get('existing_content', '') if context else ''
+        
+        prompt = f"""
+        你是一個智慧文字助手，類似 VS Code 的 IntelliSense。請分析用戶正在輸入的文字內容，並提供即時的智慧建議。
+
+        當前筆記標題：{note_title}
+        
+        用戶正在輸入的文字：
+        ---
+        {content}
+        ---
+        
+        {f"筆記現有內容：\\n---\\n{existing_content}\\n---" if existing_content else ""}
+
+        請以 JSON 格式提供以下類型的建議：
+
+        {{
+            "suggestions": [
+                {{
+                    "type": "格式優化",
+                    "title": "建議標題",
+                    "description": "具體建議內容",
+                    "priority": "high|medium|low",
+                    "icon": "format|spell|structure|content"
+                }}
+            ],
+            "quick_fixes": [
+                {{
+                    "issue": "發現的問題",
+                    "fix": "修正建議",
+                    "original": "原始文字",
+                    "suggested": "建議文字"
+                }}
+            ],
+            "content_enhancements": [
+                {{
+                    "suggestion": "內容增強建議",
+                    "reason": "建議原因"
+                }}
+            ],
+            "formatting_tips": [
+                "格式化建議1",
+                "格式化建議2"
+            ],
+            "has_suggestions": true
+        }}
+
+        建議類型包括：
+        1. **格式優化** - Markdown 格式建議、結構改善
+        2. **錯字修正** - 拼寫和語法檢查
+        3. **內容補強** - 建議添加的相關內容
+        4. **結構建議** - 章節組織、標題層級
+        5. **學習增強** - 學習方法、記憶技巧建議
+
+        注意：
+        - 只在有明確改善建議時才提供
+        - 建議要具體且可操作
+        - 不要過度建議，保持簡潔實用
+        - 如果內容已經很好，可以只提供少量或不提供建議
+        """
+        
+        try:
+            # 使用輔助模型進行快速分析
+            response_data = self._run_async(
+                self.gemini_client.generate_async_simple(prompt, is_json=True)
+            )
+            
+            # 清理和解析回應
+            if isinstance(response_data, str):
+                response_data = self._parse_detection_response(response_data)
+            
+            # 確保回應格式正確
+            if not isinstance(response_data, dict):
+                return self._get_default_detection_response("回應格式錯誤")
+            
+            # 添加元數據
+            response_data['analysis_timestamp'] = self._get_current_timestamp()
+            response_data['content_length'] = len(content)
+            response_data['model_used'] = 'simple'
+            
+            return response_data
+            
+        except Exception as e:
+            print(f"AI文字偵測錯誤: {e}")
+            return self._get_default_detection_response(f"分析失敗: {str(e)}")
+
+    def _parse_detection_response(self, response_text: str) -> Dict[str, Any]:
+        """解析AI文字偵測的回應文字"""
+        try:
+            # 清理回應文字
+            cleaned_response = response_text.strip()
+            
+            # 移除可能的標記
+            prefixes_to_remove = ['```json', '```JSON', '```', 'json', 'JSON']
+            suffixes_to_remove = ['```', '```json', '```JSON']
+            
+            for prefix in prefixes_to_remove:
+                if cleaned_response.startswith(prefix):
+                    cleaned_response = cleaned_response[len(prefix):].strip()
+                    break
+                    
+            for suffix in suffixes_to_remove:
+                if cleaned_response.endswith(suffix):
+                    cleaned_response = cleaned_response[:-len(suffix)].strip()
+                    break
+            
+            # 嘗試解析JSON
+            if cleaned_response.startswith('{') and cleaned_response.endswith('}'):
+                import json
+                return json.loads(cleaned_response)
+            
+            # 如果不是JSON格式，返回默認結構
+            return self._get_default_detection_response("無法解析AI回應")
+            
+        except Exception as e:
+            return self._get_default_detection_response(f"解析錯誤: {str(e)}")
+
+    def _get_default_detection_response(self, error_msg: str = "") -> Dict[str, Any]:
+        """獲取默認的文字偵測回應結構"""
+        return {
+            'suggestions': [],
+            'quick_fixes': [],
+            'content_enhancements': [],
+            'formatting_tips': [],
+            'has_suggestions': False,
+            'analysis_note': error_msg or '暫無建議',
+            'error': error_msg if error_msg else None
+        }
+
+    def _get_current_timestamp(self) -> str:
+        """獲取當前時間戳"""
+        from datetime import datetime
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     # === 輔助方法 ===
 
     def _safe_ai_call(self, prompt: str, operation_type: str, use_simple_model: bool = False) -> Dict[str, Any]:
@@ -1294,4 +1452,105 @@ class NoteAIClient:
             'suggested_tags': [],
             'knowledge_points': []
         }
+
+    def generate_content_enhancement(self, enhancement_request: str, current_content: str, title: str = "", context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        根據增強建議生成實際內容
+        
+        Args:
+            enhancement_request: 增強建議的描述
+            current_content: 目前的筆記內容  
+            title: 筆記標題
+            context: 額外的上下文資訊
+            
+        Returns:
+            包含生成內容的字典
+        """
+        try:
+            context = context or {}
+            
+            # 構建提示詞
+            prompt = f"""
+作為一個專業的內容寫作助手，請根據以下資訊生成高質量的內容增強：
+
+**筆記標題：** {title}
+
+**目前內容：**
+{current_content}
+
+**增強要求：** {enhancement_request}
+
+**任務：**
+請根據增強要求，生成具體的、實用的內容來增強這篇筆記。
+
+**要求：**
+1. 生成的內容應該直接有用，而不是重複增強要求的描述
+2. 內容應該與現有筆記內容相關且互補
+3. 使用適當的Markdown格式
+4. 內容應該具有教育價值和實用性
+5. 根據上下文調整內容的深度和風格
+
+**輸出格式：**
+直接輸出生成的內容，不需要其他說明。
+
+**範例情境：**
+- 如果要求是"加上AI時代的相關性"，則生成具體的AI相關內容
+- 如果要求是"增加實例說明"，則生成具體的實例
+- 如果要求是"補充技術細節"，則生成具體的技術說明
+
+請開始生成：
+"""
+
+            # 使用簡單模型生成內容（成本考量）
+            response = self._run_async(
+                self.gemini_client.generate_text_async(prompt, use_simple_model=True)
+            )
+            
+            if response and response.get('text'):
+                generated_content = response['text'].strip()
+                
+                # 確保生成的內容不是重複要求
+                if len(generated_content) > len(enhancement_request) and not generated_content.startswith(enhancement_request):
+                    return {
+                        'generated_content': generated_content,
+                        'success': True,
+                        'model_used': 'simple'
+                    }
+                else:
+                    # 如果生成的內容太短或就是重複要求，再試一次更具體的提示
+                    specific_prompt = f"""
+請為以下筆記內容生成具體的增強內容：
+
+現有內容：{current_content[:500]}...
+
+增強要求：{enhancement_request}
+
+請生成至少50字的具體內容，不要只是重複要求描述：
+"""
+                    
+                    response = self._run_async(
+                        self.gemini_client.generate_text_async(specific_prompt, use_simple_model=True)
+                    )
+                    
+                    if response and response.get('text'):
+                        return {
+                            'generated_content': response['text'].strip(),
+                            'success': True,
+                            'model_used': 'simple'
+                        }
+            
+            # 如果都失敗，返回錯誤
+            return {
+                'generated_content': enhancement_request,
+                'success': False,
+                'error': 'AI生成失敗，返回原始建議'
+            }
+            
+        except Exception as e:
+            print(f"內容增強生成錯誤: {e}")
+            return {
+                'generated_content': enhancement_request,
+                'success': False,
+                'error': str(e)
+            }
 

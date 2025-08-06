@@ -699,3 +699,95 @@ class NoteManager:
         """獲取相關筆記"""
         return self.db_manager.get_related_notes(user_id, note_id)
 
+    # === AI文字偵測功能 ===
+
+    def detect_and_suggest_text(self, user_id: int, content: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        AI文字偵測 - 即時分析用戶輸入的文字內容並提供智慧建議
+        
+        Args:
+            user_id: 用戶ID
+            content: 要分析的文字內容
+            context: 上下文信息（如筆記標題、已有內容等）
+        
+        Returns:
+            包含建議的字典
+        """
+        try:
+            # 調用AI客戶端進行文字偵測
+            detection_result = self.ai_client.detect_and_suggest_text(content, context)
+            
+            # 記錄偵測日誌（可選，用於改進功能）
+            self._log_text_detection(user_id, content, detection_result)
+            
+            return detection_result
+            
+        except Exception as e:
+            print(f"AI文字偵測失敗: {e}")
+            return {
+                'suggestions': [],
+                'quick_fixes': [],
+                'content_enhancements': [],
+                'formatting_tips': [],
+                'has_suggestions': False,
+                'error': str(e)
+            }
+    
+    def _log_text_detection(self, user_id: int, content: str, result: Dict[str, Any]) -> None:
+        """
+        記錄文字偵測的使用情況（可選功能，用於改進AI建議品質）
+        
+        Args:
+            user_id: 用戶ID
+            content: 分析的內容
+            result: 偵測結果
+        """
+        try:
+            # 這裡可以記錄到資料庫或日誌文件
+            # 暫時只做簡單的控制台記錄
+            suggestions_count = len(result.get('suggestions', []))
+            if suggestions_count > 0:
+                print(f"用戶 {user_id} 的文字偵測產生了 {suggestions_count} 個建議")
+        except Exception as e:
+            # 日誌記錄失敗不應該影響主要功能
+            print(f"記錄文字偵測日誌失敗: {e}")
+
+    def generate_enhancement_content(self, user_id: int, enhancement_request: str, current_content: str, title: str = "", context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        根據增強建議生成實際內容
+        
+        Args:
+            user_id: 用戶ID  
+            enhancement_request: 增強建議的描述
+            current_content: 目前的筆記內容
+            title: 筆記標題
+            context: 額外的上下文資訊
+            
+        Returns:
+            包含生成內容的字典
+        """
+        try:
+            print(f"為用戶 {user_id} 生成內容增強：{enhancement_request}")
+            
+            # 調用AI客戶端生成增強內容
+            enhancement_result = self.ai_client.generate_content_enhancement(
+                enhancement_request=enhancement_request,
+                current_content=current_content,
+                title=title,
+                context=context or {}
+            )
+            
+            # 記錄生成的內容用於追蹤
+            if enhancement_result.get('generated_content'):
+                print(f"成功生成內容，長度: {len(enhancement_result['generated_content'])} 字符")
+            
+            return enhancement_result
+            
+        except Exception as e:
+            print(f"內容增強生成錯誤: {e}")
+            return {
+                'generated_content': enhancement_request,  # 失敗時返回原始建議
+                'success': False,
+                'error': str(e)
+            }
+
