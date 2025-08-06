@@ -639,8 +639,8 @@ function initializeContentTabs() {
                             edgeShape: 'polyline',
                             
                             // 優化樹的展開和佈局
-                            initialTreeDepth: 1, // 初始展開1層
-                            expandAndCollapse: true,
+                            initialTreeDepth: 1, // 完全展開所有層級，不受縮放影響
+                            expandAndCollapse: false, // 禁用自動展開收合，保持穩定狀態
                             
                             // 確保有足夠的間距
                             itemStyle: {
@@ -700,7 +700,7 @@ function initializeContentTabs() {
                         let currentZoom = currentOption.series[0].zoom || 1;
                         const zoomStep = 0.03; // 大幅降低縮放步長，讓縮放更精細
                         currentZoom += (event.deltaY < 0 ? zoomStep : -zoomStep);
-                        currentZoom = Math.max(0.2, Math.min(6.0, currentZoom)); // 擴大縮放範圍
+                        currentZoom = Math.max(0.7, Math.min(2.5, currentZoom)); // 限制縮放範圍：最小50%，最大250%
                         
                         myChart.setOption({ series: [{ zoom: currentZoom }] });
                     });
