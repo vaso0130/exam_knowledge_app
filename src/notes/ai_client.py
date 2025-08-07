@@ -3,11 +3,12 @@ import os
 import json
 import asyncio
 import re
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 # Assuming the main Gemini client is in the core directory
 from ..core.gemini_client import GeminiClient
 from ..utils.json_parser import extract_json_from_text
+from .lsp_bridge import LSPBridge
 
 class NoteAIClient:
     """
@@ -18,6 +19,22 @@ class NoteAIClient:
         # Initialize the core Gemini client
         # This assumes API keys and other configurations are handled within GeminiClient
         self.gemini_client = GeminiClient()
+        
+        # 初始化LSP橋接模組（按需創建）
+        self._lsp_bridge = None
+        self._use_lsp = True  # 是否使用LSP處理
+        
+        # LSP支援的語言映射
+        self._lsp_language_map = {
+            'markdown': 'markdown',
+            'python': 'python',
+            'javascript': 'javascript',
+            'java': 'java',
+            'html': 'html',
+            'css': 'css',
+            'json': 'json',
+            'sql': 'sql'
+        }
 
     def _run_async(self, coro):
         """Helper method to run async functions synchronously - fixed"""
@@ -1263,7 +1280,9 @@ class NoteAIClient:
     def detect_and_suggest_text(self, content: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         AI文字偵測 - 即時分析用戶輸入的文字內容並提供智慧建議
-        類似 VS Code IntelliSense 的即時建議功能
+        實現類似 VS Code IntelliSense 的即時建議功能，基於語言伺服器協議(LSP)概念設計
+        
+        首先嘗試使用外部LSP伺服器處理，如果失敗或不可用則降級為AI處理
         
         Args:
             content: 用戶輸入的文字內容
@@ -1283,216 +1302,294 @@ class NoteAIClient:
         # 獲取上下文信息
         note_title = context.get('title', '') if context else ''
         existing_content = context.get('existing_content', '') if context else ''
+        content_type = context.get('content_type', '') if context else ''
+        use_ai_only = context.get('use_ai_only', False) if context else False
         
-        # 檢查是否包含某些特定關鍵字，如果有，提供預定義的建議
-        special_keywords = ["CIA", "CPR", "AAA", "CERT", "PDCA", "RADIUS", "TACACS+"]
-        special_suggestions = []
-        special_content_enhancements = []
-        special_quick_fixes = []
+        # 自動檢測內容類型並選擇對應的處理器
+        detected_language = self._detect_code_language(content)
         
-        # 檢查縮寫關鍵字
-        for keyword in special_keywords:
-            if keyword in content.upper() and not any(f"{keyword}（" in content or f"{keyword}(" in content or f"({keyword})" in content or f"（{keyword}）" in content):
-                # 預設解釋內容
-                explanation = ""
-                if keyword == "CIA":
-                    explanation = "CIA三要素（機密性Confidentiality、完整性Integrity、可用性Availability）"
-                    special_quick_fixes.append({
-                        "issue": "CIA缺少全名解釋",
-                        "fix": "添加CIA的全名說明",
-                        "original": keyword,
-                        "suggested": "CIA(Confidentiality, Integrity, Availability)資安三要素"
-                    })
-                elif keyword == "CPR":
-                    explanation = "CPR（機密性Confidentiality、隱私性Privacy、可靠性Reliability）"
-                    special_quick_fixes.append({
-                        "issue": "CPR缺少全名解釋",
-                        "fix": "添加CPR的全名說明",
-                        "original": keyword,
-                        "suggested": "CPR(Confidentiality, Privacy, Reliability)資安框架"
-                    })
-                elif keyword == "AAA":
-                    explanation = "AAA（認證Authentication、授權Authorization、稽核Accounting）"
-                    special_quick_fixes.append({
-                        "issue": "AAA缺少全名解釋",
-                        "fix": "添加AAA的全名說明",
-                        "original": keyword,
-                        "suggested": "AAA(Authentication, Authorization, Accounting)安全框架"
-                    })
+        # 是否優先使用LSP處理
+        should_use_lsp = self._use_lsp and not use_ai_only
+        
+        # 如果應該優先使用LSP且內容類型合適
+        if should_use_lsp and detected_language in self._lsp_language_map:
+            try:
+                # 嘗試使用LSP獲取診斷信息（非阻塞）
+                lsp_diagnostics = self._run_async(
+                    self._try_lsp_diagnostics(content, detected_language)
+                )
                 
-                # 添加建議
-                special_suggestions.append({
-                    "type": "內容補強",
-                    "title": f"補充{keyword}的完整名稱",
-                    "description": f"建議為{keyword}添加其完整名稱：{explanation}",
-                    "priority": "high",
-                    "icon": "content"
-                })
-                
-                # 添加內容增強建議
-                special_content_enhancements.append({
-                    "suggestion": f"補充{keyword}的全部名稱和定義",
-                    "reason": f"{keyword}是重要的專業術語，應提供完整定義以增強學習效果。"
-                })
+                # 如果成功獲取LSP診斷結果
+                if lsp_diagnostics:
+                    # 將LSP診斷結果轉換為標準格式
+                    result = {
+                        'suggestions': [],
+                        'quick_fixes': [],
+                        'content_enhancements': [],
+                        'diagnostics': [],
+                        'has_suggestions': bool(lsp_diagnostics),
+                        'analysis_timestamp': self._get_current_timestamp(),
+                        'content_length': len(content),
+                        'content_type': detected_language,
+                        'model_used': f'lsp-{detected_language}'
+                    }
+                    
+                    # 處理LSP診斷信息
+                    for diag in lsp_diagnostics:
+                        # 添加診斷信息
+                        result['diagnostics'].append({
+                            'severity': diag.get('severity', 'info'),
+                            'message': diag.get('message', '未知問題'),
+                            'position': f"第{diag.get('range', {}).get('start', {}).get('line', 0)+1}行"
+                        })
+                        
+                        # 將診斷轉換為建議
+                        if 'message' in diag:
+                            result['suggestions'].append({
+                                'type': '格式優化' if diag.get('severity') == 'warning' else '錯字修正',
+                                'title': diag.get('message')[:30] + ('...' if len(diag.get('message', '')) > 30 else ''),
+                                'description': diag.get('message', ''),
+                                'priority': 'high' if diag.get('severity') == 'error' else 'medium',
+                                'icon': 'structure' if '結構' in diag.get('message', '') else 'format'
+                            })
+                    
+                    # 只有在LSP診斷結果較少時，才使用AI增強（避免重複信息）
+                    if len(lsp_diagnostics) <= 2:
+                        # 異步啟動AI分析以增強LSP結果（不等待結果）
+                        asyncio.create_task(self._enhance_lsp_with_ai(content, context, result))
+                    
+                    return result
+            except Exception as e:
+                print(f"LSP處理失敗，降級為AI處理: {e}")
+                # 繼續使用AI處理
         
-        # 首先嘗試使用預定義的建議，如果有的話
-        if special_suggestions or special_content_enhancements or special_quick_fixes:
-            has_suggestions = True
-            return {
-                'suggestions': special_suggestions,
-                'quick_fixes': special_quick_fixes,
-                'content_enhancements': special_content_enhancements,
-                'formatting_tips': ["使用粗體標記重要術語和專業名詞", "為專業術語添加括號解釋"],
-                'has_suggestions': has_suggestions,
+        # 如果是 Markdown 內容，使用專門的 Markdown LSP
+        if detected_language == 'markdown' or content_type == 'markdown':
+            markdown_analysis = self.analyze_markdown_syntax(content)
+            
+            # 將 Markdown 分析結果轉換為統一格式
+            result = {
+                'suggestions': [],
+                'quick_fixes': [],
+                'content_enhancements': [],
+                'diagnostics': markdown_analysis.get('diagnostics', []),
+                'has_suggestions': markdown_analysis.get('has_issues', False),
                 'analysis_timestamp': self._get_current_timestamp(),
                 'content_length': len(content),
-                'model_used': 'predefined',
-                'analysis_note': '檢測到特殊術語'
+                'content_type': 'markdown',
+                'model_used': 'simple-markdown-lsp'
             }
+            
+            # 處理建議
+            for suggestion in markdown_analysis.get('suggestions', []):
+                result['suggestions'].append({
+                    'type': suggestion.get('type', '格式優化'),
+                    'title': suggestion.get('label', '格式建議'),
+                    'description': suggestion.get('description', ''),
+                    'priority': 'medium',
+                    'icon': 'format'
+                })
+                
+                # 如果有具體的修改建議，添加為快速修復
+                if 'suggested_change' in suggestion:
+                    result['quick_fixes'].append({
+                        'issue': suggestion.get('label', '格式問題'),
+                        'fix': '應用建議的修改',
+                        'original': '(需要選擇具體文本)',
+                        'suggested': suggestion.get('suggested_change', '')
+                    })
+            
+            # 添加結構相關的內容增強建議
+            if 'structure' in markdown_analysis:
+                structure_issues = []
+                for struct in markdown_analysis.get('structure', []):
+                    if struct.get('type') == 'heading' and struct.get('level') > 1:
+                        structure_issues.append({
+                            'suggestion': f"檢查標題「{struct.get('text', '')}」的層級結構",
+                            'reason': "確保文檔標題層級有清晰的階層關係"
+                        })
+                
+                if structure_issues:
+                    result['content_enhancements'].extend(structure_issues)
+            
+            return result
+            
+        # 如果是程式碼內容，使用程式碼 LSP
+        elif detected_language in ['python', 'javascript', 'java', 'c', 'sql', 'html', 'code']:
+            code_analysis = self.analyze_code_syntax(content, detected_language)
+            
+            # 將程式碼分析結果轉換為統一格式
+            result = {
+                'suggestions': [],
+                'quick_fixes': [],
+                'content_enhancements': [],
+                'diagnostics': code_analysis.get('diagnostics', []),
+                'has_suggestions': code_analysis.get('has_issues', False),
+                'analysis_timestamp': self._get_current_timestamp(),
+                'content_length': len(content),
+                'content_type': detected_language,
+                'model_used': f'simple-{detected_language}-lsp'
+            }
+            
+            # 處理建議
+            for suggestion in code_analysis.get('suggestions', []):
+                result['suggestions'].append({
+                    'type': '程式碼優化',
+                    'title': suggestion.get('label', '程式碼建議'),
+                    'description': suggestion.get('detail', ''),
+                    'priority': 'high',
+                    'icon': 'structure'
+                })
+                
+                # 如果有具體的修改建議，添加為快速修復
+                if 'insertText' in suggestion:
+                    result['quick_fixes'].append({
+                        'issue': suggestion.get('label', '程式碼問題'),
+                        'fix': '應用建議的修改',
+                        'original': '(需要選擇具體代碼)',
+                        'suggested': suggestion.get('insertText', '')
+                    })
+            
+            return result
         
-        # 如果沒有預定義的建議，則使用AI生成建議
-        prompt = f"""
-        你是一個智慧文字助手，類似 VS Code 的 IntelliSense。請分析用戶正在輸入的文字內容，並提供即時的智慧建議。
+        # 一般文本內容使用通用 LSP
+        else:
+            # 使用更精簡的提示詞，專注於LSP功能
+            prompt = f"""
+            你是一個高效智慧筆記助手，實現類似 VS Code 的 LSP (Language Server Protocol) 功能。
+            請分析用戶輸入的文字內容，並依照以下功能提供即時智慧建議：
 
-        當前筆記標題：{note_title}
-        
-        用戶正在輸入的文字：
-        ---
-        {content}
-        ---
-        
-        {f"筆記現有內容：\\n---\\n{existing_content}\\n---" if existing_content else ""}
+            1. 即時語法解析與錯誤檢測 - 檢查文本格式、語法問題
+            2. 智慧補全 - 提供內容完善的建議
+            3. 語意理解 - 基於上下文提供相關內容建議
 
-        請以 JSON 格式提供以下類型的建議：
+            當前筆記標題：{note_title}
+            
+            用戶正在輸入的文字：
+            ---
+            {content}
+            ---
+            
+            {f"筆記現有內容：\\n---\\n{existing_content}\\n---" if existing_content else ""}
 
-        {{
-            "suggestions": [
-                {{
-                    "type": "格式優化",
-                    "title": "建議標題",
-                    "description": "具體建議內容",
-                    "priority": "high|medium|low",
-                    "icon": "format|spell|structure|content"
-                }}
-            ],
-            "quick_fixes": [
-                {{
-                    "issue": "發現的問題",
-                    "fix": "修正建議",
-                    "original": "原始文字",
-                    "suggested": "建議文字"
-                }}
-            ],
-            "content_enhancements": [
-                {{
-                    "suggestion": "內容增強建議",
-                    "reason": "建議原因"
-                }}
-            ],
-            "formatting_tips": [
-                "格式化建議1",
-                "格式化建議2"
-            ],
-            "has_suggestions": true
-        }}
+            請以 JSON 格式提供以下類型的建議：
 
-        建議類型包括：
-        1. **格式優化** - Markdown 格式建議、結構改善
-        2. **錯字修正** - 拼寫和語法檢查
-        3. **內容補強** - 建議添加的相關內容
-        4. **結構建議** - 章節組織、標題層級
-        5. **學習增強** - 學習方法、記憶技巧建議
-
-        注意：
-        - 只在有明確改善建議時才提供
-        - 建議要具體且可操作
-        - 不要過度建議，保持簡潔實用
-        - 如果內容已經很好，可以只提供少量或不提供建議
-        
-        特別注意：
-        - 檢測專業縮寫詞如CIA、CPR、AAA等是否已經提供全稱解釋
-        - 如果這些縮寫詞未解釋，建議添加完整名稱和中文解釋
-        - 優先提供內容增強建議，幫助使用者補充專業知識
-        """
-        
-        try:
-            # 使用輔助模型進行快速分析
-            response_data = self._run_async(
-                self.gemini_client.generate_async_simple(prompt, is_json=True)
-            )
+            {{
+                "suggestions": [
+                    {{
+                        "type": "格式優化|錯字修正|內容補強|結構建議|智慧補全",
+                        "title": "簡短建議標題",
+                        "description": "具體建議內容",
+                        "priority": "high|medium|low",
+                        "icon": "format|spell|structure|content"
+                    }}
+                ],
+                "quick_fixes": [
+                    {{
+                        "issue": "發現的問題",
+                        "fix": "修正建議",
+                        "original": "原始文字",
+                        "suggested": "建議文字"
+                    }}
+                ],
+                "content_enhancements": [
+                    {{
+                        "suggestion": "內容增強建議",
+                        "reason": "建議原因"
+                    }}
+                ],
+                "diagnostics": [
+                    {{
+                        "severity": "error|warning|info",
+                        "message": "診斷訊息",
+                        "position": "問題位置描述"
+                    }}
+                ],
+                "has_suggestions": true
+            }}
             
-            # 清理和解析回應
-            if isinstance(response_data, str):
-                response_data = self._parse_detection_response(response_data)
+            請保持回應簡潔、實用，只提供確實有幫助的建議。務必確保所有JSON欄位格式正確。
+            """
             
-            # 確保回應格式正確
-            if not isinstance(response_data, dict):
-                return self._get_default_detection_response("回應格式錯誤")
-            
-            # 確保has_suggestions欄位正確 - 這是關鍵修復點
-            has_suggestions = False
-            if (response_data.get('suggestions', []) or 
-                response_data.get('quick_fixes', []) or 
-                response_data.get('content_enhancements', []) or 
-                response_data.get('formatting_tips', [])):
-                has_suggestions = True
-            
-            # 更新has_suggestions欄位
-            response_data['has_suggestions'] = has_suggestions
-            
-            # 添加元數據
-            response_data['analysis_timestamp'] = self._get_current_timestamp()
-            response_data['content_length'] = len(content)
-            response_data['model_used'] = 'simple'
-            
-            return response_data
-            
-        except Exception as e:
-            print(f"AI文字偵測錯誤: {e}")
-            return self._get_default_detection_response(f"分析失敗: {str(e)}")
+            try:
+                # 確保使用輔助模型進行快速分析
+                response_data = self._run_async(
+                    self.gemini_client.generate_async_simple(prompt, is_json=True)
+                )
+                
+                # 清理和解析回應
+                if isinstance(response_data, str):
+                    response_data = self._parse_detection_response(response_data)
+                
+                # 確保回應格式正確
+                if not isinstance(response_data, dict):
+                    return {
+                        'suggestions': [],
+                        'has_suggestions': False,
+                        'analysis_note': '暫無建議'
+                    }
+                
+                # 簡化檢查邏輯
+                has_suggestions = bool(response_data.get('suggestions') or 
+                                       response_data.get('quick_fixes') or 
+                                       response_data.get('content_enhancements') or 
+                                       response_data.get('diagnostics'))
+                
+                # 更新has_suggestions欄位
+                response_data['has_suggestions'] = has_suggestions
+                
+                # 添加元數據
+                response_data['analysis_timestamp'] = self._get_current_timestamp()
+                response_data['content_length'] = len(content)
+                response_data['content_type'] = 'text'
+                response_data['model_used'] = 'simple'
+                
+                return response_data
+                
+            except Exception as e:
+                print(f"AI文字偵測錯誤: {e}")
+                return {
+                    'suggestions': [],
+                    'has_suggestions': False,
+                    'analysis_note': f'分析時發生錯誤: {str(e)}'
+                }
 
     def _parse_detection_response(self, response_text: str) -> Dict[str, Any]:
-        """解析AI文字偵測的回應文字"""
+        """解析AI文字偵測的回應文字，使用更簡潔的邏輯"""
         try:
             # 清理回應文字
             cleaned_response = response_text.strip()
             
-            # 移除可能的標記
-            prefixes_to_remove = ['```json', '```JSON', '```', 'json', 'JSON']
-            suffixes_to_remove = ['```', '```json', '```JSON']
-            
-            for prefix in prefixes_to_remove:
-                if cleaned_response.startswith(prefix):
-                    cleaned_response = cleaned_response[len(prefix):].strip()
-                    break
-                    
-            for suffix in suffixes_to_remove:
-                if cleaned_response.endswith(suffix):
-                    cleaned_response = cleaned_response[:-len(suffix)].strip()
-                    break
+            # 移除可能的標記 - 簡化邏輯
+            if cleaned_response.startswith('```json') or cleaned_response.startswith('```JSON'):
+                cleaned_response = cleaned_response[7:].strip()
+            elif cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[3:].strip()
+                
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3].strip()
             
             # 嘗試解析JSON
             if cleaned_response.startswith('{') and cleaned_response.endswith('}'):
                 import json
-                return json.loads(cleaned_response)
+                try:
+                    return json.loads(cleaned_response)
+                except json.JSONDecodeError:
+                    pass
             
-            # 如果不是JSON格式，返回默認結構
-            return self._get_default_detection_response("無法解析AI回應")
+            # 解析失敗時返回空結構 - 直接返回而非使用另一函數
+            return {
+                'suggestions': [],
+                'has_suggestions': False,
+                'analysis_note': '解析回應失敗'
+            }
             
         except Exception as e:
-            return self._get_default_detection_response(f"解析錯誤: {str(e)}")
-
-    def _get_default_detection_response(self, error_msg: str = "") -> Dict[str, Any]:
-        """獲取默認的文字偵測回應結構"""
-        return {
-            'suggestions': [],
-            'quick_fixes': [],
-            'content_enhancements': [],
-            'formatting_tips': [],
-            'has_suggestions': False,
-            'analysis_note': error_msg or '暫無建議',
-            'error': error_msg if error_msg else None
-        }
+            return {
+                'suggestions': [],
+                'has_suggestions': False,
+                'analysis_note': f'解析回應發生錯誤: {str(e)}'
+            }
 
     def _get_current_timestamp(self) -> str:
         """獲取當前時間戳"""
@@ -1607,24 +1704,8 @@ class NoteAIClient:
 請開始生成：
 """
 
-            # 使用主模型生成內容（提高品質）
-            response = self._run_async(
-                self.gemini_client.generate_advanced(prompt)
-            )
-            
-            if response:
-                generated_content = response.strip()
-                
-                # 確保生成的內容不是重複要求且有實質內容
-                if len(generated_content) > len(enhancement_request) and not generated_content.startswith(enhancement_request):
-                    return {
-                        'generated_content': generated_content,
-                        'success': True,
-                        'model_used': 'primary'
-                    }
-                else:
-                    # 如果生成的內容太短或就是重複要求，嘗試用更具體的提示和輔助模型
-                    specific_prompt = f"""
+            # 直接使用輔助模型生成內容（提高速度）
+            specific_prompt = f"""
 請為以下筆記內容生成具體的增強內容（至少150字）：
 
 現有內容：{current_content[:300]}...
@@ -1636,24 +1717,25 @@ class NoteAIClient:
 2. 如果涉及縮寫詞（如CIA、CPR等），提供完整名稱和定義
 3. 如果是技術概念，提供定義、特點和應用場景
 4. 使用Markdown格式增強可讀性
+5. 盡量簡潔明瞭，專注於重要資訊
 
 請直接生成內容，不需要前言或標題：
 """
-                    
-                    try:
-                        # 使用輔助模型作為備用方案
-                        response = self._run_async(
-                            self.gemini_client.generate_async_simple(specific_prompt, is_json=False)
-                        )
-                        
-                        if response and len(response.strip()) > 50:
-                            return {
-                                'generated_content': response.strip(),
-                                'success': True,
-                                'model_used': 'simple'
-                            }
-                    except Exception as inner_e:
-                        print(f"輔助模型生成失敗: {inner_e}")
+            
+            try:
+                # 只使用輔助模型，確保速度
+                response = self._run_async(
+                    self.gemini_client.generate_async_simple(specific_prompt, is_json=False)
+                )
+                
+                if response and len(response.strip()) > 50:
+                    return {
+                        'generated_content': response.strip(),
+                        'success': True,
+                        'model_used': 'simple'
+                    }
+            except Exception as inner_e:
+                print(f"輔助模型生成失敗: {inner_e}")
             
             # 如果專門處理某些特定的常見要求
             special_terms = ["CIA", "CIA三要素", "CPR", "AAA", "CERT", "PDCA", "RADIUS", "TACACS+"]
@@ -1791,3 +1873,293 @@ def hello_world():
 如果您是在尋找特定技術概念的定義或解釋，請在增強請求中明確指出該概念的名稱。
 """
 
+    def analyze_code_syntax(self, content: str, language: str = None) -> Dict[str, Any]:
+        """
+        語言伺服器協議(LSP)功能 - 即時語法解析與錯誤檢測
+        
+        Args:
+            content: 用戶輸入的代碼內容
+            language: 代碼語言 (python, javascript, sql等)，如果為None則自動檢測
+            
+        Returns:
+            包含診斷、建議和補全的字典
+        """
+        # 如果內容太短，不進行分析
+        if not content or len(content.strip()) < 5:
+            return {
+                'diagnostics': [],
+                'suggestions': [],
+                'has_issues': False
+            }
+            
+        # 自動檢測語言 (簡單實現)
+        if not language:
+            language = self._detect_code_language(content)
+            
+        # 構建提示詞
+        prompt = f"""
+你現在是一個高效能的語言伺服器(Language Server Protocol, LSP)，負責代碼分析。請分析以下{language}代碼：
+
+```{language}
+{content}
+```
+
+請以JSON格式提供以下分析結果：
+
+{{
+    "diagnostics": [
+        {{
+            "severity": "error|warning|info",
+            "message": "診斷訊息",
+            "line": 行號(整數),
+            "character": 字元位置(整數),
+            "code": "問題代碼",
+            "source": "問題來源"
+        }}
+    ],
+    "suggestions": [
+        {{
+            "type": "completion|refactor|format",
+            "label": "建議標籤",
+            "insertText": "建議插入的代碼",
+            "detail": "詳細說明"
+        }}
+    ],
+    "semanticTokens": [
+        {{
+            "type": "class|method|variable|keyword",
+            "range": "代碼範圍描述",
+            "name": "符號名稱"
+        }}
+    ],
+    "has_issues": true|false
+}}
+
+注意：
+- 僅報告實際的語法或邏輯問題
+- 提供具體的修復建議
+- 盡可能簡潔但要有足夠信息
+- 僅關注代碼質量與功能性問題
+"""
+
+        try:
+            # 使用輔助模型進行快速分析
+            response_data = self._run_async(
+                self.gemini_client.generate_async_simple(prompt, is_json=True)
+            )
+            
+            # 清理和解析回應
+            if isinstance(response_data, str):
+                response_data = self._parse_detection_response(response_data)
+            
+            # 確保回應格式正確
+            if not isinstance(response_data, dict):
+                return {
+                    'diagnostics': [],
+                    'suggestions': [],
+                    'has_issues': False
+                }
+            
+            # 確保has_issues欄位正確
+            has_issues = bool(response_data.get('diagnostics'))
+            response_data['has_issues'] = has_issues
+            
+            # 添加元數據
+            response_data['analysis_timestamp'] = self._get_current_timestamp()
+            response_data['detected_language'] = language
+            response_data['model_used'] = 'simple'
+            
+            return response_data
+            
+        except Exception as e:
+            print(f"代碼分析錯誤: {e}")
+            return {
+                'diagnostics': [],
+                'suggestions': [],
+                'has_issues': False,
+                'error': str(e)
+            }
+    
+    def _get_lsp_bridge(self) -> Optional[LSPBridge]:
+        """
+        取得或初始化LSP橋接實例
+        
+        Returns:
+            LSPBridge實例，如果無法初始化則返回None
+        """
+        if not self._use_lsp:
+            return None
+        
+        if self._lsp_bridge is None:
+            try:
+                self._lsp_bridge = LSPBridge()
+            except Exception as e:
+                print(f"無法初始化LSP橋接: {e}")
+                self._use_lsp = False
+                return None
+                
+        return self._lsp_bridge
+    
+    async def _try_lsp_diagnostics(self, content: str, language: str) -> List[Dict[str, Any]]:
+        """
+        嘗試使用LSP獲取診斷信息
+        
+        Args:
+            content: 要診斷的內容
+            language: 內容的語言
+            
+        Returns:
+            診斷結果列表，如果無法使用LSP則返回空列表
+        """
+        bridge = self._get_lsp_bridge()
+        if not bridge:
+            return []
+        
+        # 映射到LSP支援的語言
+        lsp_language = self._lsp_language_map.get(language)
+        if not lsp_language:
+            return []
+        
+        # 檢查LSP可用性
+        if not bridge.check_lsp_availability(lsp_language):
+            return []
+        
+        try:
+            # 獲取診斷信息
+            diagnostics = await bridge.get_diagnostics(lsp_language, content)
+            return diagnostics
+        except Exception as e:
+            print(f"LSP診斷錯誤: {e}")
+            return []
+    
+    def _detect_code_language(self, content: str) -> str:
+        """嘗試根據內容特徵自動檢測程式語言"""
+        content_lower = content.lower()
+        
+        # 簡單的語言檢測邏輯
+        if any(kw in content_lower for kw in ['def ', 'import ', 'class ', ':', 'self.', '__init__']):
+            return 'python'
+        elif any(kw in content_lower for kw in ['function', 'var ', 'const ', 'let ', '=>', 'document.']):
+            return 'javascript'
+        elif any(kw in content_lower for kw in ['select ', 'from ', 'where ', 'insert into', 'update ', 'delete from']):
+            return 'sql'
+        elif any(kw in content_lower for kw in ['#include', 'int ', 'void ', 'char ', 'return 0;']):
+            return 'c'
+        elif any(kw in content_lower for kw in ['public class', 'private', 'protected', 'void ', 'String']):
+            return 'java'
+        elif any(kw in content_lower for kw in ['<!DOCTYPE', '<html>', '<div', '<p>', '<script']):
+            return 'html'
+        elif any(kw in content_lower for kw in ['#', '##', '###', '- ', '* ', '```', '|', '> ']):
+            return 'markdown'
+        elif any(kw in content_lower for kw in ['{', '}', ';', 'interface ', 'namespace ']):
+            # 如果有C系語言特徵但找不到具體是哪種，就當作泛用程式碼處理
+            return 'code'
+        else:
+            return 'text'
+            
+    def analyze_markdown_syntax(self, content: str) -> Dict[str, Any]:
+        """
+        為 Markdown 實現的 LSP (Language Server Protocol) 功能
+        基於 unified-language-server 的概念，提供 Markdown 專用的語法分析和建議
+        
+        Args:
+            content: 用戶輸入的 Markdown 內容
+            
+        Returns:
+            包含診斷、建議和補全的字典
+        """
+        # 如果內容太短，不進行分析
+        if not content or len(content.strip()) < 10:
+            return {
+                'diagnostics': [],
+                'suggestions': [],
+                'has_issues': False
+            }
+        
+        # 構建針對 Markdown 的提示詞
+        prompt = f"""
+你現在是一個專門處理 Markdown 的語言伺服器(Language Server Protocol, LSP)，負責分析以下 Markdown 文本：
+
+```markdown
+{content}
+```
+
+請以JSON格式提供以下分析結果：
+
+{{
+    "diagnostics": [
+        {{
+            "severity": "error|warning|info",
+            "message": "診斷訊息",
+            "line": 行號(整數),
+            "position": "問題位置描述",
+            "rule": "問題規則名稱"
+        }}
+    ],
+    "suggestions": [
+        {{
+            "type": "format|structure|reference|content",
+            "label": "建議標籤",
+            "description": "詳細說明",
+            "suggested_change": "建議的修改"
+        }}
+    ],
+    "structure": [
+        {{
+            "type": "heading|list|blockquote|codeblock|table",
+            "level": 層級(整數，僅用於標題),
+            "line": 行號(整數),
+            "text": "內容摘要"
+        }}
+    ],
+    "has_issues": true|false
+}}
+
+請特別關注以下 Markdown 規範和問題：
+1. 標題層級順序（不應跳過層級，如 H1 後直接用 H3）
+2. 列表格式一致性
+3. 表格格式是否正確
+4. 連結和圖片引用是否有效
+5. 代碼區塊是否正確標記
+6. 文件結構是否清晰合理
+
+針對發現的問題提供具體、可操作的改進建議。
+"""
+
+        try:
+            # 使用輔助模型進行快速分析
+            response_data = self._run_async(
+                self.gemini_client.generate_async_simple(prompt, is_json=True)
+            )
+            
+            # 清理和解析回應
+            if isinstance(response_data, str):
+                response_data = self._parse_detection_response(response_data)
+            
+            # 確保回應格式正確
+            if not isinstance(response_data, dict):
+                return {
+                    'diagnostics': [],
+                    'suggestions': [],
+                    'has_issues': False
+                }
+            
+            # 確保has_issues欄位正確
+            has_issues = bool(response_data.get('diagnostics'))
+            response_data['has_issues'] = has_issues
+            
+            # 添加元數據
+            response_data['analysis_timestamp'] = self._get_current_timestamp()
+            response_data['content_type'] = 'markdown'
+            response_data['model_used'] = 'simple'
+            
+            return response_data
+            
+        except Exception as e:
+            print(f"Markdown 分析錯誤: {e}")
+            return {
+                'diagnostics': [],
+                'suggestions': [],
+                'has_issues': False,
+                'error': str(e)
+            }
