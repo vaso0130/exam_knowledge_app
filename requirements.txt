@@ -35,6 +35,13 @@ markdown>=3.7.0
 asyncio-throttle>=1.0.0
 charset-normalizer>=3.4.2
 
+# AI Gateway / WebSocket / ASGI
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+websockets>=12.0
+pydantic>=2.7.0
+pytest>=8.2.0
+
 # OCR 和圖片處理相關
 google-cloud-vision>=3.7.0
 pdf2image>=1.17.0

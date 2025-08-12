@@ -40,17 +40,23 @@
                 </div>
 
                 <div class="mb-3">
-                    <label for="content" class="form-label"><strong>內容 (支援 Markdown)</strong></label>
+                    <label for="content" class="form-label d-flex align-items-center justify-content-between">
+                        <span><strong>內容 (支援 Markdown)</strong></span>
+                        <span class="d-flex align-items-center gap-2">
+                            <span id="ai-gateway-status" class="badge rounded-pill bg-secondary d-none" title="AI Gateway 狀態">檢測中</span>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-import-file">
+                                <i class="fas fa-file-import me-1"></i> 匯入檔案
+                            </button>
+                            <button type="button" class="btn btn-outline-success btn-sm" id="btn-handwriting">
+                                <i class="fas fa-pen-fancy me-1"></i> 手寫輸入
+                            </button>
+                            <input type="file" id="hidden-file-input" class="d-none" accept=".pdf,.docx,.md,.txt,.html,.htm,image/*" />
+                        </span>
+                    </label>
                     <div class="mb-2">
                         <div class="d-flex align-items-center">
 
-                            <div class="form-check form-switch me-3">
-                                <input class="form-check-input" type="checkbox" id="enable_ai_text_detection"
-                                    name="enable_ai_text_detection">
-                                <label class="form-check-label" for="enable_ai_text_detection">
-                                    <small><i class="fas fa-search me-1"></i>🔍 AI智慧偵測</small>
-                                </label>
-                            </div>
+                            <!-- 已退休：AI 文字偵測開關（保留其他 AI 補充功能） -->
                             <div class="form-check form-switch me-3">
                                 <input class="form-check-input" type="checkbox" id="smart_ai_mode" name="smart_ai_mode"
                                     checked>
@@ -77,7 +83,7 @@
                                 {% else %}
                                 AI將結合您現有的筆記內容和指示來優化或擴充筆記。請先輸入一些內容，再點擊「AI生成筆記」按鈕！
                                 {% endif %}
-                                <br><strong>🔍 AI文字偵測：</strong>開啟後將即時分析您的輸入並提供智慧建議（類似VS Code IntelliSense）
+                                
                             </small>
                         </div>
                     </div>
@@ -86,23 +92,6 @@
                         %}placeholder="在此輸入您的筆記內容，或留空讓AI為您生成..." {% endif
                         %}>{{ note.content if note else default_content }}</textarea>
 
-                    <!-- AI文字偵測建議區域 -->
-                    <div id="ai-suggestions-container" class="mt-2" style="display: none;">
-                        <div class="card border-info">
-                            <div class="card-header bg-info text-white py-2">
-                                <h6 class="mb-0">
-                                    <i class="fas fa-lightbulb me-1"></i>🔍 AI智慧建議
-                                    <button type="button" class="btn btn-sm btn-outline-light float-end"
-                                        onclick="$('#ai-suggestions-container').hide();">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </h6>
-                            </div>
-                            <div class="card-body" id="ai-suggestions-content">
-                                <!-- AI建議內容將動態加載到這裡 -->
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- AI 功能選項 -->
@@ -166,7 +155,7 @@
 
                         {% if not note %}
                         <!-- AI 整理方式選擇（僅在新建筆記時顯示） -->
-                        <div id="organization-options" class="mt-3" style="display: none;">
+                        <div id="organization-options" class="mt-3 d-none">
                             <h6 class="text-muted">選擇要預先生成的整理方式：</h6>
                             <div class="row">
                                 <div class="col-md-4">
@@ -237,10 +226,10 @@
                 <!-- Simple live preview (optional, can be enhanced with JS) -->
                 <div class="mb-4">
                     <h5 class="mb-2">即時預覽</h5>
-                    <div id="preview" class="border p-3 bg-light markdown-content" style="min-height: 100px;"></div>
+                    <div id="preview" class="border p-3 bg-light markdown-content min-h-100"></div>
                 </div>
 
-                <button type="submit" name="action" value="save" class="btn btn-primary">
+                                <button type="submit" name="action" value="save" class="btn btn-primary">
                     <i class="fas fa-save me-1"></i> 儲存筆記
                 </button>
                 {% if source_question %}
@@ -255,76 +244,72 @@
         </div>
     </div>
 </div>
+
+<!-- 手寫輸入 Modal -->
+<div class="modal fade" id="handwritingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-pen-fancy me-2"></i>手寫輸入</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex flex-column align-items-stretch">
+                      <canvas id="handwriting-canvas" class="handwriting-canvas"></canvas>
+                    <div class="mt-2 d-flex justify-content-between">
+                        <div>
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="筆刷工具">
+                                        <button type="button" class="btn btn-outline-dark active" id="tool-pen"><i class="fas fa-pen me-1"></i>筆刷</button>
+                                        <button type="button" class="btn btn-outline-dark" id="tool-eraser"><i class="fas fa-eraser me-1"></i>橡皮擦</button>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="btn-clear-canvas"><i class="fas fa-trash me-1"></i>清除畫布</button>
+                        </div>
+                        <div>
+                                      <input type="file" id="photo-input" class="d-none" accept="image/*" />
+                                    <button type="button" class="btn btn-sm btn-outline-primary me-2" id="btn-upload-photo"><i class="fas fa-camera me-1"></i>上傳照片/拍照</button>
+                                    <button type="button" class="btn btn-sm btn-success" id="btn-save-handwriting"><i class="fas fa-check me-1"></i>辨識並插入</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
 {% endblock %}
 
 {% block scripts %}
 {{ super() }}
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>window.require||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs/loader.min.js"><\/script>');</script>
+<script src="/static/js/ai_editor.js"></script>
+<script>
+    // Show whether gateway or legacy is in use once probe completes
+    document.addEventListener('DOMContentLoaded', function(){
+        setTimeout(()=>{
+            const badge = document.getElementById('ai-gateway-status');
+            if(!badge || !window.AI_GATEWAY_BASE) return;
+            badge.style.display='inline-block';
+            badge.textContent = (window.useAIGateway===false? 'Legacy Flask' : 'Gateway');
+        }, 1800);
+    });
+</script>
 <style>
-    /* AI建議框樣式增強 */
+    .min-h-100 { min-height:100px; }
     .hover-bg:hover {
         background-color: rgba(0, 123, 255, 0.05) !important;
         transition: background-color 0.2s ease;
     }
-
-    #ai-suggestions-container .card {
-        border-left: 4px solid #17a2b8;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    .handwriting-canvas {
+        width: 100%;
+        height: 60vh;         /* 放大：視窗高的 60% */
+        max-height: 720px;    /* 上限，桌面寬螢幕不至於過高 */
+        min-height: 420px;    /* 下限，手機也較好寫 */
+        border: 1px dashed #999;
+        background: #fff;
+        touch-action: none;
+        box-sizing: border-box; /* 避免邊框造成座標偏移 */
     }
-
-    #ai-suggestions-container .btn {
-        transition: all 0.2s ease;
-    }
-
-    #ai-suggestions-container .btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    }
-
-    /* 文字偵測狀態邊框動畫 */
-    .ai-analyzing {
-        border-left: 3px solid #ffc107 !important;
-        animation: pulse-border 1.5s infinite;
-    }
-
-    @keyframes pulse-border {
-        0% {
-            border-left-color: #ffc107;
-        }
-
-        50% {
-            border-left-color: #ffed4e;
-        }
-
-        100% {
-            border-left-color: #ffc107;
-        }
-    }
-
-    .ai-suggestions-active {
-        border-left: 3px solid #28a745 !important;
-    }
-
-    .ai-detection-enabled {
-        border-left: 3px solid #007bff !important;
-    }
-
-    /* 建議項目動畫 */
-    #ai-suggestions-content>div {
-        animation: slideInUp 0.3s ease-out;
-    }
-
-    @keyframes slideInUp {
-        from {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
+    .handwriting-canvas { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: rgba(0,0,0,0); }
 </style>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
@@ -367,6 +352,280 @@
                 aiAssistControls.style.display = this.checked ? 'block' : 'none';
             });
         }
+
+        // 匯入檔案
+        const importBtn = document.getElementById('btn-import-file');
+        const fileInput = document.getElementById('hidden-file-input');
+        if(importBtn && fileInput){
+            importBtn.addEventListener('click', ()=> fileInput.click());
+            fileInput.addEventListener('change', async function(){
+                if(!this.files || !this.files.length) return;
+                const f = this.files[0];
+                try{
+                    const form = new FormData(); form.append('file', f);
+                    const resp = await fetch('/notes/import', { method:'POST', body: form });
+                    const data = await resp.json();
+                    if(!data.success){ throw new Error(data.message||'匯入失敗'); }
+                    const md = (data.markdown||'').toString();
+                    insertMarkdownAtCursor(md);
+                    if(data.guard && data.guard.normalized_match === false){
+                        window.showAlert && window.showAlert('warning', '警告：AI 格式化可能新增或遺失部分內容，已插入結果，請手動檢查。');
+                    } else {
+                        window.showAlert && window.showAlert('success', '匯入完成，已插入格式化內容。');
+                    }
+                }catch(err){ window.showAlert && window.showAlert('error', err.message||String(err)); }
+                finally{ this.value = ''; }
+            });
+        }
+
+        // 手寫輸入
+        const handwritingBtn = document.getElementById('btn-handwriting');
+        const handwritingModalEl = document.getElementById('handwritingModal');
+        let handwritingModal = null;
+        if(handwritingBtn && handwritingModalEl){
+            handwritingBtn.addEventListener('click', ()=>{
+                handwritingModal = new bootstrap.Modal(handwritingModalEl);
+                // Initialize only after modal is fully shown to get correct sizes
+                handwritingModalEl.addEventListener('shown.bs.modal', onHandwritingShown, { once: true });
+                handwritingModalEl.addEventListener('hidden.bs.modal', onHandwritingHidden, { once: true });
+                handwritingModal.show();
+            });
+        }
+
+        function onHandwritingShown(){
+            initHandwritingCanvas();
+            // Recompute size on resize/orientation changes
+            window.addEventListener('resize', resizeHandwritingCanvas);
+            // 恢復本地快照
+            restoreHandwritingSnapshot();
+        }
+        function onHandwritingHidden(){
+            window.removeEventListener('resize', resizeHandwritingCanvas);
+            // 儲存快照
+            saveHandwritingSnapshot();
+        }
+
+        function insertMarkdownAtCursor(md){
+            const editor = window.monacoEditor; const ta = window.contentEl;
+            const block = ('\n' + (md||'').trim() + '\n');
+            if(editor){
+                const pos = editor.getPosition();
+                editor.executeEdits('import-insert', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text: block, forceMoveMarkers: true }]);
+                editor.focus();
+            } else if(ta){
+                const start = ta.selectionStart||0; const end = ta.selectionEnd||start;
+                ta.value = ta.value.slice(0,start) + block + ta.value.slice(end);
+                ta.setSelectionRange(start + block.length, start + block.length);
+                ta.focus();
+            }
+            window.updatePreview && window.updatePreview();
+        }
+
+        // Handwriting canvas logic (simple freehand)
+        function initHandwritingCanvas(){
+            const canvas = document.getElementById('handwriting-canvas');
+            if(!canvas) return;
+            if(canvas.dataset.initialized === '1'){ resizeHandwritingCanvas(); return; }
+            const ctx = canvas.getContext('2d');
+            setupHandwritingCanvasSize(canvas, ctx);
+            ctx.lineJoin='round'; ctx.lineCap='round'; ctx.strokeStyle = '#222';
+            let drawing = false; let last = null;
+            let mode = 'pen'; // 'pen' | 'eraser'
+            function getScale(){
+                const r = canvas.getBoundingClientRect();
+                const dpr = Number(canvas.dataset.dpr || window.devicePixelRatio || 1);
+                const cssW = r.width || canvas.clientWidth || 1;
+                const cssH = r.height || canvas.clientHeight || 1;
+                const pxW = Math.max(1, Math.floor(cssW * dpr));
+                const pxH = Math.max(1, Math.floor(cssH * dpr));
+                return { sX: pxW / cssW, sY: pxH / cssH };
+            }
+            function applyMode(){
+                const sc = getScale();
+                const inv = 1 / Math.max(sc.sX, sc.sY);
+                if(mode === 'eraser'){
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.strokeStyle = 'rgba(0,0,0,1)';
+                    ctx.lineWidth = 18 * inv; // eraser size (CSS px)
+                } else {
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.strokeStyle = '#222';
+                    ctx.lineWidth = 2.2 * inv;
+                }
+            }
+            applyMode();
+            // Pointer Events (stylus/pen with pressure) if available
+            if(window.PointerEvent){
+                let activePointerId = null;
+                function p2loc(e){
+                    const r = canvas.getBoundingClientRect();
+                    // Recompute scale against current sizes to stay accurate after resize/orientation
+                    const dprNow = Number(canvas.dataset.dpr || window.devicePixelRatio || 1);
+                    const cssWNow = r.width || canvas.clientWidth || 1;
+                    const cssHNow = r.height || canvas.clientHeight || 1;
+                    const pxWNow = Math.max(1, Math.floor(cssWNow * dprNow));
+                    const pxHNow = Math.max(1, Math.floor(cssHNow * dprNow));
+                    const sX = pxWNow / cssWNow;
+                    const sY = pxHNow / cssHNow;
+                    const xCss = e.clientX - r.left;
+                    const yCss = e.clientY - r.top;
+                    return { x: xCss * sX, y: yCss * sY, p: e.pressure || 0.5 };
+                }
+                canvas.addEventListener('pointerdown', (e)=>{
+                    if(e.pointerType === 'mouse' && e.buttons !== 1) return; // only primary button
+                    activePointerId = e.pointerId; canvas.setPointerCapture(activePointerId);
+                    const loc = p2loc(e); drawing = true; last = loc; e.preventDefault();
+                });
+                canvas.addEventListener('pointermove', (e)=>{
+                    if(!drawing || e.pointerId !== activePointerId) return; const loc = p2loc(e);
+                    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(loc.x, loc.y);
+                    if(mode === 'pen'){
+                        const sc = getScale();
+                        const inv = 1 / Math.max(sc.sX, sc.sY);
+                        const base = 2.2 * inv;
+                        const width = Math.max(1.2 * inv, base * (loc.p || 0.5));
+                        const prev = ctx.lineWidth; ctx.lineWidth = width; ctx.stroke(); ctx.lineWidth = prev;
+                    } else {
+                        const sc = getScale();
+                        const inv = 1 / Math.max(sc.sX, sc.sY);
+                        const prev = ctx.lineWidth; ctx.lineWidth = 18 * inv; ctx.stroke(); ctx.lineWidth = prev;
+                    }
+                    last = loc; e.preventDefault();
+                });
+                const stop = ()=>{ if(!drawing) return; drawing = false; last = null; try{ if(activePointerId!=null){ canvas.releasePointerCapture(activePointerId); } }catch(_){} activePointerId = null; };
+                canvas.addEventListener('pointerup', stop); canvas.addEventListener('pointercancel', stop); canvas.addEventListener('lostpointercapture', stop);
+        } else {
+                // Fallback: mouse & touch
+                function pos(e){
+            const r = canvas.getBoundingClientRect();
+            const dprNow = Number(canvas.dataset.dpr || window.devicePixelRatio || 1);
+            const cssWNow = r.width || canvas.clientWidth || 1;
+            const cssHNow = r.height || canvas.clientHeight || 1;
+            const pxWNow = Math.max(1, Math.floor(cssWNow * dprNow));
+            const pxHNow = Math.max(1, Math.floor(cssHNow * dprNow));
+            const sX = pxWNow / cssWNow;
+            const sY = pxHNow / cssHNow;
+            const xCss = (e.touches? e.touches[0].clientX : e.clientX) - r.left;
+            const yCss = (e.touches? e.touches[0].clientY : e.clientY) - r.top;
+            return { x: xCss * sX, y: yCss * sY };
+                }
+                function start(e){ drawing = true; last = pos(e); e.preventDefault(); }
+                function move(e){ if(!drawing) return; const p = pos(e); ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; e.preventDefault(); }
+                function end(){ drawing = false; last=null; }
+                canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); canvas.addEventListener('mouseleave', end);
+                window.addEventListener('mouseup', end);
+                canvas.addEventListener('touchstart', start, { passive:false }); canvas.addEventListener('touchmove', move, { passive:false }); canvas.addEventListener('touchcancel', end);
+                window.addEventListener('touchend', end);
+            }
+            document.getElementById('btn-clear-canvas')?.addEventListener('click', ()=>{
+                // Clear full pixel canvas
+                ctx.clearRect(0,0,canvas.width,canvas.height);
+                // 也清掉快照
+                try{ localStorage.removeItem('handwriting_snapshot'); }catch(_e){}
+            });
+            // 工具切換
+            const penBtn = document.getElementById('tool-pen');
+            const eraserBtn = document.getElementById('tool-eraser');
+            penBtn?.addEventListener('click', ()=>{ mode='pen'; applyMode(); penBtn.classList.add('active'); eraserBtn?.classList.remove('active'); });
+            eraserBtn?.addEventListener('click', ()=>{ mode='eraser'; applyMode(); eraserBtn.classList.add('active'); penBtn?.classList.remove('active'); });
+            document.getElementById('btn-save-handwriting')?.addEventListener('click', async ()=>{
+                try{
+                    // export as PNG data URL
+                    const dataUrl = canvas.toDataURL('image/png');
+                    const resp = await fetch('/notes/handwriting', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ image_base64: dataUrl }) });
+                    const data = await resp.json();
+                    if(!data.success){ throw new Error(data.message||'辨識失敗'); }
+                    insertMarkdownAtCursor(data.markdown||'');
+                    if(handwritingModal){ handwritingModal.hide(); }
+                    window.showAlert && window.showAlert('success', '手寫辨識完成，已插入格式化內容。');
+                }catch(err){ window.showAlert && window.showAlert('error', err.message||String(err)); }
+            });
+            canvas.dataset.initialized = '1';
+        }
+
+        function setupHandwritingCanvasSize(canvas, ctx){
+            const dpr = window.devicePixelRatio || 1;
+            // Use canvas's CSS size
+            let cssW = canvas.clientWidth;
+            let cssH = canvas.clientHeight;
+            if(!cssW || !cssH){
+                const r = canvas.getBoundingClientRect();
+                cssW = r.width || 800;
+                cssH = r.height || 360;
+            }
+            cssW = Math.max(300, cssW);
+            cssH = Math.max(240, cssH);
+            // Preserve current bitmap when resizing
+            const prevW = canvas.width;
+            const prevH = canvas.height;
+            let snapshot = null;
+            if(prevW && prevH){
+                try{
+                    const off = document.createElement('canvas');
+                    off.width = prevW; off.height = prevH;
+                    const octx = off.getContext('2d');
+                    octx.drawImage(canvas, 0, 0);
+                    snapshot = off;
+                }catch(_e){}
+            }
+            const pxW = Math.max(1, Math.floor(cssW * dpr));
+            const pxH = Math.max(1, Math.floor(cssH * dpr));
+            canvas.width = pxW;
+            canvas.height = pxH;
+            canvas.dataset.dpr = String(dpr);
+            // No ctx.scale; we operate in pixel coordinates now
+            if(snapshot){
+                try{
+                    ctx.drawImage(snapshot, 0, 0, snapshot.width, snapshot.height, 0, 0, canvas.width, canvas.height);
+                }catch(_e){}
+            }
+        }
+
+        function resizeHandwritingCanvas(){
+            const canvas = document.getElementById('handwriting-canvas');
+            if(!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if(!ctx) return;
+            setupHandwritingCanvasSize(canvas, ctx);
+        }
+
+        // Local snapshot helpers
+        function saveHandwritingSnapshot(){
+            try{
+                const canvas = document.getElementById('handwriting-canvas'); if(!canvas) return;
+                const data = canvas.toDataURL('image/png');
+                localStorage.setItem('handwriting_snapshot', data);
+            }catch(_e){}
+        }
+    function restoreHandwritingSnapshot(){
+            try{
+                const data = localStorage.getItem('handwriting_snapshot'); if(!data) return;
+                const canvas = document.getElementById('handwriting-canvas'); if(!canvas) return;
+                const ctx = canvas.getContext('2d'); if(!ctx) return;
+                const img = new Image();
+        img.onload = function(){ ctx.drawImage(img, 0, 0, canvas.width, canvas.height); };
+                img.src = data;
+            }catch(_e){}
+        }
+
+        // Upload photo to OCR
+        const btnUploadPhoto = document.getElementById('btn-upload-photo');
+        const photoInput = document.getElementById('photo-input');
+        btnUploadPhoto?.addEventListener('click', ()=> photoInput?.click());
+        photoInput?.addEventListener('change', async function(){
+            if(!this.files || !this.files.length){ return; }
+            try{
+                const f = this.files[0];
+                const form = new FormData(); form.append('image', f, f.name||'photo.png');
+                const resp = await fetch('/notes/handwriting', { method:'POST', body: form });
+                const data = await resp.json();
+                if(!data.success){ throw new Error(data.message||'辨識失敗'); }
+                insertMarkdownAtCursor(data.markdown||'');
+                if(handwritingModal){ handwritingModal.hide(); }
+                window.showAlert && window.showAlert('success', '照片辨識完成，已插入格式化內容。');
+            }catch(err){ window.showAlert && window.showAlert('error', err.message||String(err)); }
+            finally{ this.value = ''; }
+        });
 
         // AI智能生成按鈕
         if (generateBtn) {
@@ -415,488 +674,37 @@
             });
         }
 
-        // ===== AI文字偵測功能 =====
-        let textDetectionEnabled = false;
-        let detectionTimeout = null;
-        let suggestionPopover = null;
-        
-        // 設為全局變數
-        window.textDetectionEnabled = textDetectionEnabled;
-
-        // 初始化AI文字偵測
-        const textDetectionCheckbox = document.getElementById('enable_ai_text_detection');
-        if (textDetectionCheckbox) {
-            textDetectionCheckbox.addEventListener('change', function () {
-                textDetectionEnabled = this.checked;
-                window.textDetectionEnabled = textDetectionEnabled; // 同步全局變數
-
-                if (textDetectionEnabled) {
-                    // 啟用文字偵測
-                    enableTextDetection();
-                    showAlert('success', '🔍 AI文字偵測已啟用！系統將即時分析您的輸入並提供建議。');
-                } else {
-                    // 停用文字偵測
-                    disableTextDetection();
-                    showAlert('info', 'AI文字偵測已停用。');
-                }
-            });
-        }
-
-        function enableTextDetection() {
-            if (!contentEl) return;
-
-            // 監聽內容變化
-            contentEl.addEventListener('input', handleTextInput);
-            contentEl.addEventListener('keyup', handleTextInput);
-
-            // 添加視覺提示
-            contentEl.classList.add('ai-detection-enabled');
-        }
-
-        function disableTextDetection() {
-            if (!contentEl) return;
-
-            // 移除事件監聽器
-            contentEl.removeEventListener('input', handleTextInput);
-            contentEl.removeEventListener('keyup', handleTextInput);
-
-            // 移除視覺提示
-            contentEl.classList.remove('ai-detection-enabled', 'ai-analyzing', 'ai-suggestions-active');
-
-            // 隱藏任何顯示的建議
-            hideSuggestions();
-        }
-
-        function handleTextInput() {
-            if (!window.textDetectionEnabled) return;
-
-            // 清除上一個計時器
-            if (detectionTimeout) {
-                clearTimeout(detectionTimeout);
-            }
-
-            // 設定新的計時器（防抖，1.5秒後觸發分析）
-            detectionTimeout = setTimeout(() => {
-                analyzeTextContent();
-            }, 1500);
-        }
-
-        function analyzeTextContent() {
-            const content = contentEl.value.trim();
-
-            // 如果內容太短，不進行分析
-            if (content.length < 10) {
-                hideSuggestions();
-                return;
-            }
-
-            // 顯示分析中狀態
-            showAnalyzing();
-
-            // 發送分析請求
-            fetch(`/notes/detect-text`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    content: content,
-                    context: {
-                        title: document.getElementById('title').value,
-                        existing_content: content
-                    }
-                })
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.has_suggestions) {
-                        showSuggestions(data);
-                    } else {
-                        hideSuggestions();
-                    }
-                })
-                .catch(error => {
-                    console.error('AI文字偵測錯誤:', error);
-                    hideSuggestions();
-                });
-        }
-
-        function showAnalyzing() {
-            // 顯示分析中狀態
-            contentEl.classList.remove('ai-detection-enabled', 'ai-suggestions-active');
-            contentEl.classList.add('ai-analyzing');
-
-            // 如果已有建議框，顯示分析中狀態
-            const suggestionContainer = document.getElementById('ai-suggestions-container');
-            const suggestionContent = document.getElementById('ai-suggestions-content');
-            if (suggestionContainer && suggestionContent) {
-                suggestionContent.innerHTML = '<div class="text-center p-3"><i class="fas fa-spinner fa-spin me-2 text-warning"></i><strong>AI正在分析您的內容...</strong></div>';
-                suggestionContainer.style.display = 'block';
-            }
-        }
-
-        function showSuggestions(data) {
-            // 顯示有建議狀態
-            contentEl.classList.remove('ai-detection-enabled', 'ai-analyzing');
-            contentEl.classList.add('ai-suggestions-active');
-
-            // 使用新的建議容器
-            const suggestionContainer = document.getElementById('ai-suggestions-container');
-            const suggestionContent = document.getElementById('ai-suggestions-content');
-
-            if (!suggestionContainer || !suggestionContent) {
-                console.error('找不到建議顯示容器');
-                return;
-            }
-
-            // 構建建議內容
-            let html = '';
-
-            // 顯示智慧建議 - 可一鍵應用
-            if (data.suggestions && data.suggestions.length > 0) {
-                html += '<div class="mb-3"><strong>💡 智慧建議：</strong></div>';
-                data.suggestions.forEach((suggestion, index) => {
-                    const iconClass = suggestion.icon === 'format' ? 'fa-align-left' :
-                        suggestion.icon === 'spell' ? 'fa-spell-check' :
-                            suggestion.icon === 'structure' ? 'fa-sitemap' : 'fa-plus-circle';
-                    const priorityClass = suggestion.priority === 'high' ? 'text-danger' :
-                        suggestion.priority === 'medium' ? 'text-warning' : 'text-info';
-
-                    html += `
-                        <div class="d-flex align-items-center justify-content-between mb-2 p-3 border rounded hover-bg">
-                            <div class="flex-grow-1">
-                                <div class="d-flex align-items-center mb-1">
-                                    <i class="fas ${iconClass} ${priorityClass} me-2"></i>
-                                    <strong>${suggestion.title}</strong>
-                                    <span class="badge bg-${suggestion.priority === 'high' ? 'danger' : suggestion.priority === 'medium' ? 'warning' : 'info'} ms-2">${suggestion.priority}</span>
-                                </div>
-                                <div class="text-muted small">${suggestion.description}</div>
-                            </div>
-                            <button type="button" class="btn btn-primary btn-sm ms-3" onclick="applySuggestion(${index}, '${suggestion.type}'); return false;">
-                                <i class="fas fa-magic me-1"></i>一鍵套用
-                            </button>
-                        </div>
-                    `;
-                });
-            }
-
-            // 顯示快速修正 - 精確替換
-            if (data.quick_fixes && data.quick_fixes.length > 0) {
-                html += '<div class="mb-3 mt-4"><strong>⚡ 快速修正：</strong></div>';
-                data.quick_fixes.forEach((fix, index) => {
-                    // 避免字符串中的引號問題
-                    const originalText = fix.original.replace(/'/g, "\\'").replace(/"/g, '\\"');
-                    const suggestedText = fix.suggested.replace(/'/g, "\\'").replace(/"/g, '\\"');
-                    
-                    html += `
-                        <div class="d-flex align-items-center justify-content-between mb-2 p-3 border border-warning rounded">
-                            <div class="flex-grow-1">
-                                <div class="d-flex align-items-center mb-1">
-                                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>
-                                    <strong>${fix.issue}</strong>
-                                </div>
-                                <div class="small">
-                                    <span class="text-decoration-line-through text-muted">${fix.original}</span>
-                                    <i class="fas fa-arrow-right mx-2 text-success"></i>
-                                    <span class="text-success fw-bold">${fix.suggested}</span>
-                                </div>
-                            </div>
-                            <button type="button" class="btn btn-success btn-sm ms-3" onclick="applyQuickFix('${originalText}', '${suggestedText}'); return false;">
-                                <i class="fas fa-check me-1"></i>立即修正
-                            </button>
-                        </div>
-                    `;
-                });
-            }
-
-            // 顯示內容增強建議 - 智能插入
-            if (data.content_enhancements && data.content_enhancements.length > 0) {
-                html += '<div class="mb-3 mt-4"><strong>📈 內容增強建議：</strong></div>';
-                data.content_enhancements.forEach((enhancement, index) => {
-                    // 避免字符串中的引號問題，並使用data-attribute
-                    const enhancementText = enhancement.suggestion.replace(/'/g, "\\'").replace(/"/g, '\\"');
-                    
-                    html += `
-                        <div class="d-flex align-items-center justify-content-between mb-2 p-3 border border-info rounded">
-                            <div class="flex-grow-1">
-                                <div class="d-flex align-items-center mb-1">
-                                    <i class="fas fa-lightbulb text-info me-2"></i>
-                                    <strong>內容建議</strong>
-                                </div>
-                                <div class="small text-muted mb-1">${enhancement.reason}</div>
-                                <div class="small">${enhancement.suggestion}</div>
-                            </div>
-                            <button type="button" class="btn btn-info btn-sm ms-3" data-enhancement="${enhancementText}" onclick="applyContentEnhancementFromButton(this); return false;">
-                                <i class="fas fa-plus me-1"></i>加入內容
-                            </button>
-                        </div>
-                    `;
-                });
-            }
-
-            // 顯示格式化建議 - 自動格式化
-            if (data.formatting_tips && data.formatting_tips.length > 0) {
-                html += '<div class="mb-3 mt-4"><strong>📝 格式化建議：</strong></div>';
-                data.formatting_tips.forEach((tip, index) => {
-                    const tipText = tip.replace(/'/g, "\\'").replace(/"/g, '\\"');
-                    
-                    html += `
-                        <div class="d-flex align-items-center justify-content-between mb-2 p-3 border border-secondary rounded">
-                            <div class="flex-grow-1">
-                                <div class="d-flex align-items-center mb-1">
-                                    <i class="fas fa-edit text-secondary me-2"></i>
-                                    <strong>格式化建議</strong>
-                                </div>
-                                <div class="small">${tip}</div>
-                            </div>
-                            <button type="button" class="btn btn-outline-secondary btn-sm ms-3" data-tip="${tip.replace(/'/g, "\\'").replace(/"/g, '\\"')}" onclick="applyFormattingFromButton(this); return false;">
-                                <i class="fas fa-paint-brush me-1"></i>套用格式
-                            </button>
-                        </div>
-                    `;
-                });
-            }
-
-            if (html) {
-                suggestionContent.innerHTML = html;
-                suggestionContainer.style.display = 'block';
-
-                // 添加一個總覽按鈕
-                html = `
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <strong>🎯 AI偵測到 ${(data.suggestions?.length || 0) + (data.quick_fixes?.length || 0) + (data.content_enhancements?.length || 0)} 個改進建議</strong>
-                        </div>
-                        <button type="button" class="btn btn-success btn-sm" onclick="applyAllSuggestions(); return false;">
-                            <i class="fas fa-magic me-1"></i>一鍵套用全部
-                        </button>
-                    </div>
-                ` + html;
-                suggestionContent.innerHTML = html;
-
-                // 儲存建議資料供後續使用
-                window.currentSuggestionData = data;
-            } else {
-                hideSuggestions();
-            }
-        }
-
-        function hideSuggestions() {
-            contentEl.classList.remove('ai-analyzing', 'ai-suggestions-active');
-            if (window.textDetectionEnabled) {
-                contentEl.classList.add('ai-detection-enabled');
-            }
-
-            const suggestionContainer = document.getElementById('ai-suggestions-container');
-            if (suggestionContainer) {
-                suggestionContainer.style.display = 'none';
-            }
-        }
-
-        // 將函數設為全局，以便onclick可以調用
-        window.applyQuickFix = function(original, suggested) {
-            console.log('applyQuickFix called with:', original, suggested);
-            
-            // 在內容中找到並替換文字
-            const currentContent = contentEl.value;
-            const newContent = currentContent.replace(original, suggested);
-
-            if (newContent !== currentContent) {
-                contentEl.value = newContent;
-                updatePreview();
-                showAlert('success', `✅ 已修正：「${original}」→「${suggested}」`);
-
-                // 重新觸發分析，看看還有沒有其他建議
-                if (window.textDetectionEnabled) {
-                    setTimeout(() => analyzeTextContent(), 1000);
-                }
-            } else {
-                showAlert('warning', '未找到需要修正的內容');
-            }
-            
-            return false;
-        };
-
-        // 新增：套用智慧建議 - 設為全局函數
-        window.applySuggestion = function(index, type) {
-            console.log('applySuggestion called with:', index, type);
-            
-            const data = window.currentSuggestionData;
-            if (!data || !data.suggestions || !data.suggestions[index]) {
-                showAlert('error', '建議資料不完整');
-                return false;
-            }
-
-            const suggestion = data.suggestions[index];
-            console.log('Applying suggestion:', suggestion);
-
-            // 根據建議類型執行不同的操作
-            switch (type) {
-                case '格式優化':
-                    applyFormatOptimization(suggestion);
-                    break;
-                case '錯字修正':
-                    // 這個通常會在 quick_fixes 裡
-                    showAlert('info', '請使用下方的「快速修正」功能');
-                    break;
-                case '內容補強':
-                    applyContentEnhancement(suggestion.description);
-                    break;
-                case '結構建議':
-                    applyStructureSuggestion(suggestion);
-                    break;
-                default:
-                    // 預設行為：在游標位置插入建議
-                    insertSuggestionAtCursor(suggestion.description);
-            }
-
-            showAlert('success', `✅ 已套用建議：${suggestion.title}`);
-            return false;
-        };
-
-        // 新增：套用格式優化
-        function applyFormatOptimization(suggestion) {
-            const content = contentEl.value;
-            let newContent = content;
-
-            // 基本的格式優化規則
-            if (suggestion.title.includes('標題格式')) {
-                // 優化標題格式
-                newContent = optimizeHeaders(content);
-            } else if (suggestion.title.includes('列表格式')) {
-                // 優化列表格式
-                newContent = optimizeLists(content);
-            } else if (suggestion.title.includes('段落')) {
-                // 優化段落間距
-                newContent = optimizeParagraphs(content);
-            }
-
-            if (newContent !== content) {
-                contentEl.value = newContent;
-                updatePreview();
-            }
-        }
-
-        // 新增：套用內容增強
+    // 新增：套用內容增強（仍供「AI生成筆記」與其他入口使用）
         function applyContentEnhancement(enhancement) {
-            const cursorPos = contentEl.selectionStart;
-            const content = contentEl.value;
+            const textAreaPos = contentEl.selectionStart || 0;
+            const content = (window.monacoEditor ? window.monacoEditor.getValue() : contentEl.value);
 
             // 在游標位置插入增強內容
-            const beforeCursor = content.substring(0, cursorPos);
-            const afterCursor = content.substring(cursorPos);
+            const beforeCursor = content.substring(0, textAreaPos);
+            const afterCursor = content.substring(textAreaPos);
 
             const newContent = beforeCursor + '\n\n' + enhancement + '\n\n' + afterCursor;
 
-            contentEl.value = newContent;
+            if (window.monacoEditor) {
+                const pos = window.monacoEditor.getPosition();
+                window.monacoEditor.setValue(newContent);
+                if (pos) {
+                    const newPos = { lineNumber: pos.lineNumber + 2, column: 1 };
+                    window.monacoEditor.setPosition(newPos);
+                    window.monacoEditor.focus();
+                }
+            } else {
+                contentEl.value = newContent;
+                const newCursorPos = textAreaPos + enhancement.length + 4;
+                contentEl.setSelectionRange(newCursorPos, newCursorPos);
+                contentEl.focus();
+            }
             updatePreview();
-
-            // 將游標移到插入內容的末尾
-            const newCursorPos = cursorPos + enhancement.length + 4;
-            contentEl.setSelectionRange(newCursorPos, newCursorPos);
-            contentEl.focus();
             
             showAlert('success', '✅ 內容已加入！');
         }
 
-        // 新增：從按鈕套用內容增強 - 設為全局函數 (AI生成實際內容)
-        window.applyContentEnhancementFromButton = function(button) {
-            const enhancementReason = button.getAttribute('data-enhancement');
-            if (enhancementReason) {
-                // 顯示載入狀態
-                button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>AI生成中...';
-                button.disabled = true;
-                
-                // 調用AI生成實際內容
-                generateEnhancementContent(enhancementReason, button);
-            } else {
-                showAlert('error', '無法獲取增強內容');
-            }
-            return false;
-        };
-
-        // 新增：AI生成增強內容
-        function generateEnhancementContent(enhancementReason, button) {
-            const currentContent = contentEl.value;
-            const title = document.getElementById('title').value;
-            
-            // 發送AI請求生成實際內容
-            fetch('/notes/detect-text', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    action: 'generate_enhancement',
-                    enhancement_request: enhancementReason,
-                    current_content: currentContent,
-                    title: title,
-                    context: {
-                        title: title,
-                        existing_content: currentContent
-                    }
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.generated_content) {
-                    // 將生成的內容插入到游標位置
-                    applyContentEnhancement(data.generated_content);
-                    showAlert('success', '✅ AI已生成並加入增強內容！');
-                } else {
-                    // 如果AI生成失敗，則直接插入建議文字作為備案
-                    applyContentEnhancement(enhancementReason);
-                    showAlert('warning', '使用了建議文字，您可以進一步編輯。');
-                }
-            })
-            .catch(error => {
-                console.error('AI內容生成錯誤:', error);
-                // 錯誤時使用原始建議
-                applyContentEnhancement(enhancementReason);
-                showAlert('warning', 'AI生成失敗，已插入建議文字。');
-            })
-            .finally(() => {
-                // 恢復按鈕狀態
-                button.innerHTML = '<i class="fas fa-plus me-1"></i>加入內容';
-                button.disabled = false;
-            });
-        }
-
-        // 新增：套用格式化建議 - 設為全局函數 (實際執行格式化)
-        window.applyFormatting = function(tip) {
-            const content = contentEl.value;
-            let newContent = content;
-
-            // 根據格式化建議類型執行具體格式化操作
-            if (tip.includes('粗體') || tip.includes('強調關鍵詞')) {
-                newContent = applyBoldFormatting(content);
-            } else if (tip.includes('標題') || tip.includes('章節')) {
-                newContent = applyHeaderFormatting(content);
-            } else if (tip.includes('列表') || tip.includes('條列')) {
-                newContent = applyListFormatting(content);
-            } else if (tip.includes('Markdown')) {
-                newContent = enhanceMarkdownFormatting(content);
-            } else if (tip.includes('標點符號')) {
-                newContent = fixPunctuation(content);
-            } else if (tip.includes('間距')) {
-                newContent = optimizeSpacing(content);
-            } else if (tip.includes('代碼') || tip.includes('程式')) {
-                newContent = applyCodeFormatting(content);
-            } else {
-                // 通用格式化
-                newContent = applyGeneralFormatting(content);
-            }
-
-            if (newContent !== content) {
-                contentEl.value = newContent;
-                updatePreview();
-                showAlert('success', '✅ 格式化完成');
-            } else {
-                showAlert('info', '內容已是最佳格式');
-            }
-        };
-
-        // 新增：套用粗體格式化
+    // 新增：套用粗體格式化
         function applyBoldFormatting(content) {
             // 自動識別並加粗關鍵詞
             const keywords = ['重要', '關鍵', '核心', '重點', '主要', 'CIA', 'CPR', 'AI', 'API', 'HTTP', 'HTTPS'];
@@ -1000,98 +808,6 @@
             return newContent;
         }
 
-        // 新增：從按鈕套用格式化建議 - 設為全局函數
-        window.applyFormattingFromButton = function(button) {
-            const tip = button.getAttribute('data-tip');
-            if (tip) {
-                applyFormatting(tip);
-            } else {
-                showAlert('error', '無法獲取格式化建議');
-            }
-            return false;
-        };
-
-        // 新增：套用結構建議
-        function applyStructureSuggestion(suggestion) {
-            // 這裡可以實現結構重組邏輯
-            const content = contentEl.value;
-
-            if (suggestion.description.includes('增加標題')) {
-                insertSuggestionAtCursor('## 新章節標題\n\n');
-            } else if (suggestion.description.includes('分段')) {
-                // 自動分段
-                const newContent = autoCreateParagraphs(content);
-                contentEl.value = newContent;
-                updatePreview();
-            }
-        }
-
-        // 新增：在游標位置插入建議
-        function insertSuggestionAtCursor(text) {
-            const cursorPos = contentEl.selectionStart;
-            const content = contentEl.value;
-
-            const beforeCursor = content.substring(0, cursorPos);
-            const afterCursor = content.substring(cursorPos);
-
-            const newContent = beforeCursor + text + afterCursor;
-
-            contentEl.value = newContent;
-            updatePreview();
-
-            // 將游標移到插入內容的末尾
-            const newCursorPos = cursorPos + text.length;
-            contentEl.setSelectionRange(newCursorPos, newCursorPos);
-            contentEl.focus();
-        }
-
-        // 新增：一鍵套用全部建議 - 設為全局函數
-        window.applyAllSuggestions = function() {
-            console.log('applyAllSuggestions called');
-            
-            const data = window.currentSuggestionData;
-            if (!data) {
-                showAlert('warning', '沒有可套用的建議');
-                return false;
-            }
-
-            let appliedCount = 0;
-
-            // 套用所有快速修正
-            if (data.quick_fixes && data.quick_fixes.length > 0) {
-                console.log('Applying quick fixes:', data.quick_fixes);
-                data.quick_fixes.forEach(fix => {
-                    const currentContent = contentEl.value;
-                    const newContent = currentContent.replace(fix.original, fix.suggested);
-                    if (newContent !== currentContent) {
-                        contentEl.value = newContent;
-                        appliedCount++;
-                    }
-                });
-            }
-
-            // 套用格式化建議
-            if (data.formatting_tips && data.formatting_tips.length > 0) {
-                console.log('Applying formatting tips:', data.formatting_tips);
-                let content = contentEl.value;
-                content = enhanceMarkdownFormatting(content);
-                content = fixPunctuation(content);
-                content = optimizeSpacing(content);
-                contentEl.value = content;
-                appliedCount++;
-            }
-
-            updatePreview();
-            showAlert('success', `✅ 已套用 ${appliedCount} 項建議！`);
-
-            // 隱藏建議框
-            setTimeout(() => {
-                hideSuggestions();
-            }, 2000);
-            
-            return false;
-        };
-
         // 輔助函數：優化標題格式
         function optimizeHeaders(content) {
             return content.replace(/^(\s*)#+\s*/gm, (match, spaces) => {
@@ -1114,7 +830,6 @@
         window.enhanceMarkdownFormatting = function(content) {
             // 確保代碼塊格式正確
             content = content.replace(/```(\w+)?\n/g, '```$1\n');
-            // 確保粗體格式正確
             content = content.replace(/\*\*([^*]+)\*\*/g, '**$1**');
             return content;
         };
@@ -1137,9 +852,8 @@
             return content;
         };
 
-        // 輔助函數：自動創建段落
+        // 輔助函數：自動創建段落（保留）
         function autoCreateParagraphs(content) {
-            // 在句號後自動分段（如果沒有換行的話）
             return content.replace(/。([^\n])/g, '。\n\n$1');
         }
 

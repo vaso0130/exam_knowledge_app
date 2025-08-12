@@ -2,6 +2,7 @@
 import json
 from .database import NotesDatabaseManager
 from .ai_client import NoteAIClient
+from .ghost_ai_client import GhostAIClient
 from typing import List, Dict, Any, Optional
 
 class NoteManager:
@@ -12,6 +13,7 @@ class NoteManager:
     def __init__(self):
         self.db_manager = NotesDatabaseManager()
         self.ai_client = NoteAIClient()
+        self.ghost_client = GhostAIClient()  # Ghost 功能專用客戶端
 
     # === 基本筆記操作 ===
 
@@ -259,6 +261,28 @@ class NoteManager:
 
     def update_existing_note(self, user_id: int, note_id: str, enable_ai_reanalysis: bool = False, **updates) -> bool:
         """Updates an existing note. Optionally re-runs AI analysis if content changes."""
+        # 取得舊內容以保存版本
+        original_note = None
+        try:
+            original_note = self.db_manager.get_note_by_id(user_id, note_id)
+        except Exception:
+            original_note = None
+
+        if original_note and 'content' in updates and updates['content'] != original_note.get('content'):
+            # 保存舊內容為版本歷史（使用 ai_analysis 表重用存儲）
+            try:
+                self.db_manager.save_ai_analysis(
+                    user_id, note_id, 'revision_snapshot', {
+                        'previous_title': original_note.get('title'),
+                        'previous_content': original_note.get('content'),
+                        'previous_ai_summary': original_note.get('ai_summary'),
+                        'previous_ai_keywords': original_note.get('ai_keywords'),
+                        'length': len(original_note.get('content') or ''),
+                    }
+                )
+            except Exception as e:
+                print(f"Warning: failed to save revision snapshot: {e}")
+
         if enable_ai_reanalysis and 'content' in updates:
             analysis_results = self.ai_client.analyze_note_content(updates['content'])
             updates.update({
@@ -299,6 +323,7 @@ class NoteManager:
             'qa_learning': self.ai_client.organize_with_qa_learning,
             'comparison': self.ai_client.organize_with_comparison,
             'memory_palace': self.ai_client.organize_with_memory_palace,
+            'mandala_ninegrid': self.ai_client.organize_with_mandala_ninegrid,
             'format_enhance': self.ai_client.format_and_enhance_content
         }
         
@@ -715,7 +740,10 @@ class NoteManager:
         """
         try:
             # 調用AI客戶端進行文字偵測
-            detection_result = self.ai_client.detect_and_suggest_text(content, context)
+            detection_result = self.ghost_client.detect_and_suggest_text(content, context)
+
+            # 規範化回傳結構，避免下游對非陣列型別進行迭代
+            detection_result = self._normalize_detection_result(detection_result)
 
             # 確保 has_suggestions 欄位可靠存在
             detection_result['has_suggestions'] = bool(
@@ -740,6 +768,36 @@ class NoteManager:
                 'has_suggestions': False,
                 'error': str(e)
             }
+
+    def _normalize_detection_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """將 AI 偵測結果的欄位規範為預期型別，避免布林或物件導致迭代錯誤。"""
+        try:
+            normalized = dict(result or {})
+
+            def as_list(v):
+                # 將輸入轉為 list：list -> 原樣；dict -> [dict]；str -> [str]；True/False/None -> []；其他 -> []
+                if isinstance(v, list):
+                    return v
+                if isinstance(v, dict):
+                    return [v]
+                if isinstance(v, str):
+                    return [v]
+                return []
+
+            normalized['suggestions'] = as_list(normalized.get('suggestions'))
+            normalized['quick_fixes'] = as_list(normalized.get('quick_fixes'))
+            normalized['content_enhancements'] = as_list(normalized.get('content_enhancements'))
+            normalized['formatting_tips'] = as_list(normalized.get('formatting_tips'))
+
+            return normalized
+        except Exception:
+            # 發生任何異常時回傳安全的空結構
+            return {
+                'suggestions': [],
+                'quick_fixes': [],
+                'content_enhancements': [],
+                'formatting_tips': []
+            }
     
     def _log_text_detection(self, user_id: int, content: str, result: Dict[str, Any]) -> None:
         """
@@ -753,7 +811,12 @@ class NoteManager:
         try:
             # 這裡可以記錄到資料庫或日誌文件
             # 暫時只做簡單的控制台記錄
-            suggestions_count = len(result.get('suggestions', []))
+            suggestions_field = result.get('suggestions', [])
+            # 避免 suggestions 是 bool 或其他不可迭代型別
+            if not isinstance(suggestions_field, list):
+                suggestions_count = 0
+            else:
+                suggestions_count = len(suggestions_field)
             if suggestions_count > 0:
                 print(f"用戶 {user_id} 的文字偵測產生了 {suggestions_count} 個建議")
         except Exception as e:
@@ -797,5 +860,47 @@ class NoteManager:
                 'generated_content': enhancement_request,  # 失敗時返回原始建議
                 'success': False,
                 'error': str(e)
+            }
+
+    def update_note_content_directly(self, user_id: int, note_id: str, new_content: str) -> Dict[str, Any]:
+        """
+        直接更新筆記內容（用於格式化與補強功能）
+        
+        Args:
+            user_id: 用戶ID
+            note_id: 筆記ID
+            new_content: 新的內容
+            
+        Returns:
+            更新結果
+        """
+        try:
+            # 檢查筆記是否存在且用戶有權限
+            note = self.db_manager.get_note_by_id(user_id, note_id)
+            if not note:
+                return {
+                    'success': False,
+                    'error': '筆記不存在或無權限訪問'
+                }
+            
+            # 更新筆記內容
+            update_result = self.db_manager.update_note(user_id, note_id, content=new_content)
+            
+            if update_result:
+                return {
+                    'success': True,
+                    'message': '筆記內容已成功更新'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': '更新筆記內容失敗'
+                }
+                
+        except Exception as e:
+            print(f"直接更新筆記內容時發生錯誤: {e}")
+            return {
+                'success': False,
+                'error': f'更新筆記內容時發生錯誤: {str(e)}'
             }
 

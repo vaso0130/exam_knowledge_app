@@ -266,6 +266,35 @@ python web_app.py
 python admin_server.py
 ```
 
+### （新）AI Gateway（FastAPI）
+
+提供統一 AI 偵測 / 增強 API 與 Markdown LSP WebSocket Proxy（實驗性）。
+
+啟動：
+
+```bash
+uvicorn src.ai_gateway:app --reload --port 8001
+```
+
+健康檢查：
+
+```bash
+curl http://localhost:8001/health
+```
+
+主要端點：
+
+- POST /ai/detect  （語意偵測、可帶 action=generate_enhancement）
+- POST /ai/enhance （直接內容增強）
+- WS  /lsp/markdown （Marksman LSP 代理，需安裝 marksman）
+
+環境變數：
+```bash
+MARKSMAN_CMD=marksman  # 自訂 marksman 可執行檔
+```
+
+前端可用特徵旗標切換至新 Gateway，原 Flask 路由保留做為回退。
+
 #### 生產模式
 ```bash
 # 使用 Waitress（推薦用於 Windows 或簡單部署）
@@ -345,12 +374,14 @@ python admin_manager.py cleanup --hours 48            # 清理過期會話
 
 #### 問題描述
 當上傳檔案進行 AI 分析時，可能遇到：
-```
+
+```text
 A timeout occurred Error code 524
 Visit cloudflare.com for more information.
 ```
 
 #### 原因分析
+
 - **Cloudflare 超時限制**：免費方案 100 秒，Pro 方案 600 秒
 - **AI 處理耗時**：Gemini 分析大文件、OCR 識別、8 步驟處理管線
 - **服務實際正常**：後端仍在處理，只是 CDN 誤判為超時
@@ -360,20 +391,23 @@ Visit cloudflare.com for more information.
 系統已內建**非同步處理模式**來解決此問題：
 
 1. **上傳檔案時**：
-   - ✅ 勾選「🚀 非同步處理模式」（預設已勾選）
-   - 📤 檔案立即上傳，返回處理狀態頁面
-   - ⏱️ 即時查看處理進度和狀態
+
+  - ✅ 勾選「🚀 非同步處理模式」（預設已勾選）
+  - 📤 檔案立即上傳，返回處理狀態頁面
+  - ⏱️ 即時查看處理進度和狀態
 
 2. **處理流程**：
-   ```
-   上傳檔案 → 立即回應 → 背景處理 → 即時更新進度 → 完成通知
-   ```
+
+  ```text
+  上傳檔案 → 立即回應 → 背景處理 → 即時更新進度 → 完成通知
+  ```
 
 3. **技術優勢**：
-   - 🚫 避免 Cloudflare 超時
-   - 📊 即時進度追蹤
-   - 🔄 自動狀態更新
-   - 📱 支援大檔案處理
+
+  - 🚫 避免 Cloudflare 超時
+  - 📊 即時進度追蹤
+  - 🔄 自動狀態更新
+  - 📱 支援大檔案處理
 
 #### 🎛️ 手動選擇模式
 
@@ -401,6 +435,7 @@ Visit cloudflare.com for more information.
 ### 完整生產環境架構
 
 #### Linux 環境（推薦）
+
 ```bash
 # 1. 安裝 Gunicorn（Linux 環境）
 pip install gunicorn[gevent]
@@ -420,6 +455,7 @@ sudo systemctl start exam-app
 ```
 
 #### WSL 環境（Windows 用戶推薦）
+
 ```bash
 # 1. 在 WSL2 中安裝 Granian
 pip install granian
@@ -440,7 +476,8 @@ granian --interface wsgi \
 # 4. Windows 主機可透過 localhost:8001 存取
 ```
 
-#### Windows 環境
+#### Windows 部署環境
+
 ```powershell
 # 1. 使用 Waitress（Windows 原生支援）
 pip install waitress
@@ -531,6 +568,7 @@ exam_knowledge_app/
 ## 🎯 主要功能
 
 ### 📤 內容上傳與分析
+
 - **智慧分類**：自動識別考題或學習資料
 - **多格式支援**：PDF、Word、圖片、網頁
 - **批次處理**：同時處理多個檔案
@@ -555,12 +593,14 @@ exam_knowledge_app/
 - **🆕 解題技巧整合**：自動生成學習建議與解題策略
 
 ### 🔍 知識管理
+
 - **知識圖譜**：概念關聯性視覺化
 - **科目分類**：自動分類與統計
 - **搜尋功能**：快速定位相關內容
 - **進度追蹤**：學習成效分析
 
 ### 👤 用戶體驗
+
 - **角色差異化系統**：管理者與檢視者不同的權限與限制
 - **自動點數恢復**：每小時恢復 100 點，確保持續學習能力
 - **內容品質保護**：AI 自動驗證上傳內容，拒絕非學習相關材料
@@ -675,6 +715,7 @@ python-dotenv>=1.0.0          # 環境變數管理
 ## 🎨 使用範例
 
 ### 學習資料處理範例
+
 ```python
 # 處理學習資料（需要登入用戶，檢視者需要消耗點數）
 from src.flows.content_flow import ContentFlow
@@ -703,6 +744,7 @@ result = content_flow.complete_ai_processing(
 ```
 
 ### 點數系統使用範例
+
 ```python
 # 點數系統核心功能
 from src.utils.points_manager import PointsManager
@@ -722,6 +764,7 @@ points_manager.refresh_user_points(user_id)
 ```
 
 ### 管理系統使用範例
+
 ```python
 # 使用 CLI 管理工具
 # 創建新用戶
@@ -812,4 +855,4 @@ python admin_manager.py show-blacklist
 - 功能建議：[GitHub Discussions]
 
 ---
-*使用 ❤️ 與 ☕ 開發，致力於提升學習效率*
+使用 ❤️ 與 ☕ 開發，致力於提升學習效率

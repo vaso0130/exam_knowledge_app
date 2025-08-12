@@ -2,6 +2,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from ..notes.note_manager import NoteManager
 from ..webapp.auth_middleware import require_admin
 from ..core.database import DatabaseManager
+from ..notes.ai_client import NoteAIClient
+from ..utils.file_processor import FileProcessor
 import json
 import traceback
 
@@ -690,6 +692,30 @@ def apply_formatted_content(note_id):
             'error': f'應用格式化內容時發生錯誤: {str(e)}'
         }), 500
 
+@notes_bp.route('/<string:note_id>/update-content', methods=['POST'])
+def update_note_content(note_id):
+    """API endpoint to directly update note content."""
+    user_id = g.current_user['id']
+    new_content = request.json.get('content')
+    
+    if not new_content:
+        return jsonify({
+            'success': False,
+            'error': '必須提供 content 參數'
+        }), 400
+        
+    try:
+        result = note_manager.update_note_content_directly(user_id, note_id, new_content)
+        return jsonify(result)
+    except Exception as e:
+        print(f"直接更新筆記內容時發生錯誤: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'更新筆記內容時發生錯誤: {str(e)}'
+        }), 500
+
 @notes_bp.route('/<string:note_id>/quiz')
 def get_saved_quiz(note_id):
     """API endpoint to get saved quiz for a note."""
@@ -784,6 +810,68 @@ def edit_note(note_id):
         
     return render_template('notes/note_edit.html', note=note, title="編輯筆記")
 
+@notes_bp.route('/<string:note_id>/revisions')
+def get_note_revisions(note_id):
+    """Return revision snapshots for a note."""
+    user_id = g.current_user['id']
+    try:
+        analyses = note_manager.db_manager.get_ai_analysis(user_id, note_id, 'revision_snapshot')
+        # 簡化輸出
+        revisions = [
+            {
+                'id': a['id'],
+                'created_at': a['created_at'],
+                'length': a['result'].get('length'),
+                'title': a['result'].get('previous_title')
+            }
+            for a in analyses
+        ]
+        return jsonify({'success': True, 'revisions': revisions})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@notes_bp.route('/<string:note_id>/revisions/<int:rev_id>')
+def get_note_revision_detail(note_id, rev_id):
+    """Return specific revision snapshot"""
+    user_id = g.current_user['id']
+    try:
+        data = note_manager.db_manager.get_ai_analysis_by_id(user_id, note_id, rev_id)
+        if not data or data['analysis_type'] != 'revision_snapshot':
+            return jsonify({'success': False, 'error': '找不到版本或類型不匹配'}), 404
+        return jsonify({'success': True, 'revision': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@notes_bp.route('/<string:note_id>/revisions/<int:rev_id>/restore', methods=['POST'])
+def restore_note_revision(note_id, rev_id):
+    """Restore note content/title from a revision_snapshot."""
+    user_id = g.current_user['id']
+    try:
+        data = note_manager.db_manager.get_ai_analysis_by_id(user_id, note_id, rev_id)
+        if not data or data['analysis_type'] != 'revision_snapshot':
+            return jsonify({'success': False, 'error': '找不到版本或類型不匹配'}), 404
+
+        result = data.get('result') or {}
+        prev_title = result.get('previous_title')
+        prev_content = result.get('previous_content')
+        if prev_title is None and prev_content is None:
+            return jsonify({'success': False, 'error': '版本資料不完整'}), 400
+
+        updates = {}
+        if prev_title is not None:
+            updates['title'] = prev_title
+        if prev_content is not None:
+            updates['content'] = prev_content
+
+        ok = note_manager.update_existing_note(user_id, note_id, enable_ai_reanalysis=False, **updates)
+        if not ok:
+            return jsonify({'success': False, 'error': '還原失敗'}), 500
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# 重複定義的 restore 路由已移除，保留單一實作避免 endpoint 衝突
+
 @notes_bp.route('/detect-text', methods=['POST'])
 def detect_text():
     """處理AI文字偵測請求 - 即時分析用戶輸入並提供建議，或生成增強內容"""
@@ -855,6 +943,101 @@ def detect_text():
             'error': str(e),
             'has_suggestions': False
         }), 500
+
+# === New: Import files into note (pdf, docx, md, images) ===
+@notes_bp.route('/import', methods=['POST'])
+def import_note_content():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'message': '缺少檔案'}), 400
+        file = request.files['file']
+        if not file or file.filename == '':
+            return jsonify({'success': False, 'message': '檔案為空'}), 400
+
+        # Persist to a temp file and let FileProcessor handle by path
+        import os, tempfile, shutil
+        suffix = ''
+        if '.' in (file.filename or ''):
+            suffix = '.' + file.filename.rsplit('.', 1)[-1].lower()
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+        os.close(tmp_fd)
+        try:
+            with open(tmp_path, 'wb') as f:
+                shutil.copyfileobj(file.stream, f)
+
+            fp = FileProcessor()
+            raw_text, content_type = fp.process_input(tmp_path)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+        # Strict format-only via auxiliary model
+        ai = NoteAIClient()
+        result = ai.format_markdown_strict(raw_text)
+        return jsonify({
+            'success': True,
+            'markdown': result.get('markdown', ''),
+            'type': content_type,
+            'guard': result.get('guard'),
+            'model_used': result.get('model_used')
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+# === New: Handwriting canvas image import (PNG/JPEG) ===
+@notes_bp.route('/handwriting', methods=['POST'])
+def import_handwriting_content():
+    try:
+        # Accept either multipart file 'image' or base64 in JSON {'image_base64': 'data:image/png;base64,...'}
+        image_bytes = None
+        filename = None
+        if 'image' in request.files:
+            f = request.files['image']
+            image_bytes = f.read()
+            filename = f.filename or 'canvas.png'
+        elif request.is_json:
+            data = request.get_json(silent=True) or {}
+            b64 = data.get('image_base64') or ''
+            import re, base64
+            m = re.match(r"^data:image/(png|jpeg|jpg);base64,(.+)", b64, re.IGNORECASE)
+            if m:
+                filename = f"canvas.{m.group(1).lower()}"
+                image_bytes = base64.b64decode(m.group(2))
+        if not image_bytes:
+            return jsonify({'success': False, 'message': '缺少手寫影像'}), 400
+
+        # Save to temp image file and OCR
+        import os, tempfile
+        suffix = '.png'
+        if filename and '.' in filename:
+            suffix = '.' + filename.rsplit('.', 1)[-1].lower()
+        fd, tmp_img = tempfile.mkstemp(suffix=suffix)
+        try:
+            os.close(fd)
+            with open(tmp_img, 'wb') as out:
+                out.write(image_bytes)
+            fp = FileProcessor()
+            raw_text = fp.read_image_file(tmp_img)
+            content_type = 'image'
+        finally:
+            try:
+                os.unlink(tmp_img)
+            except Exception:
+                pass
+        ai = NoteAIClient()
+        result = ai.format_markdown_strict(raw_text)
+        return jsonify({
+            'success': True,
+            'markdown': result.get('markdown', ''),
+            'type': content_type or 'image-handwriting',
+            'guard': result.get('guard'),
+            'model_used': result.get('model_used')
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @notes_bp.route('/<string:note_id>/delete', methods=['POST'])
 def delete_note(note_id):

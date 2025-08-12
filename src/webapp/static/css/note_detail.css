@@ -181,6 +181,7 @@
     position: relative;
     overflow: auto; /* 使用 auto 讓滾動條在需要時出現 */
     user-select: none; /* 防止拖曳時選中文本 */
+    -webkit-user-select: none; /* Safari */
 }
 
 .mindmap-scroll-container:active {
@@ -363,4 +364,132 @@
 .ai-organized-content a:hover {
     color: #1e7e34;
     border-bottom: 1px solid #1e7e34;
+}
+
+/* 曼陀羅九宮格樣式 */
+.mandala-ninegrid-container {
+    background: linear-gradient(135deg, #f8f9ff 0%, #fff5f5 100%);
+}
+
+.mandala-grid-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.mandala-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 8px;
+    width: 100%;
+    max-width: 500px;
+    aspect-ratio: 1;
+}
+
+.mandala-cell {
+    background: #ffffff;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-height: 80px;
+    position: relative;
+    overflow: hidden;
+}
+
+.mandala-cell:hover {
+    background: #f8f9fa;
+    border-color: #007bff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.15);
+}
+
+.mandala-cell.center-cell {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    border-color: #0056b3;
+    font-size: 1.1rem;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+}
+
+.mandala-cell.center-cell:hover {
+    background: linear-gradient(135deg, #0056b3, #004085);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 123, 255, 0.4);
+}
+
+.mandala-cell.top-left {
+    border-top-left-radius: 12px;
+}
+
+.mandala-cell.top-right {
+    border-top-right-radius: 12px;
+}
+
+.mandala-cell.bottom-left {
+    border-bottom-left-radius: 12px;
+}
+
+.mandala-cell.bottom-right {
+    border-bottom-right-radius: 12px;
+}
+
+.cell-content {
+    word-wrap: break-word;
+    hyphens: auto;
+    line-height: 1.3;
+}
+
+.connections-container .connection-item {
+    border-left: 4px solid #ffc107;
+}
+
+.connections-container .connection-item:hover {
+    background: #fff8e1 !important;
+    border-left-color: #ff9800;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+    .mandala-grid {
+        max-width: 350px;
+        gap: 6px;
+    }
+    
+    .mandala-cell {
+        min-height: 60px;
+        font-size: 0.8rem;
+        padding: 6px;
+    }
+    
+    .mandala-cell.center-cell {
+        font-size: 0.95rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .mandala-grid {
+        max-width: 280px;
+        gap: 4px;
+    }
+    
+    .mandala-cell {
+        min-height: 50px;
+        font-size: 0.75rem;
+        padding: 4px;
+    }
+    
+    .mandala-cell.center-cell {
+        font-size: 0.85rem;
+    }
 }

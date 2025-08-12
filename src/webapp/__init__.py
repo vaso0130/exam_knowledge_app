@@ -50,6 +50,7 @@ from pathlib import Path
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, abort, redirect, url_for, flash, jsonify, Response, g
+from ..ai_gateway import get_gateway_port
 
 from ..core.database import DatabaseManager
 from ..core.gemini_client import GeminiClient
@@ -100,6 +101,22 @@ def create_app():
     
     # 註冊模板上下文處理器
     app.context_processor(add_points_info_to_template())
+
+    # --- Inject AI Gateway Base into templates ---
+    @app.context_processor
+    def inject_ai_gateway_base():
+        try:
+            port = get_gateway_port()
+        except Exception:
+            # fallback to configured or default port
+            try:
+                port = int(os.environ.get("AI_GATEWAY_PORT_ACTUAL") or os.environ.get("AI_GATEWAY_PORT") or 8002)
+            except Exception:
+                port = 8002
+        # Use request host without its port to compose the gateway base
+        host_only = request.host.split(':')[0]
+        base = f"{request.scheme}://{host_only}:{port}"
+        return {"ai_gateway_base": base}
 
     # --- File Upload Settings ---
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB

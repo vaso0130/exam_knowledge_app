@@ -98,6 +98,7 @@ function initializeContentTabs() {
             { type: 'qa_learning', name: '問答式學習', icon: 'question' },
             { type: 'comparison', name: '對比分析整理', icon: 'balance-scale' },
             { type: 'memory_palace', name: '記憶宮殿法', icon: 'home' },
+            { type: 'mandala_ninegrid', name: '曼陀羅九宮格思考法', icon: 'th' },
             { type: 'format_enhance', name: '格式化與補強 (將直接替換原始內容)', icon: 'magic' }
         ]; let modalHtml = `
         <div class="modal fade" id="organizationModal" tabindex="-1">
@@ -331,11 +332,17 @@ function initializeContentTabs() {
                     }
 
                     try {
-                        addOrganizationTab(type, name, icon, data.result);
-                        showAlert(`${name} 整理完成！`, 'success');
+                        // 特殊處理格式化與補強功能 - 直接覆蓋原始內容
+                        if (type === 'format_enhance') {
+                            handleFormatEnhanceResult(data.result);
+                            showAlert(`${name} 完成！原始內容已更新`, 'success');
+                        } else {
+                            addOrganizationTab(type, name, icon, data.result);
+                            showAlert(`${name} 整理完成！`, 'success');
+                        }
                     } catch (tabError) {
-                        console.error("創建標籤頁時出錯:", tabError);
-                        showAlert(`創建 ${name} 標籤頁失敗: ${tabError.message}`, 'danger');
+                        console.error("處理結果時出錯:", tabError);
+                        showAlert(`處理 ${name} 結果失敗: ${tabError.message}`, 'danger');
                     }
                 } else {
                     showAlert('AI 整理失敗：' + (data.error || '未知錯誤'), 'danger');
@@ -499,6 +506,7 @@ function initializeContentTabs() {
                             'qa_learning': { name: '問答式學習', icon: 'question' },
                             'comparison': { name: '對比分析整理', icon: 'balance-scale' },
                             'memory_palace': { name: '記憶宮殿法', icon: 'home' },
+                            'mandala_ninegrid': { name: '曼陀羅九宮格思考法', icon: 'th' },
                             'format_enhance': { name: '格式化與補強', icon: 'magic' }
                         };
 
@@ -570,7 +578,8 @@ function initializeContentTabs() {
             'feynman': '費曼技巧解析',
             'qa_learning': '問答式學習',
             'comparison': '對比分析整理',
-            'memory_palace': '記憶宮殿法'
+            'memory_palace': '記憶宮殿法',
+            'mandala_ninegrid': '曼陀羅九宮格思考法'
         };
 
         for (const [type, result] of Object.entries(results)) {
@@ -602,8 +611,8 @@ function initializeContentTabs() {
         }
 
         // 只有在沒有特殊格式的情況下，才顯示通用的organized_content
-        // 費曼法、問答式學習、記憶宮殿法、層次化筆記、對比分析整理和格式化增強都有特殊排版，所以不顯示通用內容
-        const hasSpecialFormat = ['feynman', 'qa_learning', 'memory_palace', 'format_enhance', 'hierarchical', 'comparison'].includes(type);
+        // 費曼法、問答式學習、記憶宮殿法、層次化筆記、對比分析整理、曼陀羅九宮格和格式化增強都有特殊排版，所以不顯示通用內容
+        const hasSpecialFormat = ['feynman', 'qa_learning', 'memory_palace', 'format_enhance', 'hierarchical', 'comparison', 'mandala_ninegrid'].includes(type);
 
         if (result.organized_content && !hasSpecialFormat) {
             // 使用 Markdown 渲染，就像題庫參考答案一樣
@@ -1357,6 +1366,124 @@ function initializeContentTabs() {
             }
 
             html += '</div>'; // 關閉容器
+        } else if (type === 'mandala_ninegrid') {
+            // 曼陀羅九宮格思考法的特殊顯示
+            html += '<div class="mandala-ninegrid-container p-3 border rounded">';
+
+            // 中央主題
+            if (result.central_theme) {
+                html += `<h5 class="text-center mb-4 text-primary"><i class="fas fa-bullseye me-2"></i>核心主題：${result.central_theme}</h5>`;
+            }
+
+            // 九宮格佈局
+            if (result.grid_layout) {
+                html += '<div class="mandala-grid-container mb-4">';
+                html += '<div class="mandala-grid">';
+                
+                // 九宮格順序：top_left, top_center, top_right, middle_left, center, middle_right, bottom_left, bottom_center, bottom_right
+                const positions = [
+                    { key: 'top_left', class: 'top-left' },
+                    { key: 'top_center', class: 'top-center' },
+                    { key: 'top_right', class: 'top-right' },
+                    { key: 'middle_left', class: 'middle-left' },
+                    { key: 'center', class: 'center' },
+                    { key: 'middle_right', class: 'middle-right' },
+                    { key: 'bottom_left', class: 'bottom-left' },
+                    { key: 'bottom_center', class: 'bottom-center' },
+                    { key: 'bottom_right', class: 'bottom-right' }
+                ];
+
+                positions.forEach(pos => {
+                    const content = result.grid_layout[pos.key] || '未定義';
+                    const explanation = result.detailed_explanations ? result.detailed_explanations[pos.key] : '';
+                    const isCenterCell = pos.key === 'center';
+                    
+                    html += `<div class="mandala-cell ${pos.class} ${isCenterCell ? 'center-cell' : ''}" 
+                                  title="${explanation}" 
+                                  data-bs-toggle="${explanation ? 'tooltip' : ''}" 
+                                  data-bs-placement="top">
+                        <div class="cell-content">
+                            ${isCenterCell ? `<strong>${content}</strong>` : content}
+                        </div>
+                    </div>`;
+                });
+                
+                html += '</div>'; // 關閉 mandala-grid
+                html += '</div>'; // 關閉 mandala-grid-container
+            }
+
+            // 詳細說明
+            if (result.detailed_explanations) {
+                html += '<h6><i class="fas fa-info-circle me-2 text-info"></i>詳細說明</h6>';
+                html += '<div class="accordion mb-3" id="mandala-details-accordion">';
+
+                Object.entries(result.detailed_explanations).forEach(([key, explanation], index) => {
+                    if (explanation) {
+                        const title = result.grid_layout[key] || key;
+                        const accordionId = `mandala-detail-${index}`;
+                        
+                        html += `<div class="accordion-item">
+                            <h2 class="accordion-header" id="${accordionId}-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${accordionId}" aria-expanded="false">
+                                    ${title}
+                                </button>
+                            </h2>
+                            <div id="${accordionId}" class="accordion-collapse collapse" data-bs-parent="#mandala-details-accordion">
+                                <div class="accordion-body">
+                                    ${renderMarkdown(explanation)}
+                                </div>
+                            </div>
+                        </div>`;
+                    }
+                });
+                
+                html += '</div>';
+            }
+
+            // 關聯性
+            if (result.connections && Array.isArray(result.connections)) {
+                html += '<h6><i class="fas fa-link me-2 text-warning"></i>關聯性分析</h6>';
+                html += '<div class="connections-container mb-3">';
+                result.connections.forEach(connection => {
+                    const fromTitle = result.grid_layout[connection.from] || connection.from;
+                    const toTitle = result.grid_layout[connection.to] || connection.to;
+                    html += `<div class="connection-item border rounded p-2 mb-2 bg-light">
+                        <span class="badge bg-primary me-1">${fromTitle}</span>
+                        <i class="fas fa-arrow-right mx-2 text-muted"></i>
+                        <span class="badge bg-secondary me-2">${toTitle}</span>
+                        <br><small class="text-muted">${connection.relation}</small>
+                    </div>`;
+                });
+                html += '</div>';
+            }
+
+            // 思考過程
+            if (result.thinking_process) {
+                html += '<h6><i class="fas fa-brain me-2 text-success"></i>思考過程</h6>';
+                html += `<div class="alert alert-light border-start border-4 border-success mb-3">
+                    ${renderMarkdown(result.thinking_process)}
+                </div>`;
+            }
+
+            // 實際應用
+            if (result.practical_applications && Array.isArray(result.practical_applications)) {
+                html += '<h6><i class="fas fa-tools me-2 text-primary"></i>實際應用</h6>';
+                html += '<div class="d-flex flex-wrap mb-3">';
+                result.practical_applications.forEach(app => {
+                    html += `<span class="badge bg-primary m-1 p-2">${app}</span>`;
+                });
+                html += '</div>';
+            }
+
+            // 學習路徑
+            if (result.learning_path) {
+                html += '<h6><i class="fas fa-route me-2 text-info"></i>學習建議</h6>';
+                html += `<div class="alert alert-light border-start border-4 border-info mb-3">
+                    ${renderMarkdown(result.learning_path)}
+                </div>`;
+            }
+
+            html += '</div>'; // 關閉容器
         } else if (type === 'format_enhance') {
             // 格式化與補強直接使用 Markdown 渲染展示內容
             if (result.formatted_content) {
@@ -1928,4 +2055,93 @@ function initializeContentTabs() {
                 console.error('應用格式化內容時出錯:', error);
                 showAlert('發生錯誤：' + error.message, 'danger');
             });
+    }
+
+    // === 格式化與補強處理函數 ===
+    function handleFormatEnhanceResult(result) {
+        // 直接使用 formatted_content 或 organized_content 覆蓋原始內容
+        const newContent = result.organized_content || result.formatted_content;
+        
+        if (!newContent) {
+            showAlert('格式化結果中沒有找到有效內容', 'warning');
+            return;
+        }
+
+        // 更新原始內容標籤頁
+        const originalContentElement = document.querySelector('#original-content .note-content');
+        if (originalContentElement) {
+            // 使用 renderMarkdown 來正確渲染 Markdown
+            originalContentElement.innerHTML = renderMarkdown(newContent);
+            
+            // 發送更新請求到後端以保存更改
+            updateNoteContentInBackend(newContent);
+        } else {
+            showAlert('找不到原始內容區域，無法更新', 'danger');
+        }
+    }
+
+    // 此函數已廢棄，現在格式化與補強直接返回純內容，不需要額外的詳細信息
+    /*
+    function showFormatEnhanceDetails(result) {
+        let detailsHtml = '<div class="alert alert-success mt-3"><h6><i class="fas fa-check-circle me-2"></i>格式化完成</h6>';
+        
+        if (result.corrections_made && result.corrections_made.length > 0) {
+            detailsHtml += '<p><strong>修正內容:</strong></p><ul>';
+            result.corrections_made.forEach(correction => {
+                detailsHtml += `<li>${correction}</li>`;
+            });
+            detailsHtml += '</ul>';
+        }
+        
+        if (result.enhancements_added && result.enhancements_added.length > 0) {
+            detailsHtml += '<p><strong>新增補充:</strong></p><ul>';
+            result.enhancements_added.forEach(enhancement => {
+                detailsHtml += `<li>${enhancement}</li>`;
+            });
+            detailsHtml += '</ul>';
+        }
+        
+        if (result.structure_improvements) {
+            detailsHtml += `<p><strong>結構改善:</strong> ${result.structure_improvements}</p>`;
+        }
+        
+        detailsHtml += '</div>';
+        
+        // 在原始內容後面顯示詳細信息
+        const originalContent = document.getElementById('original-content');
+        if (originalContent) {
+            originalContent.insertAdjacentHTML('beforeend', detailsHtml);
+            
+            // 5秒後自動隱藏詳細信息
+            setTimeout(() => {
+                const alertElement = originalContent.querySelector('.alert-success');
+                if (alertElement) {
+                    alertElement.remove();
+                }
+            }, 5000);
+        }
+    }
+    */
+
+    function updateNoteContentInBackend(newContent) {
+        fetch(`/notes/${currentNoteId}/update-content`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                content: newContent
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('筆記內容已在後端更新');
+            } else {
+                console.error('後端更新失敗:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('更新請求失敗:', error);
+        });
     }
