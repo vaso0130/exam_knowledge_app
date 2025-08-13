@@ -278,6 +278,37 @@ class GhostAIClient:
         try:
             context = context or {}
             
+            # 如果是簡單的內容延續建議，使用更簡潔的處理
+            if "延續" in enhancement_request or "supplement" in str(context):
+                prompt = f"""
+請根據以下內容，提供1-2句自然的延續文字，幫助用戶繼續寫作：
+
+目前內容：
+{current_content}
+
+請生成簡潔、相關的延續建議（不超過50字）：
+"""
+                try:
+                    result = self._run_async(self.gemini_client.generate_async_simple(prompt, is_json=False))
+                    
+                    if result and result.strip():
+                        # 清理和格式化結果
+                        suggestion = result.strip()
+                        # 移除可能的引號或格式符號
+                        suggestion = suggestion.strip('"\'').strip()
+                        # 限制長度
+                        if len(suggestion) > 100:
+                            suggestion = suggestion[:100] + "..."
+                        
+                        return {
+                            'generated_content': suggestion,
+                            'success': True,
+                            'model_used': 'gemini_simple'
+                        }
+                except Exception as e:
+                    logger.warning(f"Simple generation failed: {e}")
+                    pass
+            
             # 特殊關鍵字處理 - 直接返回常見術語的定義
             special_keywords = {
                 "CIA": "# CIA 三要素 (機密性、完整性、可用性)\n\n**機密性 (Confidentiality)**: 確保資訊只能被授權的人員訪問和使用，防止未經授權的資訊披露。\n\n**完整性 (Integrity)**: 保護資料不被未經授權的修改，確保資訊的正確性和可靠性。\n\n**可用性 (Availability)**: 確保資訊系統及其資源對授權使用者的即時可用性，防止服務中斷。",

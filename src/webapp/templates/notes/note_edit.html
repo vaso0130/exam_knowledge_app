@@ -94,10 +94,16 @@
 
                 </div>
 
-                <!-- AI 功能選項 -->
+                <!-- Simple live preview (optional, can be enhanced with JS) -->
+                <div class="mb-4">
+                    <h5 class="mb-2">即時預覽</h5>
+                    <div id="preview" class="border p-3 bg-light markdown-content min-h-100"></div>
+                </div>
+
+                <!-- AI 功能選項 - 儲存時執行 -->
                 <div class="card bg-light mb-3">
                     <div class="card-header">
-                        <h6 class="mb-0"><i class="fas fa-robot me-2"></i>AI 智慧功能設定</h6>
+                        <h6 class="mb-0"><i class="fas fa-robot me-2"></i>AI 智慧功能設定 <small class="text-muted">（儲存時執行）</small></h6>
                     </div>
                     <div class="card-body">
                         {% if not note %}
@@ -223,13 +229,7 @@
                     </div>
                 </div>
 
-                <!-- Simple live preview (optional, can be enhanced with JS) -->
-                <div class="mb-4">
-                    <h5 class="mb-2">即時預覽</h5>
-                    <div id="preview" class="border p-3 bg-light markdown-content min-h-100"></div>
-                </div>
-
-                                <button type="submit" name="action" value="save" class="btn btn-primary">
+                <button type="submit" name="action" value="save" class="btn btn-primary">
                     <i class="fas fa-save me-1"></i> 儲存筆記
                 </button>
                 {% if source_question %}

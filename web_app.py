@@ -17,9 +17,12 @@ if __name__ == '__main__':
     print("🚀 啟動 Flask 開發伺服器...")
     print(f"🌐 應用程式運行於: http://localhost:5000")
     print("🔧 使用 Ctrl+C 停止伺服器")
-    # 啟動 AI Gateway + LSP（避免 Flask reloader 雙啟）
+    
+    # 啟動 AI Gateway + LSP（只在主進程和reloader子進程中啟動一次）
     gateway_port = int(os.getenv('AI_GATEWAY_PORT', '8002'))
-    # 在 debug 時只於 reloader 子行程啟動；非 debug（如生產）則正常啟動
-    if (os.environ.get('WERKZEUG_RUN_MAIN') == 'true') or (not app.debug):
+    
+    # 只在reloader子進程中啟動Gateway，避免重複啟動
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         start_gateway_background(port=gateway_port)
+    
     app.run(debug=True, host='0.0.0.0', port=5000)

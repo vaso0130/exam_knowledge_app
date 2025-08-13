@@ -120,7 +120,33 @@ class GeminiClient:
                 prompt,
                 generation_config=config
             )
-            return response.text
+            
+            # 檢查response是否有效
+            if not response or not response.candidates:
+                print("Gemini API: 無有效回應")
+                return ""
+            
+            # 檢查finish_reason
+            candidate = response.candidates[0]
+            if candidate.finish_reason == 2:  # SAFETY
+                print("Gemini API: 內容被安全過濾器攔截")
+                return ""
+            elif candidate.finish_reason == 3:  # RECITATION
+                print("Gemini API: 內容涉及版權問題")
+                return ""
+            elif candidate.finish_reason != 1:  # 不是STOP (正常完成)
+                print(f"Gemini API: 異常結束原因 {candidate.finish_reason}")
+                return ""
+            
+            # 安全地獲取文本
+            if hasattr(response, 'text') and response.text:
+                return response.text
+            elif candidate.content and candidate.content.parts:
+                return candidate.content.parts[0].text
+            else:
+                print("Gemini API: 回應中沒有文本內容")
+                return ""
+                
         except Exception as e:
             print(f"Gemini API 錯誤: {e}")
             return ""

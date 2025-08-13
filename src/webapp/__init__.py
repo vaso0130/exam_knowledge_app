@@ -50,6 +50,7 @@ from pathlib import Path
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, abort, redirect, url_for, flash, jsonify, Response, g
+from flask_wtf.csrf import CSRFProtect
 from ..ai_gateway import get_gateway_port
 
 from ..core.database import DatabaseManager
@@ -82,6 +83,17 @@ def create_app():
         secret_key = secrets.token_hex(32)  # 臨時生成安全金鑰
     
     app.secret_key = secret_key
+
+    # --- CSRF Protection ---
+    csrf = CSRFProtect(app)
+    
+    # 配置CSRF豁免條件
+    @csrf.exempt
+    def csrf_exempt_for_api():
+        # 豁免所有/notes/ai/*路由
+        if request.endpoint and 'ai' in request.endpoint:
+            return True
+        return False
 
     # --- Database and Services Initialization ---
     db = DatabaseManager()
@@ -229,6 +241,7 @@ def create_app():
     # --- Routes ---
 
     @app.route('/check-user', methods=['POST'])
+    @csrf.exempt
     def check_user():
         """檢查用戶是否存在"""
         data = request.get_json()

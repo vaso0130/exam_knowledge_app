@@ -79,6 +79,20 @@ def start_gateway_background(port: int = 8002, host: str = "0.0.0.0"):
         return
     if _gateway_started:
         return
+        
+    # 檢查是否已經有AI Gateway在運行（避免重複啟動）
+    try:
+        import requests
+        test_url = f"http://{host}:{port}/health"
+        response = requests.get(test_url, timeout=2)
+        if response.status_code == 200:
+            print(f"[AI-Gateway] 檢測到端口 {port} 已有AI Gateway運行，跳過啟動")
+            _gateway_started = True
+            _gateway_port = port
+            return
+    except:
+        pass  # 沒有運行中的服務，繼續啟動
+        
     try:
         import threading, uvicorn  # local import to avoid mandatory dependency if unused
         # auto-pick free port if occupied

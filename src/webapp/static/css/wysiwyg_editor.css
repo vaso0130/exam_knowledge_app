@@ -1,0 +1,859 @@
+/**
+ * WYSIWYG編輯器樣式
+ * 現代化設計，支援深淺主題
+ */
+
+/* 主容器 */
+.wysiwyg-editor {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    transition: all 0.2s ease;
+    overflow: hidden;
+}
+
+.wysiwyg-editor[data-theme="dark"] {
+    border-color: #404040;
+    background: #1e1e1e;
+    color: #ffffff;
+}
+
+.wysiwyg-editor.editor-focused {
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* 工具列 */
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+    min-height: 40px;
+    gap: 4px;
+    
+    /* --- 解決換行問題的關鍵屬性 --- */
+    flex-wrap: nowrap;     /* 強制所有項目維持在同一行，不換行 */
+    overflow-x: auto;      /* 當項目超出容器寬度時，顯示水平滾動條 */
+    scrollbar-width: thin;
+}
+
+/* 工具列中的直接子項目 */
+.editor-toolbar > * {
+    flex-shrink: 0; /* 防止項目在空間不足時被壓縮變形 */
+}
+
+.editor-toolbar::-webkit-scrollbar {
+    height: 6px;
+}
+
+.editor-toolbar::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.editor-toolbar::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-toolbar {
+    background: #2d2d2d;
+    border-bottom-color: #404040;
+}
+
+.toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    margin-right: 4px;
+    padding-right: 4px;
+    border-right: 1px solid #dee2e6;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.toolbar-group:last-child {
+    border-right: none;
+    margin-right: 0;
+}
+
+.toolbar-group.ml-auto {
+    margin-left: auto;
+}
+
+.wysiwyg-editor[data-theme="dark"] .toolbar-group {
+    border-right-color: #404040;
+}
+
+/* 工具列按鈕 */
+.toolbar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: #495057;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 12px;
+    flex-shrink: 0;
+    margin: 0;
+}
+
+.toolbar-btn:hover {
+    background: #e9ecef;
+    color: #212529;
+    border-color: #dee2e6;
+}
+
+.toolbar-btn:active,
+.toolbar-btn.active {
+    background: #007bff;
+    color: #ffffff;
+    border-color: #007bff;
+}
+
+.wysiwyg-editor[data-theme="dark"] .toolbar-btn {
+    color: #adb5bd;
+}
+
+.wysiwyg-editor[data-theme="dark"] .toolbar-btn:hover {
+    background: #404040;
+    color: #ffffff;
+}
+
+/* AI和Ghost按鈕特殊樣式 */
+.toolbar-btn.ai-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+}
+
+.toolbar-btn.ai-btn:hover {
+    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+    transform: translateY(-1px);
+}
+
+.toolbar-btn.ghost-btn {
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    color: #495057;
+    border: none;
+}
+
+.toolbar-btn.ghost-btn:hover {
+    background: linear-gradient(135deg, #96e6e2 0%, #fcc5d6 100%);
+    transform: translateY(-1px);
+}
+
+.toolbar-btn.ghost-btn.active {
+    background: linear-gradient(135deg, #00d4aa 0%, #ff6b9d 100%);
+    color: white;
+}
+
+/* 工具列選擇器 */
+.toolbar-select {
+    padding: 2px 4px;
+    border: 1px solid #ced4da;
+    border-radius: 3px;
+    background: #ffffff;
+    color: #495057;
+    font-size: 12px;
+    min-width: 85px;
+    height: 26px;
+    flex-shrink: 0;
+    margin: 0;
+}
+
+.toolbar-select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.wysiwyg-editor[data-theme="dark"] .toolbar-select {
+    background: #404040;
+    border-color: #555555;
+    color: #ffffff;
+}
+
+/* 顏色選擇器 */
+.toolbar-color {
+    width: 32px;
+    height: 32px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.toolbar-color:hover {
+    border-color: #007bff;
+}
+
+.wysiwyg-editor[data-theme="dark"] .toolbar-color {
+    border-color: #555555;
+}
+
+/* 工具列分隔符 */
+.toolbar-separator {
+    width: 1px;
+    height: 20px;
+    background: #dee2e6;
+    margin: 0 4px;
+    flex-shrink: 0;
+}
+
+.wysiwyg-editor[data-theme="dark"] .toolbar-separator {
+    background: #555555;
+}
+
+/* Toggle Switches */
+.toggle-switches {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.toggle-switch {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #6c757d;
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.toggle-switch input[type="checkbox"] {
+    display: none;
+}
+
+.toggle-slider {
+    position: relative;
+    width: 28px;
+    height: 14px;
+    background: #ccc;
+    border-radius: 14px;
+    transition: all 0.2s ease;
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 12px;
+    height: 12px;
+    background: white;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.toggle-switch input[type="checkbox"]:checked + .toggle-slider {
+    background: #007bff;
+}
+
+.toggle-switch input[type="checkbox"]:checked + .toggle-slider::before {
+    transform: translateX(14px);
+}
+
+.toggle-label {
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.wysiwyg-editor[data-theme="dark"] .toggle-switch {
+    color: #adb5bd;
+}
+
+.wysiwyg-editor[data-theme="dark"] .toggle-slider {
+    background: #555555;
+}
+
+/* 編輯區域 */
+.editor-content {
+    position: relative;
+    min-height: 400px;
+}
+
+.editor-main {
+    padding: 20px;
+    min-height: 400px;
+    outline: none;
+    line-height: 1.6;
+    font-size: 16px;
+    color: #212529;
+    background: transparent;
+    position: relative;
+    z-index: 1;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main {
+    color: #ffffff;
+}
+
+/* 編輯器佔位符 */
+.editor-main:empty::before {
+    content: attr(data-placeholder);
+    color: #6c757d;
+    font-style: italic;
+    pointer-events: none;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main:empty::before {
+    color: #adb5bd;
+}
+
+/* Ghost文字覆蓋層 */
+.ghost-overlay {
+    position: absolute;
+    pointer-events: none;
+    z-index: 2;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-style: italic;
+    color: #6c757d;
+    font-size: 14px;
+    display: none;
+    max-width: 300px;
+    word-wrap: break-word;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.wysiwyg-editor[data-theme="dark"] .ghost-overlay {
+    background: rgba(45, 45, 45, 0.95);
+    color: #adb5bd;
+}
+
+/* 狀態列 */
+.editor-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-top: 1px solid #e0e0e0;
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-status {
+    background: #2d2d2d;
+    border-top-color: #404040;
+    color: #adb5bd;
+}
+
+.status-left,
+.status-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.lsp-status,
+.ghost-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* 手寫輸入相關樣式 */
+.handwriting-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.handwriting-section {
+    margin-top: 20px;
+    padding: 15px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 10px;
+    border: 2px solid #dee2e6;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.handwriting-section h6 {
+    color: #495057;
+    font-weight: 600;
+    margin-bottom: 15px;
+}
+
+.handwriting-canvas {
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    background: #ffffff;
+    cursor: crosshair;
+    touch-action: none;
+    max-width: 100%;
+    height: 200px;
+    display: block;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transition: border-color 0.3s ease;
+}
+
+#handwritingCanvas {
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    background: #fff;
+    cursor: crosshair;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transition: border-color 0.3s ease;
+    width: 100%;
+    height: 200px;
+    display: block;
+}
+
+.handwriting-canvas:hover,
+#handwritingCanvas:hover {
+    border-color: #0056b3;
+}
+
+.handwriting-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.handwriting-controls .btn {
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.handwriting-controls .btn-primary {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    border: none;
+}
+
+.handwriting-controls .btn-secondary {
+    background: linear-gradient(135deg, #6c757d, #495057);
+    border: none;
+}
+
+.handwriting-controls .btn-success {
+    background: linear-gradient(135deg, #28a745, #1e7e34);
+    border: none;
+}
+
+/* 編輯器內容樣式 */
+.editor-main h1,
+.editor-main h2,
+.editor-main h3,
+.editor-main h4,
+.editor-main h5,
+.editor-main h6 {
+    margin: 1.5em 0 0.5em 0;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.editor-main h1 { font-size: 2em; }
+.editor-main h2 { font-size: 1.75em; }
+.editor-main h3 { font-size: 1.5em; }
+.editor-main h4 { font-size: 1.25em; }
+.editor-main h5 { font-size: 1.1em; }
+.editor-main h6 { font-size: 1em; }
+
+.editor-main p {
+    margin: 0.8em 0;
+}
+
+.editor-main ul,
+.editor-main ol {
+    margin: 0.8em 0;
+    padding-left: 2em;
+}
+
+.editor-main li {
+    margin: 0.3em 0;
+}
+
+.editor-main blockquote {
+    margin: 1em 0;
+    padding: 0.5em 1em;
+    border-left: 4px solid #007bff;
+    background: #f8f9fa;
+    font-style: italic;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main blockquote {
+    background: #2d2d2d;
+    border-left-color: #0d6efd;
+}
+
+.editor-main code {
+    background: #f8f9fa;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9em;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main code {
+    background: #404040;
+}
+
+.editor-main pre {
+    background: #f8f9fa;
+    padding: 1em;
+    border-radius: 5px;
+    overflow-x: auto;
+    border: 1px solid #e9ecef;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main pre {
+    background: #2d2d2d;
+    border-color: #404040;
+}
+
+.editor-main img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 5px;
+    margin: 0.5em 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.editor-main table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+}
+
+.editor-main th,
+.editor-main td {
+    border: 1px solid #dee2e6;
+    padding: 0.5em;
+    text-align: left;
+}
+
+.editor-main th {
+    background: #f8f9fa;
+    font-weight: 600;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main th {
+    background: #404040;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main th,
+.wysiwyg-editor[data-theme="dark"] .editor-main td {
+    border-color: #555555;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+    .editor-toolbar {
+        padding: 4px 6px;
+        gap: 2px;
+    }
+    
+    .toolbar-group {
+        margin-right: 3px;
+        padding-right: 3px;
+        gap: 1px;
+    }
+    
+    .toolbar-btn {
+        width: 24px;
+        height: 24px;
+        font-size: 11px;
+    }
+    
+    .toolbar-select {
+        min-width: 75px;
+        font-size: 11px;
+        height: 24px;
+        padding: 1px 3px;
+    }
+    
+    .toolbar-separator {
+        height: 18px;
+        margin: 0 2px;
+    }
+    
+    .editor-main {
+        padding: 15px;
+        font-size: 15px;
+    }
+    
+    .handwriting-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .handwriting-controls .btn-group {
+        justify-content: center;
+    }
+}
+
+/* 動畫效果 */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.ghost-overlay {
+    animation: fadeIn 0.3s ease;
+}
+
+/* 選擇狀態 */
+.editor-main ::selection {
+    background: rgba(0, 123, 255, 0.2);
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main ::selection {
+    background: rgba(13, 110, 253, 0.3);
+}
+
+/* 焦點狀態 */
+.editor-main:focus {
+    outline: none;
+}
+
+/* 工具提示 */
+.toolbar-btn[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    margin-bottom: 5px;
+}
+
+.toolbar-btn[title]:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: #333;
+    z-index: 1000;
+}
+
+/* 拖放狀態 */
+.editor-main.drag-over {
+    background: rgba(0, 123, 255, 0.05);
+    border: 2px dashed #007bff;
+}
+
+/* 載入狀態 */
+.editor-loading {
+    position: relative;
+}
+
+.editor-loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-loading::after {
+    background: rgba(30, 30, 30, 0.8);
+}
+
+/* 錯誤狀態 */
+.editor-error {
+    border-color: #dc3545;
+}
+
+.editor-error .editor-toolbar {
+    background: #f8d7da;
+    border-bottom-color: #dc3545;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-error .editor-toolbar {
+    background: #58151c;
+}
+
+/* 成功狀態 */
+.editor-success {
+    border-color: #28a745;
+}
+
+.editor-success .editor-toolbar {
+    background: #d4edda;
+    border-bottom-color: #28a745;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-success .editor-toolbar {
+    background: #155724;
+}
+
+/* 自定義滾動條 */
+.editor-main::-webkit-scrollbar {
+    width: 8px;
+}
+
+.editor-main::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.editor-main::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.editor-main::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main::-webkit-scrollbar-thumb {
+    background: #555555;
+}
+
+.wysiwyg-editor[data-theme="dark"] .editor-main::-webkit-scrollbar-thumb:hover {
+    background: #666666;
+}
+
+/* 印刷樣式 */
+@media print {
+    .wysiwyg-editor {
+        border: none;
+        box-shadow: none;
+    }
+    
+    .editor-toolbar,
+    .editor-status {
+        display: none;
+    }
+    
+    .editor-main {
+        padding: 0;
+        min-height: auto;
+    }
+    
+    .ghost-overlay {
+        display: none;
+    }
+}
+
+/* AI相關樣式 */
+.ai-panel {
+    background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.2);
+}
+
+.ai-panel h6 {
+    color: #ffffff;
+    font-weight: 600;
+    margin-bottom: 16px;
+    font-size: 1.1rem;
+}
+
+.ai-cmd-btn {
+    background: rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    padding: 8px 16px;
+    margin: 0 6px 8px 0;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.ai-cmd-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.ai-cmd-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.ai-prompt-section {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 12px;
+    backdrop-filter: blur(5px);
+}
+
+.ai-prompt-section label {
+    color: #ffffff;
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+
+.ai-prompt-section .form-control {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    backdrop-filter: blur(5px);
+}
+
+.ai-prompt-section .form-control::placeholder {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.ai-prompt-section .form-control:focus {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25);
+}
+
+.ai-prompt-section .btn-outline-light {
+    border-color: rgba(255, 255, 255, 0.5);
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(5px);
+}
+
+.ai-prompt-section .btn-outline-light:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.7);
+    color: #ffffff;
+}

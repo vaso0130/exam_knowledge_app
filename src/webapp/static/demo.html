@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WYSIWYG編輯器演示</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- WYSIWYG編輯器樣式 -->
+    <link rel="stylesheet" href="/static/css/wysiwyg_editor.css">
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        
+        .demo-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        
+        .feature-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .feature-list i {
+            color: #28a745;
+            margin-right: 10px;
+        }
+        
+        .demo-editor {
+            margin: 30px 0;
+        }
+        
+        .output-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <!-- 標題區域 -->
+        <div class="text-center mb-5">
+            <h1 class="display-4 text-primary">
+                <i class="fas fa-edit me-3"></i>
+                WYSIWYG 筆記編輯器
+            </h1>
+            <p class="lead text-muted">
+                全新設計的富文本編輯器，整合AI智能功能與手寫輸入
+            </p>
+        </div>
+
+        <!-- 功能特色 -->
+        <div class="row mb-5">
+            <div class="col-md-6">
+                <div class="feature-card">
+                    <h3 class="text-success mb-3">
+                        <i class="fas fa-star me-2"></i>核心功能
+                    </h3>
+                    <ul class="feature-list">
+                        <li><i class="fas fa-check"></i>WYSIWYG 視覺化編輯</li>
+                        <li><i class="fas fa-check"></i>富文本格式支援</li>
+                        <li><i class="fas fa-check"></i>直接複製貼上圖片</li>
+                        <li><i class="fas fa-check"></i>Markdown 雙向轉換</li>
+                        <li><i class="fas fa-check"></i>即時預覽功能</li>
+                        <li><i class="fas fa-check"></i>快捷鍵支援</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="feature-card">
+                    <h3 class="text-info mb-3">
+                        <i class="fas fa-magic me-2"></i>AI 功能
+                    </h3>
+                    <ul class="feature-list">
+                        <li><i class="fas fa-check"></i>智能內容補完</li>
+                        <li><i class="fas fa-check"></i>Ghost AI 建議</li>
+                        <li><i class="fas fa-check"></i>手寫轉文字</li>
+                        <li><i class="fas fa-check"></i>LSP 語言支援</li>
+                        <li><i class="fas fa-check"></i>自動格式化</li>
+                        <li><i class="fas fa-check"></i>內容摘要生成</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- 編輯器演示 -->
+        <div class="feature-card">
+            <h3 class="mb-3">
+                <i class="fas fa-keyboard me-2"></i>編輯器演示
+            </h3>
+            <p class="text-muted mb-4">
+                在下方編輯器中嘗試各種功能，體驗全新的筆記編輯體驗！
+            </p>
+            
+            <!-- 編輯器容器 -->
+            <div class="demo-editor">
+                <div id="demo-editor-container"></div>
+            </div>
+            
+            <!-- 輸出面板 -->
+            <div class="output-panel">
+                <h5 class="mb-3">
+                    <i class="fas fa-code me-2"></i>Markdown 輸出
+                </h5>
+                <div class="code-block" id="markdown-output">
+                    <!-- Markdown輸出將顯示在這裡 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 使用說明 -->
+        <div class="feature-card">
+            <h3 class="mb-3">
+                <i class="fas fa-info-circle me-2"></i>使用說明
+            </h3>
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>基本操作</h5>
+                    <ul>
+                        <li><strong>Ctrl+B</strong> - 粗體</li>
+                        <li><strong>Ctrl+I</strong> - 斜體</li>
+                        <li><strong>Ctrl+U</strong> - 底線</li>
+                        <li><strong>Tab</strong> - 接受 Ghost 建議</li>
+                        <li><strong>Esc</strong> - 清除 Ghost 建議</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h5>AI 功能</h5>
+                    <ul>
+                        <li>點擊 <span class="badge bg-purple">AI</span> 按鈕進行智能補完</li>
+                        <li>點擊 <span class="badge bg-info">Ghost</span> 按鈕切換建議模式</li>
+                        <li>使用手寫功能直接繪製或轉換文字</li>
+                        <li>複製圖片到編輯器自動上傳</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- 整合說明 -->
+        <div class="feature-card">
+            <h3 class="mb-3">
+                <i class="fas fa-puzzle-piece me-2"></i>系統整合
+            </h3>
+            <p>
+                這個 WYSIWYG 編輯器完全整合了您現有的筆記系統功能：
+            </p>
+            <div class="row">
+                <div class="col-md-4">
+                    <h6><i class="fas fa-robot me-2 text-primary"></i>LSP 支援</h6>
+                    <p class="small text-muted">
+                        整合語言伺服器協議，提供智能程式碼補完和語法檢查。
+                    </p>
+                </div>
+                <div class="col-md-4">
+                    <h6><i class="fas fa-ghost me-2 text-success"></i>Ghost AI</h6>
+                    <p class="small text-muted">
+                        即時AI建議系統，根據上下文提供智能寫作建議。
+                    </p>
+                </div>
+                <div class="col-md-4">
+                    <h6><i class="fas fa-pen-fancy me-2 text-warning"></i>手寫輸入</h6>
+                    <p class="small text-muted">
+                        支援手寫板和觸控輸入，可轉換為文字或保存為圖片。
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Markdown轉換器 -->
+    <script src="/static/js/markdown_converter.js"></script>
+    <!-- WYSIWYG編輯器 -->
+    <script src="/static/js/wysiwyg_editor.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化演示編輯器
+            const demoEditor = new WYSIWYGEditor('demo-editor-container', {
+                theme: 'light',
+                placeholder: '在這裡開始寫作，體驗全新的編輯體驗...\n\n試試看：\n• 輸入文字並使用格式化功能\n• 複製圖片到編輯器\n• 點擊手寫按鈕進行手寫輸入\n• 觀察 Ghost AI 的智能建議',
+                enableHandwriting: true,
+                enableLSP: false, // 演示環境暫時關閉
+                enableGhost: false // 演示環境暫時關閉
+            });
+            
+            // 設置示例內容
+            const sampleContent = `# 歡迎使用 WYSIWYG 編輯器
+
+這是一個功能豐富的**富文本編輯器**，專為現代筆記系統設計。
+
+## 主要特色
+
+1. **視覺化編輯** - 所見即所得的編輯體驗
+2. **AI 智能功能** - 整合 Ghost AI 和 LSP 支援
+3. **手寫輸入** - 支援手寫板和觸控設備
+4. **圖片支援** - 直接複製貼上圖片
+
+## 如何使用
+
+只需要在編輯器中*自由寫作*，所有格式化都會即時呈現。
+
+> 這是一個引用塊示例
+> 可以用來強調重要內容
+
+### 程式碼支援
+
+編輯器也支援程式碼：
+
+\`\`\`javascript
+function hello() {
+    console.log("Hello, WYSIWYG Editor!");
+}
+\`\`\`
+
+---
+
+**開始您的寫作之旅吧！**`;
+
+            // 設置初始內容
+            setTimeout(() => {
+                demoEditor.setContent(sampleContent, 'markdown');
+                updateMarkdownOutput();
+            }, 500);
+            
+            // 監聽內容變更並更新Markdown輸出
+            demoEditor.on('contentChange', updateMarkdownOutput);
+            
+            function updateMarkdownOutput() {
+                const markdown = demoEditor.getContent('markdown');
+                const outputElement = document.getElementById('markdown-output');
+                
+                // 格式化並顯示Markdown
+                const formattedMarkdown = markdown
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+                
+                outputElement.textContent = formattedMarkdown || '（Markdown 輸出將顯示在這裡）';
+            }
+            
+            // 模擬 showAlert 函數（演示用）
+            window.showAlert = function(type, message) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+                alertDiv.style.top = '20px';
+                alertDiv.style.right = '20px';
+                alertDiv.style.zIndex = '9999';
+                alertDiv.style.minWidth = '300px';
+                alertDiv.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                
+                document.body.appendChild(alertDiv);
+                
+                // 自動移除
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.parentNode.removeChild(alertDiv);
+                    }
+                }, 5000);
+            };
+            
+            console.log('WYSIWYG編輯器演示已載入完成！');
+        });
+    </script>
+</body>
+</html>
