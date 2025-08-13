@@ -59,6 +59,9 @@ class WYSIWYGEditor {
             this.setupHandwriting();
             this.setupAIFeatures();
             
+            // 綁定現有的程式碼複製按鈕
+            this.bindCodeCopyButtons();
+            
             if (this.lspEnabled) {
                 await this.initLSP();
             }
@@ -575,7 +578,7 @@ class WYSIWYGEditor {
             e.preventDefault();
             isDrawing = true;
             lastPoint = this.getCanvasPoint(e.touches[0]);
-        });
+        }, { passive: false });
         
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
@@ -584,7 +587,7 @@ class WYSIWYGEditor {
             const currentPoint = this.getCanvasPoint(e.touches[0]);
             this.drawLine(lastPoint, currentPoint);
             lastPoint = currentPoint;
-        });
+        }, { passive: false });
         
         canvas.addEventListener('touchend', (e) => {
             e.preventDefault();
@@ -636,17 +639,20 @@ class WYSIWYGEditor {
         if (mode === 'image') {
             // 直接插入為圖片
             try {
-                const imageUrl = await this.uploadImageFromDataUrl(dataUrl);
-                this.insertImage(imageUrl);
+                const result = await this.uploadImageFromDataUrl(dataUrl);
+                this.insertImage(result.url);
                 this.showMessage('手寫內容已插入為圖片', 'success');
             } catch (error) {
                 console.error('圖片上傳失敗:', error);
                 this.showMessage('圖片上傳失敗', 'error');
             }
         } else {
-            // AI轉換為文字
+            // AI轉換為文字 - 先上傳檔案，再用檔案路徑進行OCR
             try {
-                const text = await this.convertHandwritingToText(dataUrl);
+                // 先上傳保存檔案
+                const result = await this.uploadImageFromDataUrl(dataUrl);
+                // 使用檔案路徑進行OCR (更高效)
+                const text = await this.convertHandwritingToTextFromPath(result.path);
                 this.insertText(text);
                 this.showMessage('手寫內容已轉換為文字', 'success');
             } catch (error) {
@@ -709,73 +715,282 @@ class WYSIWYGEditor {
     }
     
     /**
+     * 顯示輸入模態框（支援下拉選單）
+     */
+    showInputModal(title, fields, callback) {
+        // 創建模態框HTML
+        const modalId = 'input-modal-' + Date.now();
+        const modalHTML = `
+            <div class="modal fade" id="${modalId}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">${title}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="${modalId}-form">
+                                ${fields.map((field, index) => {
+                                    if (field.type === 'select') {
+                                        return `
+                                            <div class="mb-3">
+                                                <label for="${modalId}-field-${index}" class="form-label">${field.label}</label>
+                                                <select class="form-select" id="${modalId}-field-${index}">
+                                                    ${field.options.map(option => 
+                                                        `<option value="${option.value}" ${option.value === field.defaultValue ? 'selected' : ''}>${option.text}</option>`
+                                                    ).join('')}
+                                                </select>
+                                            </div>
+                                        `;
+                                    } else {
+                                        return `
+                                            <div class="mb-3">
+                                                <label for="${modalId}-field-${index}" class="form-label">${field.label}</label>
+                                                <input type="${field.type || 'text'}" class="form-control" 
+                                                       id="${modalId}-field-${index}" 
+                                                       value="${field.defaultValue || ''}"
+                                                       placeholder="${field.placeholder || ''}">
+                                            </div>
+                                        `;
+                                    }
+                                }).join('')}
+                            </form>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn btn-primary" id="${modalId}-confirm">確定</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 添加到頁面
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        // 初始化模態框
+        const modal = new bootstrap.Modal(document.getElementById(modalId));
+        
+        // 處理確定按鈕
+        document.getElementById(`${modalId}-confirm`).addEventListener('click', () => {
+            const values = fields.map((_, index) => {
+                const element = document.getElementById(`${modalId}-field-${index}`);
+                return element.value;
+            });
+            
+            modal.hide();
+            if (callback) callback(values);
+        });
+        
+        // 清理模態框
+        document.getElementById(modalId).addEventListener('hidden.bs.modal', () => {
+            document.getElementById(modalId).remove();
+        });
+        
+        modal.show();
+        
+        // 聚焦第一個輸入框或選擇框
+        setTimeout(() => {
+            const firstInput = document.querySelector(`#${modalId} input, #${modalId} select`);
+            if (firstInput) firstInput.focus();
+        }, 500);
+    }
+
+    /**
      * 插入表格
      */
     insertTable() {
-        const rows = prompt('請輸入表格行數:', '3');
-        const cols = prompt('請輸入表格列數:', '3');
-        
-        if (!rows || !cols) return;
-        
-        const rowCount = parseInt(rows);
-        const colCount = parseInt(cols);
-        
-        if (rowCount < 1 || colCount < 1) return;
-        
-        let tableHTML = '<table border="1" style="border-collapse: collapse; width: 100%;">';
-        
-        // 創建標題行
-        tableHTML += '<thead><tr>';
-        for (let j = 0; j < colCount; j++) {
-            tableHTML += '<th style="padding: 8px; border: 1px solid #ddd;">標題 ' + (j + 1) + '</th>';
-        }
-        tableHTML += '</tr></thead>';
-        
-        // 創建資料行
-        tableHTML += '<tbody>';
-        for (let i = 1; i < rowCount; i++) {
-            tableHTML += '<tr>';
+        this.showInputModal('插入表格', [
+            { label: '行數', defaultValue: '3', placeholder: '請輸入表格行數' },
+            { label: '列數', defaultValue: '3', placeholder: '請輸入表格列數' }
+        ], (values) => {
+            const [rows, cols] = values;
+            
+            if (!rows || !cols) return;
+            
+            const rowCount = parseInt(rows);
+            const colCount = parseInt(cols);
+            
+            if (rowCount < 1 || colCount < 1) return;
+            
+            let tableHTML = '<table border="1" style="border-collapse: collapse; width: 100%;">';
+            
+            // 創建標題行
+            tableHTML += '<thead><tr>';
             for (let j = 0; j < colCount; j++) {
-                tableHTML += '<td style="padding: 8px; border: 1px solid #ddd;">資料</td>';
+                tableHTML += '<th style="padding: 8px; border: 1px solid #ddd;">標題 ' + (j + 1) + '</th>';
             }
-            tableHTML += '</tr>';
-        }
-        tableHTML += '</tbody></table><br>';
-        
-        document.execCommand('insertHTML', false, tableHTML);
+            tableHTML += '</tr></thead>';
+            
+            // 創建資料行
+            tableHTML += '<tbody>';
+            for (let i = 1; i < rowCount; i++) {
+                tableHTML += '<tr>';
+                for (let j = 0; j < colCount; j++) {
+                    tableHTML += '<td style="padding: 8px; border: 1px solid #ddd;">資料</td>';
+                }
+                tableHTML += '</tr>';
+            }
+            tableHTML += '</tbody></table><br>';
+            
+            document.execCommand('insertHTML', false, tableHTML);
+        });
     }
     
+    /**
+     * 顯示程式語言選擇模態框
+     */
+    showCodeLanguageModal(callback) {
+        const commonLanguages = [
+            { value: 'javascript', label: 'JavaScript' },
+            { value: 'python', label: 'Python' },
+            { value: 'java', label: 'Java' },
+            { value: 'csharp', label: 'C#' },
+            { value: 'cpp', label: 'C++' },
+            { value: 'c', label: 'C' },
+            { value: 'html', label: 'HTML' },
+            { value: 'css', label: 'CSS' },
+            { value: 'sql', label: 'SQL' },
+            { value: 'php', label: 'PHP' },
+            { value: 'typescript', label: 'TypeScript' },
+            { value: 'go', label: 'Go' },
+            { value: 'rust', label: 'Rust' },
+            { value: 'swift', label: 'Swift' },
+            { value: 'kotlin', label: 'Kotlin' },
+            { value: 'ruby', label: 'Ruby' },
+            { value: 'bash', label: 'Bash/Shell' },
+            { value: 'json', label: 'JSON' },
+            { value: 'xml', label: 'XML' },
+            { value: 'yaml', label: 'YAML' },
+            { value: 'markdown', label: 'Markdown' },
+            { value: 'plaintext', label: '純文字' }
+        ];
+
+        const modalId = 'code-language-modal-' + Date.now();
+        const modalHTML = `
+            <div class="modal fade" id="${modalId}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">選擇程式語言</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="${modalId}-select" class="form-label">常用語言</label>
+                                <select class="form-select" id="${modalId}-select">
+                                    <option value="">請選擇...</option>
+                                    ${commonLanguages.map(lang => 
+                                        `<option value="${lang.value}">${lang.label}</option>`
+                                    ).join('')}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="${modalId}-custom" class="form-label">或輸入自定義語言</label>
+                                <input type="text" class="form-control" id="${modalId}-custom" 
+                                       placeholder="例如：python3, nodejs...">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn btn-primary" id="${modalId}-confirm">插入程式碼</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        const modal = new bootstrap.Modal(document.getElementById(modalId));
+
+        // 處理選擇變更
+        const selectElement = document.getElementById(`${modalId}-select`);
+        const customElement = document.getElementById(`${modalId}-custom`);
+        
+        selectElement.addEventListener('change', () => {
+            if (selectElement.value) {
+                customElement.value = '';
+            }
+        });
+
+        customElement.addEventListener('input', () => {
+            if (customElement.value) {
+                selectElement.value = '';
+            }
+        });
+
+        // 處理確定按鈕
+        document.getElementById(`${modalId}-confirm`).addEventListener('click', () => {
+            const language = selectElement.value || customElement.value || 'plaintext';
+            modal.hide();
+            if (callback) callback(language);
+        });
+
+        // 清理模態框
+        document.getElementById(modalId).addEventListener('hidden.bs.modal', () => {
+            document.getElementById(modalId).remove();
+        });
+
+        modal.show();
+        setTimeout(() => selectElement.focus(), 500);
+    }
+
     /**
      * 插入程式碼區塊
      */
     insertCodeBlock() {
-        const language = prompt('請輸入程式語言 (可選):', 'javascript');
-        const codeHTML = `<pre><code class="language-${language || ''}">${'請在此輸入程式碼'}</code></pre><br>`;
-        document.execCommand('insertHTML', false, codeHTML);
+        this.showCodeLanguageModal((language) => {
+            const codeHTML = `
+                <div class="code-block-container mb-3" style="border: 1px solid #e1e5e9; border-radius: 8px; overflow: hidden; background: #f8f9fa;">
+                    <div class="code-header" style="background: #e9ecef; padding: 8px 12px; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center;">
+                        <span class="code-language" style="font-size: 12px; color: #6c757d; font-weight: 500;">${language.toUpperCase()}</span>
+                    </div>
+                    <pre class="code-content language-${language}" style="margin: 0; padding: 16px; background: #2d3748; color: #e2e8f0; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; line-height: 1.5; overflow-x: auto; position: relative;"><code class="language-${language}" contenteditable="true" style="background: transparent; border: none; outline: none; white-space: pre; color: inherit;">// 請在此輸入您的程式碼
+console.log('Hello, World!');</code></pre>
+                </div>
+            `;
+            document.execCommand('insertHTML', false, codeHTML);
+            
+            // 使用全域的程式碼複製管理器為新插入的程式碼區塊添加複製按鈕
+            setTimeout(() => {
+                if (window.CodeCopyManager) {
+                    window.CodeCopyManager.bindNewCodeBlocks();
+                }
+            }, 100);
+        });
     }
+
     
     /**
      * 顯示圖片對話框
      */
     showImageDialog() {
-        const url = prompt('請輸入圖片URL:');
-        if (url) {
-            this.insertImage(url);
-        }
+        this.showInputModal('插入圖片', [
+            { label: '圖片URL', placeholder: '請輸入圖片URL' },
+            { label: '替代文字 (Alt)', placeholder: '描述圖片內容 (可選)', defaultValue: '' }
+        ], (values) => {
+            const [url, alt] = values;
+            if (url) {
+                this.insertImage(url, alt || '圖片');
+            }
+        });
     }
     
     /**
      * 顯示連結對話框
      */
     showLinkDialog() {
-        const url = prompt('請輸入連結URL:');
-        if (url) {
-            const text = prompt('請輸入連結文字:', url);
-            if (text) {
-                const linkHTML = `<a href="${url}" target="_blank">${text}</a>`;
+        this.showInputModal('插入連結', [
+            { label: '連結URL', placeholder: '請輸入連結URL' },
+            { label: '連結文字', placeholder: '請輸入連結文字' }
+        ], (values) => {
+            const [url, text] = values;
+            if (url) {
+                const linkText = text || url;
+                const linkHTML = `<a href="${url}" target="_blank">${linkText}</a>`;
                 document.execCommand('insertHTML', false, linkHTML);
             }
-        }
+        });
     }
     
     /**
@@ -812,7 +1027,7 @@ class WYSIWYGEditor {
     insertImage(url, alt = '') {
         const img = document.createElement('img');
         img.src = url;
-        img.alt = alt;
+        img.alt = alt || '圖片'; // 提供預設的alt文字
         img.style.maxWidth = '100%';
         img.style.height = 'auto';
         
@@ -975,14 +1190,25 @@ class WYSIWYGEditor {
         
         this.content = this.getContent();
         this.updateStatus();
+        
+        // 為新內容中的程式碼區塊綁定複製功能
+        setTimeout(() => {
+            if (window.CodeCopyManager) {
+                window.CodeCopyManager.bindNewCodeBlocks();
+            }
+        }, 100);
     }
     
     /**
      * HTML轉Markdown（改進版）
      */
     htmlToMarkdown(html) {
+        console.log('htmlToMarkdown 輸入:', html);
+        
         if (window.markdownConverter) {
-            return window.markdownConverter.htmlToMarkdown(html);
+            const result = window.markdownConverter.htmlToMarkdown(html);
+            console.log('使用 markdownConverter 結果:', result);
+            return result;
         }
         
         // 簡化版轉換（備用）
@@ -992,22 +1218,124 @@ class WYSIWYGEditor {
         // 基本的HTML到Markdown轉換
         let markdown = html;
         
-        // 標題
-        markdown = markdown.replace(/<h([1-6])>(.*?)<\/h[1-6]>/gi, (match, level, content) => {
+        // 先處理複雜結構，再處理簡單標籤
+        
+        // 1. 圖片（在移除其他標籤之前處理）
+        markdown = markdown.replace(/<img[^>]+src="([^"]*)"[^>]*alt="([^"]*)"[^>]*>/gi, '![$2]($1)');
+        markdown = markdown.replace(/<img[^>]+alt="([^"]*)"[^>]*src="([^"]*)"[^>]*>/gi, '![$1]($2)');
+        markdown = markdown.replace(/<img[^>]+src="([^"]*)"[^>]*>/gi, '![]($1)');
+        
+        // 2. 連結
+        markdown = markdown.replace(/<a[^>]+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)');
+        
+        // 3. 標題
+        markdown = markdown.replace(/<h([1-6])[^>]*>(.*?)<\/h[1-6]>/gi, (match, level, content) => {
             const hashes = '#'.repeat(parseInt(level));
-            return `${hashes} ${content.trim()}\n\n`;
+            return `\n${hashes} ${content.trim()}\n\n`;
         });
         
-        // 粗體和斜體
-        markdown = markdown.replace(/<strong>(.*?)<\/strong>/gi, '**$1**');
-        markdown = markdown.replace(/<b>(.*?)<\/b>/gi, '**$1**');
-        markdown = markdown.replace(/<em>(.*?)<\/em>/gi, '*$1*');
-        markdown = markdown.replace(/<i>(.*?)<\/i>/gi, '*$1*');
+        // 4. 程式碼區塊（先處理多行，再處理單行）
+        markdown = markdown.replace(/<pre[^>]*><code[^>]*class="language-([^"]*)"[^>]*>(.*?)<\/code><\/pre>/gis, '\n```$1\n$2\n```\n');
+        markdown = markdown.replace(/<pre[^>]*><code[^>]*>(.*?)<\/code><\/pre>/gis, '\n```\n$1\n```\n');
+        markdown = markdown.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
         
-        // 移除HTML標籤
+        // 5. 列表（先處理有序，再處理無序）
+        markdown = markdown.replace(/<ol[^>]*>(.*?)<\/ol>/gis, (match, content) => {
+            let counter = 1;
+            return '\n' + content.replace(/<li[^>]*>(.*?)<\/li>/gi, () => `${counter++}. $1\n`) + '\n';
+        });
+        markdown = markdown.replace(/<ul[^>]*>(.*?)<\/ul>/gis, (match, content) => {
+            return '\n' + content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n') + '\n';
+        });
+        
+        // 6. 表格
+        markdown = markdown.replace(/<table[^>]*>(.*?)<\/table>/gis, (match, tableContent) => {
+            let result = '\n';
+            const rows = tableContent.match(/<tr[^>]*>(.*?)<\/tr>/gis) || [];
+            
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const cells = row.match(/<t[hd][^>]*>(.*?)<\/t[hd]>/gis) || [];
+                const cellContents = cells.map(cell => 
+                    cell.replace(/<t[hd][^>]*>(.*?)<\/t[hd]>/gi, '$1').trim()
+                );
+                
+                result += '| ' + cellContents.join(' | ') + ' |\n';
+                
+                // 在第一行後加分隔線
+                if (i === 0) {
+                    result += '|' + cellContents.map(() => ' --- ').join('|') + '|\n';
+                }
+            }
+            
+            return result + '\n';
+        });
+        
+        // 7. 引用
+        markdown = markdown.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gis, (match, content) => {
+            return '\n> ' + content.replace(/\n/g, '\n> ').trim() + '\n\n';
+        });
+        
+        // 8. 分隔線
+        markdown = markdown.replace(/<hr[^>]*\/?>/gi, '\n---\n');
+        
+        // 9. 格式化文字（順序很重要，先處理刪除線，避免嵌套問題）
+        console.log('處理格式化之前:', markdown);
+        
+        // 處理刪除線（使用更寬鬆的匹配）
+        let beforeDel = markdown;
+        markdown = markdown.replace(/<del[^>]*>(.*?)<\/del>/gis, '~~$1~~');
+        markdown = markdown.replace(/<s[^>]*>(.*?)<\/s>/gis, '~~$1~~');
+        markdown = markdown.replace(/<strike[^>]*>(.*?)<\/strike>/gis, '~~$1~~');
+        if (beforeDel !== markdown) console.log('刪除線轉換完成:', markdown);
+        
+        // 處理粗體（在斜體之前處理）
+        let beforeBold = markdown;
+        markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gis, '**$1**');
+        markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/gis, '**$1**');
+        if (beforeBold !== markdown) console.log('粗體轉換完成:', markdown);
+        
+        // 處理斜體（使用更寬鬆的匹配）
+        let beforeItalic = markdown;
+        markdown = markdown.replace(/<em[^>]*>(.*?)<\/em>/gis, '*$1*');
+        markdown = markdown.replace(/<i[^>]*>(.*?)<\/i>/gis, '*$1*');
+        if (beforeItalic !== markdown) console.log('斜體轉換完成:', markdown);
+        
+        // 處理下劃線（保持HTML格式）
+        markdown = markdown.replace(/<u[^>]*>(.*?)<\/u>/gis, '<u>$1</u>');
+        
+        // 10. 段落和換行（改進換行處理）
+        // 先處理段落，確保段落間有正確的間距
+        markdown = markdown.replace(/<p[^>]*>(.*?)<\/p>/gis, (match, content) => {
+            return content.trim() + '\n\n';
+        });
+        
+        // 處理 br 標籤為單個換行
+        markdown = markdown.replace(/<br[^>]*\/?>/gi, '\n');
+        
+        // 處理 div 標籤
+        markdown = markdown.replace(/<div[^>]*>(.*?)<\/div>/gis, (match, content) => {
+            return content.trim() + '\n';
+        });
+        
+        // 11. 移除剩餘的HTML標籤
         markdown = markdown.replace(/<[^>]*>/g, '');
         
-        return markdown.trim();
+        // 12. 清理HTML實體
+        markdown = markdown.replace(/&nbsp;/g, ' ');
+        markdown = markdown.replace(/&amp;/g, '&');
+        markdown = markdown.replace(/&lt;/g, '<');
+        markdown = markdown.replace(/&gt;/g, '>');
+        markdown = markdown.replace(/&quot;/g, '"');
+        markdown = markdown.replace(/&#39;/g, "'");
+        
+        // 13. 清理多餘的空行和空格
+        markdown = markdown.replace(/\n{3,}/g, '\n\n');
+        markdown = markdown.replace(/[ \t]+$/gm, ''); // 移除行尾空格
+        markdown = markdown.replace(/^\s+|\s+$/g, ''); // 移除開頭和結尾空格
+        
+        console.log('htmlToMarkdown 輸出:', markdown);
+        return markdown;
     }
     
     /**
@@ -1026,6 +1354,20 @@ class WYSIWYGEditor {
         // 簡化版轉換（備用）
         let html = markdown;
         
+        // 程式碼區塊（先處理多行程式碼）
+        html = html.replace(/```(\w+)?\n([\s\S]*?)\n```/g, (match, language, code) => {
+            const lang = language || 'plaintext';
+            return `<div class="code-block-container mb-3" style="border: 1px solid #e1e5e9; border-radius: 8px; overflow: hidden; background: #f8f9fa;">
+                <div class="code-header" style="background: #e9ecef; padding: 8px 12px; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center;">
+                    <span class="code-language" style="font-size: 12px; color: #6c757d; font-weight: 500;">${lang.toUpperCase()}</span>
+                </div>
+                <pre class="code-content language-${lang}" style="margin: 0; padding: 16px; background: #2d3748; color: #e2e8f0; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; line-height: 1.5; overflow-x: auto; position: relative;"><code class="language-${lang}" style="background: transparent; border: none; outline: none; white-space: pre; color: inherit;">${code}</code></pre>
+            </div>`;
+        });
+        
+        // 行內程式碼
+        html = html.replace(/`([^`]+)`/g, '<code style="background: #f1f3f4; padding: 2px 4px; border-radius: 3px; font-family: monospace;">$1</code>');
+        
         // 標題
         html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
         html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
@@ -1039,8 +1381,16 @@ class WYSIWYGEditor {
         html = html.replace(/\n\n/g, '</p><p>');
         html = '<p>' + html + '</p>';
         
+        // 為轉換後的程式碼區塊綁定複製功能
+        setTimeout(() => {
+            if (window.CodeCopyManager) {
+                window.CodeCopyManager.bindNewCodeBlocks();
+            }
+        }, 100);
+        
         return html;
     }
+
     
     /**
      * 上傳圖片
@@ -1048,6 +1398,12 @@ class WYSIWYGEditor {
     async uploadImage(file) {
         const formData = new FormData();
         formData.append('image', file);
+        
+        // 添加CSRF token
+        const csrfToken = document.querySelector('meta[name=csrf-token]')?.getAttribute('content');
+        if (csrfToken) {
+            formData.append('csrf_token', csrfToken);
+        }
         
         const response = await fetch('/notes/upload-image', {
             method: 'POST',
@@ -1066,12 +1422,21 @@ class WYSIWYGEditor {
      * 從DataURL上傳圖片
      */
     async uploadImageFromDataUrl(dataUrl) {
+        // 準備請求資料
+        const requestData = { image: dataUrl };
+        
+        // 添加CSRF token
+        const csrfToken = document.querySelector('meta[name=csrf-token]')?.getAttribute('content');
+        if (csrfToken) {
+            requestData.csrf_token = csrfToken;
+        }
+        
         const response = await fetch('/notes/upload-image-dataurl', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ image: dataUrl })
+            body: JSON.stringify(requestData)
         });
         
         if (!response.ok) {
@@ -1079,19 +1444,61 @@ class WYSIWYGEditor {
         }
         
         const data = await response.json();
-        return data.url;
+        return {
+            url: data.url,
+            path: data.path,
+            filename: data.filename
+        };
     }
     
     /**
-     * 手寫轉文字
+     * 手寫轉文字 (使用base64 - 舊方法，保持兼容性)
      */
     async convertHandwritingToText(dataUrl) {
+        // 準備請求資料
+        const requestData = { image: dataUrl };
+        
+        // 添加CSRF token
+        const csrfToken = document.querySelector('meta[name=csrf-token]')?.getAttribute('content');
+        if (csrfToken) {
+            requestData.csrf_token = csrfToken;
+        }
+        
         const response = await fetch('/notes/handwriting-to-text', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ image: dataUrl })
+            body: JSON.stringify(requestData)
+        });
+        
+        if (!response.ok) {
+            throw new Error('手寫辨識失敗');
+        }
+        
+        const data = await response.json();
+        return data.text;
+    }
+    
+    /**
+     * 手寫轉文字 (使用檔案路徑 - 推薦方法)
+     */
+    async convertHandwritingToTextFromPath(filePath) {
+        // 準備請求資料
+        const requestData = { file_path: filePath };
+        
+        // 添加CSRF token
+        const csrfToken = document.querySelector('meta[name=csrf-token]')?.getAttribute('content');
+        if (csrfToken) {
+            requestData.csrf_token = csrfToken;
+        }
+        
+        const response = await fetch('/notes/handwriting-to-text', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
         });
         
         if (!response.ok) {
@@ -2538,23 +2945,7 @@ class WYSIWYGEditor {
         }
     }
 
-    /**
-     * 將HTML轉換為Markdown（簡化版）
-     */
-    htmlToMarkdown(html) {
-        // 簡單的HTML到Markdown轉換
-        return html
-            .replace(/<h([1-6])[^>]*>(.*?)<\/h[1-6]>/gi, (match, level, text) => {
-                return '#'.repeat(parseInt(level)) + ' ' + text + '\n\n';
-            })
-            .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
-            .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
-            .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
-            .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
-            .replace(/<[^>]+>/g, ''); // 移除其他HTML標籤
-    }
+
 }
 
 // 全域暴露

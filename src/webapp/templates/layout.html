@@ -611,6 +611,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-core.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/plugins/autoloader/prism-autoloader.min.js"></script>
     
+    <!-- 引入全域程式碼複製功能 -->
+    <script src="{{ url_for('static', filename='js/code_copy.js') }}"></script>
+    
     <script>
         // 確保 Prism.js 正確處理所有程式碼區塊
         document.addEventListener('DOMContentLoaded', function() {

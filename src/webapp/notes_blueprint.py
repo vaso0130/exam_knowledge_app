@@ -1129,20 +1129,34 @@ def upload_image():
                 file.filename.rsplit('.', 1)[1].lower() in allowed_extensions):
             return jsonify({'success': False, 'error': '不支援的檔案格式'}), 400
         
-        # 這裡應該實現實際的檔案上傳邏輯
-        # 暫時返回模擬URL
+        # 從 .env 獲取上傳路徑
+        upload_folder = current_app.config.get('FILE_STORAGE_PATH')
+        if not upload_folder:
+            upload_folder = os.path.join(current_app.root_path, '..', '..', 'uploads')
+        
+        # 確保目錄存在
+        import os, tempfile, shutil
+        os.makedirs(upload_folder, exist_ok=True)
+        
+        # 生成安全的檔案名
         import uuid
-        filename = f"uploaded_{uuid.uuid4().hex[:8]}.{file.filename.rsplit('.', 1)[1].lower()}"
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        file_extension = file.filename.rsplit('.', 1)[1].lower()
+        filename = f"upload_{timestamp}_{uuid.uuid4().hex[:8]}.{file_extension}"
+        file_path = os.path.join(upload_folder, filename)
         
-        # 實際應用中，您需要將檔案保存到適當的位置
-        # file.save(os.path.join(upload_folder, filename))
+        # 保存檔案
+        file.save(file_path)
         
-        image_url = f"/static/uploads/{filename}"
+        # 生成URL (相對於static路徑)
+        image_url = f"/uploads/{filename}"
         
         return jsonify({
             'success': True,
             'url': image_url,
-            'filename': filename
+            'filename': filename,
+            'path': file_path
         })
         
     except Exception as e:
@@ -1163,6 +1177,7 @@ def upload_image_dataurl():
         # 解析data URL
         import base64
         import io
+        from datetime import datetime
         
         if not image_data.startswith('data:image'):
             return jsonify({'success': False, 'error': '無效的圖片格式'}), 400
@@ -1171,20 +1186,32 @@ def upload_image_dataurl():
         header, encoded = image_data.split(',', 1)
         image_bytes = base64.b64decode(encoded)
         
+        # 從 .env 獲取上傳路徑
+        upload_folder = current_app.config.get('FILE_STORAGE_PATH')
+        if not upload_folder:
+            upload_folder = os.path.join(current_app.root_path, '..', '..', 'uploads')
+        
+        # 確保目錄存在
+        os.makedirs(upload_folder, exist_ok=True)
+        
         # 生成檔案名
         import uuid
-        filename = f"handwriting_{uuid.uuid4().hex[:8]}.png"
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"handwriting_{timestamp}_{uuid.uuid4().hex[:8]}.png"
+        file_path = os.path.join(upload_folder, filename)
         
-        # 實際應用中，您需要將檔案保存到適當的位置
-        # with open(os.path.join(upload_folder, filename), 'wb') as f:
-        #     f.write(image_bytes)
+        # 保存檔案
+        with open(file_path, 'wb') as f:
+            f.write(image_bytes)
         
-        image_url = f"/static/uploads/{filename}"
+        # 生成URL (相對於static路徑)
+        image_url = f"/uploads/{filename}"
         
         return jsonify({
             'success': True,
             'url': image_url,
-            'filename': filename
+            'filename': filename,
+            'path': file_path
         })
         
     except Exception as e:
@@ -1194,27 +1221,78 @@ def upload_image_dataurl():
 
 @notes_bp.route('/handwriting-to-text', methods=['POST'])
 def handwriting_to_text():
-    """Convert handwriting image to text using AI."""
+    """Convert handwriting image to text using FileProcessor OCR."""
     try:
         data = request.get_json()
-        if not data or 'image' not in data:
-            return jsonify({'success': False, 'error': '沒有圖片資料'}), 400
+        if not data:
+            return jsonify({'success': False, 'error': '沒有請求資料'}), 400
         
-        image_data = data['image']
+        # 支援兩種輸入方式：
+        # 1. 直接傳檔案路徑 (推薦)
+        # 2. 傳 base64 圖片資料 (會先上傳保存後再處理)
         
-        # 這裡應該整合您的手寫辨識AI服務
-        # 暫時返回模擬結果
-        mock_text = "這是手寫辨識的模擬結果。實際應用中需要整合OCR或手寫辨識API。"
+        file_path = data.get('file_path')
+        image_data = data.get('image')
         
-        # 實際實現示例：
-        # 1. 將image_data（base64）轉換為圖片檔案
-        # 2. 調用OCR API（如Google Cloud Vision、Azure OCR等）
-        # 3. 返回辨識結果
+        if file_path:
+            # 方式1：直接使用檔案路徑
+            if not os.path.exists(file_path):
+                return jsonify({'success': False, 'error': '檔案不存在'}), 400
+            target_file_path = file_path
+            
+        elif image_data:
+            # 方式2：base64 圖片資料，先透過 upload_image_dataurl 保存
+            # 這樣可以重用現有的檔案保存邏輯
+            try:
+                # 模擬內部調用 upload_image_dataurl 的邏輯
+                if not image_data.startswith('data:image'):
+                    return jsonify({'success': False, 'error': '無效的圖片格式'}), 400
+                
+                # 提取base64資料並保存檔案
+                header, encoded = image_data.split(',', 1)
+                image_bytes = base64.b64decode(encoded)
+                
+                # 從 .env 獲取上傳路徑
+                upload_folder = current_app.config.get('FILE_STORAGE_PATH')
+                if not upload_folder:
+                    upload_folder = os.path.join(current_app.root_path, '..', '..', 'uploads')
+                
+                # 確保目錄存在
+                os.makedirs(upload_folder, exist_ok=True)
+                
+                # 生成檔案名
+                import uuid
+                from datetime import datetime
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"handwriting_ocr_{timestamp}_{uuid.uuid4().hex[:8]}.png"
+                target_file_path = os.path.join(upload_folder, filename)
+                
+                # 保存檔案
+                with open(target_file_path, 'wb') as f:
+                    f.write(image_bytes)
+                    
+            except Exception as e:
+                return jsonify({'success': False, 'error': f'檔案保存失敗: {str(e)}'}), 500
+            
+        else:
+            return jsonify({'success': False, 'error': '缺少 file_path 或 image 資料'}), 400
         
-        return jsonify({
-            'success': True,
-            'text': mock_text
-        })
+        try:
+            # 使用 FileProcessor 進行 OCR
+            from src.utils.file_processor import FileProcessor
+            file_processor = FileProcessor()
+            detected_text = file_processor.read_image_file(target_file_path)
+            
+            return jsonify({
+                'success': True,
+                'text': detected_text.strip() if detected_text else '[無法識別文字內容]'
+            })
+            
+        except Exception as ocr_error:
+            return jsonify({
+                'success': False, 
+                'error': f'OCR 處理失敗: {str(ocr_error)}'
+            }), 500
         
     except Exception as e:
         print(f"手寫辨識錯誤：{e}")

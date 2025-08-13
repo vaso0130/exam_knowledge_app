@@ -49,7 +49,7 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 from werkzeug.utils import secure_filename
-from flask import Flask, render_template, request, abort, redirect, url_for, flash, jsonify, Response, g
+from flask import Flask, render_template, request, abort, redirect, url_for, flash, jsonify, Response, g, send_from_directory
 from flask_wtf.csrf import CSRFProtect
 from ..ai_gateway import get_gateway_port
 
@@ -92,6 +92,10 @@ def create_app():
     def csrf_exempt_for_api():
         # 豁免所有/notes/ai/*路由
         if request.endpoint and 'ai' in request.endpoint:
+            return True
+        # 豁免圖片上傳和手寫相關路由
+        upload_endpoints = ['notes.upload_image', 'notes.upload_image_dataurl', 'notes.handwriting_to_text']
+        if request.endpoint in upload_endpoints:
             return True
         return False
 
@@ -237,6 +241,15 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix='/auth')
     # app.register_blueprint(admin_bp, url_prefix='/admin')  # 🔒 禁用主程式中的管理路由
     app.register_blueprint(notes_bp, url_prefix='/notes') # 📝 Register the notes blueprint
+
+    # --- Static File Serving for Uploads ---
+    @app.route('/uploads/<filename>')
+    def uploaded_file(filename):
+        """Serve uploaded files"""
+        return send_from_directory(str(STORAGE_PATH), filename)
+    
+    # --- Set FILE_STORAGE_PATH config for use in blueprints ---
+    app.config['FILE_STORAGE_PATH'] = str(STORAGE_PATH)
 
     # --- Routes ---
 
