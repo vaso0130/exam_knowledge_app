@@ -116,7 +116,7 @@ class NotesDatabaseManager:
                 note_data['ai_analyses'] = [{
                     'id': analysis.id,
                     'analysis_type': analysis.analysis_type,
-                    'result': json.loads(analysis.result) if analysis.result else {},
+                    'result': self._safe_json_loads(analysis.result, {}),
                     'created_at': analysis.created_at.isoformat()
                 } for analysis in ai_analyses]
                 
@@ -325,7 +325,7 @@ class NotesDatabaseManager:
                 return {
                     'id': analysis.id,
                     'analysis_type': analysis.analysis_type,
-                    'result': json.loads(analysis.result) if analysis.result else {},
+                    'result': self._safe_json_loads(analysis.result, {}),
                     'created_at': analysis.created_at.isoformat()
                 }
             return None
@@ -344,7 +344,7 @@ class NotesDatabaseManager:
             return [{
                 'id': analysis.id,
                 'analysis_type': analysis.analysis_type,
-                'result': json.loads(analysis.result) if analysis.result else {},
+                'result': self._safe_json_loads(analysis.result, {}),
                 'created_at': analysis.created_at.isoformat()
             } for analysis in analyses]
 
@@ -385,12 +385,12 @@ class NotesDatabaseManager:
             results = []
             for analysis in analyses:
                 try:
-                    # 安全?�解?�JSON結�?
+                    # 安全解析JSON結果
                     result_data = {}
                     if analysis.result:
-                        result_data = json.loads(analysis.result)
+                        result_data = self._safe_json_loads(analysis.result, {})
                         
-                    # 驗�?結�??��??��??��?
+                    # 驗證結果格式
                     if isinstance(result_data, dict):
                         # 確�??�organized_content欄�?
                         if not result_data.get('organized_content'):
@@ -509,13 +509,33 @@ class NotesDatabaseManager:
             "title": note.title,
             "content": note.content,
             "content_type": note.content_type,
-            "tags": json.loads(note.tags) if note.tags else [],
+            "tags": self._safe_json_loads(note.tags, []),
             "ai_summary": note.ai_summary,
-            "ai_keywords": json.loads(note.ai_keywords) if note.ai_keywords else [],
+            "ai_keywords": self._safe_json_loads(note.ai_keywords, []),
             "created_at": note.created_at.isoformat(),
             "updated_at": note.updated_at.isoformat(),
             "is_archived": bool(note.is_archived)
         }
+
+    def _safe_json_loads(self, json_string: str, default_value=None):
+        """
+        安全地解析JSON字符串，如果解析失敗則返回默認值
+        
+        Args:
+            json_string: 要解析的JSON字符串
+            default_value: 解析失敗時的默認返回值
+            
+        Returns:
+            解析後的對象或默認值
+        """
+        if not json_string:
+            return default_value
+        
+        try:
+            return json.loads(json_string)
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            print(f"JSON解析錯誤: {e}, 原始字符串: {json_string[:100]}...")
+            return default_value
 
     def _category_to_dict(self, category: NoteCategory) -> Dict[str, Any]:
         """Converts a NoteCategory object to a dictionary."""

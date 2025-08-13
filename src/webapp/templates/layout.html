@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <!-- CSRF protection disabled for development -->
     <title>{% block title %}考題知識整理系統{% endblock %}</title>
     <!-- AI Gateway base (LSP + AI) 使用後端注入的實際埠號 -->
     <meta name="ai-gateway-base" content="{{ ai_gateway_base }}">

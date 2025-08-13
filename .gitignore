@@ -79,7 +79,7 @@ Thumbs.db
 test_*.py
 verify_*.py
 quick_*.py
-simple_*.py
+simple_test*.py
 
 # Jupyter Notebook
 .ipynb_checkpoints

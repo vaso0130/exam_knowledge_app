@@ -58,7 +58,7 @@ class GoogleVisionOCR:
             print(f"警告：初始化 Google Vision OCR 失敗: {e}")
     
     def extract_text_from_image(self, image_path: str) -> str:
-        """從圖片中提取文字，並返回帶有幾何座標的詞彙列表"""
+        """從圖片中提取文字，支援印刷體和手寫文字"""
         if self.client is None:
             raise ValueError("Google Vision OCR 客戶端未初始化")
 
@@ -67,11 +67,22 @@ class GoogleVisionOCR:
                 content = image_file.read()
 
             image = vision.Image(content=content)
-            response = self.client.document_text_detection(image=image)
+            image_context = vision.ImageContext(language_hints=['zh-Hant', 'en']) # Add language hints
+
+            # 使用 DOCUMENT_TEXT_DETECTION，現在原生支援手寫識別
+            response = self.client.document_text_detection(image=image, image_context=image_context)
 
             if response.error.message:
                 raise Exception(f'Google Vision API 錯誤: {response.error.message}')
 
+            # 如果有完整文字註解，直接使用
+            if response.full_text_annotation and response.full_text_annotation.text:
+                result_text = response.full_text_annotation.text.strip()
+                if result_text:
+                    print(f"DOCUMENT_TEXT_DETECTION識別成功: '{result_text}'")
+                    return result_text
+            
+            # 如果沒有完整文字，嘗試從詞彙重建
             words_with_coords = []
             if response.full_text_annotation:
                 for page in response.full_text_annotation.pages:
@@ -85,7 +96,28 @@ class GoogleVisionOCR:
                                     'x0': vertices[0].x,
                                     'top': vertices[0].y,
                                 })
-            return FileProcessor._reconstruct_text_from_words(words_with_coords)
+                
+                if words_with_coords:
+                    result_text = FileProcessor._reconstruct_text_from_words(words_with_coords)
+                    if result_text.strip():
+                        print(f"從詞彙重建識別成功: '{result_text.strip()}'")
+                        return result_text.strip()
+            
+            # 如果完全沒有結果，嘗試 text_detection 作為後備
+            print("DOCUMENT_TEXT_DETECTION無結果，嘗試text_detection...")
+            text_response = self.client.text_detection(image=image)
+            
+            if text_response.error.message:
+                raise Exception(f'Google Vision API text_detection 錯誤: {text_response.error.message}')
+            
+            texts = text_response.text_annotations
+            if texts:
+                result_text = texts[0].description.strip()
+                print(f"text_detection識別成功: '{result_text}'")
+                return result_text
+            
+            print("所有方法都無法識別文字")
+            return ""
 
         except Exception as e:
             raise ValueError(f"OCR 處理失敗: {e}")

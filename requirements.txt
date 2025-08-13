@@ -49,3 +49,7 @@ Pillow>=10.4.0
 werkzeug
 requests
 urllib3
+
+# 本地OCR (筆記系統專用)
+pytesseract>=0.3.10
+opencv-python>=4.8.0

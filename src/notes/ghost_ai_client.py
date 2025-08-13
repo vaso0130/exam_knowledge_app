@@ -66,7 +66,7 @@ class GhostAIClient:
             for attempt in range(self.max_retries):
                 try:
                     if use_simple_model:
-                        response = await self.gemini_client.generate_simple_async(prompt)
+                        response = await self.gemini_client.generate_async_simple(prompt)
                     else:
                         response = await self.gemini_client.generate_async(prompt)
                     

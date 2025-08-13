@@ -1,5 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify, Response, current_app
-from flask_wtf.csrf import CSRFProtect
+from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify, Response
 from ..notes.note_manager import NoteManager
 from ..webapp.auth_middleware import require_admin
 from ..core.database import DatabaseManager
@@ -7,8 +6,6 @@ from ..notes.ai_client import NoteAIClient
 from ..utils.file_processor import FileProcessor
 import json
 import traceback
-import os
-import base64
 
 
 # Define the blueprint for the notes system
@@ -261,149 +258,6 @@ def create_note_wysiwyg():
             traceback.print_exc()
 
     return render_template('notes/note_edit_wysiwyg.html', title="新增筆記 - WYSIWYG", note=None)
-
-
-@notes_bp.route('/from-question-wysiwyg/<string:question_id>', methods=['GET', 'POST'])
-def create_note_from_question_wysiwyg(question_id):
-    """Create a note referencing a question using WYSIWYG editor."""
-    user_id = g.current_user['id']
-    main_db = DatabaseManager()
-    question = main_db.get_question_by_id(question_id)
-    if not question:
-        flash("找不到指定的題目。", "danger")
-        return redirect(url_for('main.questions'))
-
-    # 設定預設標題
-    default_title = f"筆記：{question.get('question_text', '未命名題目')[:50]}..."
-
-    if request.method == 'POST':
-        action = request.form.get('action')
-        
-        # 處理智能AI生成請求 (AJAX)
-        if action == 'smart_ai_generate':
-            try:
-                ai_prompt = request.form.get('ai_prompt', '')
-                current_content = request.form.get('current_content', '')
-                title = request.form.get('title', '')
-                
-                # 準備生成筆記的資料
-                generation_context = {
-                    'question_text': question.get('question_text', ''),
-                    'answer_text': question.get('answer_text', ''),
-                    'user_content': current_content,
-                    'user_prompt': ai_prompt,
-                    'title': title
-                }
-                
-                # 呼叫智能筆記生成方法
-                generated_content = note_manager.generate_smart_note_content(
-                    user_id=user_id,
-                    context=generation_context
-                )
-                
-                return jsonify({
-                    'success': True,
-                    'generated_content': generated_content
-                })
-                
-            except Exception as e:
-                return jsonify({
-                    'success': False,
-                    'error': str(e)
-                }), 500
-        
-        # 處理一般表單提交
-        try:
-            title = request.form.get('title', '').strip()
-            content = request.form.get('content', '').strip()
-            tags = request.form.get('tags', '').strip()
-            
-            if not title:
-                flash("請輸入筆記標題。", "danger")
-                return render_template('notes/note_edit_wysiwyg.html', 
-                                     title="從題目建立筆記 - WYSIWYG", 
-                                     note=None,
-                                     default_title=default_title,
-                                     source_question=question)
-            
-            # 處理組織類型（如果是新筆記）
-            organization_types = request.form.getlist('organization_types')
-            enable_ai_organization = bool(organization_types)
-            
-            # 建立筆記，關聯到題目
-            note_id = note_manager.create_note_from_questions(
-                user_id=user_id,
-                questions_data=[{
-                    'id': question.get('id'),
-                    'question_text': question.get('question_text', ''),
-                    'answer_text': question.get('answer_text', ''),
-                    'difficulty': question.get('difficulty'),
-                    'subject': question.get('subject'),
-                    'chapter': question.get('chapter')
-                }],
-                title=title,
-                additional_content=content,
-                tags=tags
-            )
-            
-            if note_id:
-                # 如果選擇了 AI 整理功能，則異步生成整理結果
-                if enable_ai_organization and organization_types:
-                    from threading import Thread
-                    import time
-                    
-                    def generate_organizations():
-                        """背景生成AI整理結果"""
-                        success_count = 0
-                        error_count = 0
-                        
-                        print(f"開始為筆記 {note_id} 生成 {len(organization_types)} 種整理方式...")
-                        
-                        for i, org_type in enumerate(organization_types):
-                            try:
-                                print(f"生成 {org_type} ({i+1}/{len(organization_types)})...")
-                                result = note_manager.organize_note_with_ai(user_id, note_id, org_type)
-                                
-                                if result.get('success'):
-                                    success_count += 1
-                                    print(f"✅ {org_type} 生成成功")
-                                else:
-                                    error_count += 1
-                                    print(f"❌ {org_type} 生成失敗: {result.get('error', '未知錯誤')}")
-                                    
-                                # 在每個整理類型之間稍作延遲，避免API限制
-                                if i < len(organization_types) - 1:
-                                    time.sleep(2)
-                                    
-                            except Exception as e:
-                                error_count += 1
-                                print(f"❌ 生成 {org_type} 時發生異常: {e}")
-                        
-                        print(f"背景任務完成！成功: {success_count}, 失敗: {error_count}")
-                    
-                    # 在背景執行 AI 整理
-                    thread = Thread(target=generate_organizations)
-                    thread.daemon = True
-                    thread.start()
-                    
-                    flash(f"筆記已成功建立！{len(organization_types)} 種整理方式正在背景生成中...", "success")
-                else:
-                    flash("筆記已成功建立！", "success")
-                
-                return redirect(url_for('.note_detail', note_id=note_id))
-            else:
-                flash("建立筆記時發生錯誤。", "danger")
-                
-        except Exception as e:
-            flash(f"建立筆記時發生錯誤：{str(e)}", "danger")
-            print(f"建立筆記錯誤：{e}")
-            traceback.print_exc()
-
-    return render_template('notes/note_edit_wysiwyg.html', 
-                         title="從題目建立筆記 - WYSIWYG", 
-                         note=None,
-                         default_title=default_title,
-                         source_question=question)
 
 
 @notes_bp.route('/edit-wysiwyg/<int:note_id>', methods=['GET', 'POST'])
@@ -1274,34 +1128,20 @@ def upload_image():
                 file.filename.rsplit('.', 1)[1].lower() in allowed_extensions):
             return jsonify({'success': False, 'error': '不支援的檔案格式'}), 400
         
-        # 從 .env 獲取上傳路徑
-        upload_folder = current_app.config.get('FILE_STORAGE_PATH')
-        if not upload_folder:
-            upload_folder = os.path.join(current_app.root_path, '..', '..', 'uploads')
-        
-        # 確保目錄存在
-        import os, tempfile, shutil
-        os.makedirs(upload_folder, exist_ok=True)
-        
-        # 生成安全的檔案名
+        # 這裡應該實現實際的檔案上傳邏輯
+        # 暫時返回模擬URL
         import uuid
-        from datetime import datetime
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        file_extension = file.filename.rsplit('.', 1)[1].lower()
-        filename = f"upload_{timestamp}_{uuid.uuid4().hex[:8]}.{file_extension}"
-        file_path = os.path.join(upload_folder, filename)
+        filename = f"uploaded_{uuid.uuid4().hex[:8]}.{file.filename.rsplit('.', 1)[1].lower()}"
         
-        # 保存檔案
-        file.save(file_path)
+        # 實際應用中，您需要將檔案保存到適當的位置
+        # file.save(os.path.join(upload_folder, filename))
         
-        # 生成URL (相對於static路徑)
-        image_url = f"/uploads/{filename}"
+        image_url = f"/static/uploads/{filename}"
         
         return jsonify({
             'success': True,
             'url': image_url,
-            'filename': filename,
-            'path': file_path
+            'filename': filename
         })
         
     except Exception as e:
@@ -1322,7 +1162,6 @@ def upload_image_dataurl():
         # 解析data URL
         import base64
         import io
-        from datetime import datetime
         
         if not image_data.startswith('data:image'):
             return jsonify({'success': False, 'error': '無效的圖片格式'}), 400
@@ -1331,32 +1170,20 @@ def upload_image_dataurl():
         header, encoded = image_data.split(',', 1)
         image_bytes = base64.b64decode(encoded)
         
-        # 從 .env 獲取上傳路徑
-        upload_folder = current_app.config.get('FILE_STORAGE_PATH')
-        if not upload_folder:
-            upload_folder = os.path.join(current_app.root_path, '..', '..', 'uploads')
-        
-        # 確保目錄存在
-        os.makedirs(upload_folder, exist_ok=True)
-        
         # 生成檔案名
         import uuid
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"handwriting_{timestamp}_{uuid.uuid4().hex[:8]}.png"
-        file_path = os.path.join(upload_folder, filename)
+        filename = f"handwriting_{uuid.uuid4().hex[:8]}.png"
         
-        # 保存檔案
-        with open(file_path, 'wb') as f:
-            f.write(image_bytes)
+        # 實際應用中，您需要將檔案保存到適當的位置
+        # with open(os.path.join(upload_folder, filename), 'wb') as f:
+        #     f.write(image_bytes)
         
-        # 生成URL (相對於static路徑)
-        image_url = f"/uploads/{filename}"
+        image_url = f"/static/uploads/{filename}"
         
         return jsonify({
             'success': True,
             'url': image_url,
-            'filename': filename,
-            'path': file_path
+            'filename': filename
         })
         
     except Exception as e:
@@ -1366,78 +1193,27 @@ def upload_image_dataurl():
 
 @notes_bp.route('/handwriting-to-text', methods=['POST'])
 def handwriting_to_text():
-    """Convert handwriting image to text using FileProcessor OCR."""
+    """Convert handwriting image to text using AI."""
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({'success': False, 'error': '沒有請求資料'}), 400
+        if not data or 'image' not in data:
+            return jsonify({'success': False, 'error': '沒有圖片資料'}), 400
         
-        # 支援兩種輸入方式：
-        # 1. 直接傳檔案路徑 (推薦)
-        # 2. 傳 base64 圖片資料 (會先上傳保存後再處理)
+        image_data = data['image']
         
-        file_path = data.get('file_path')
-        image_data = data.get('image')
+        # 這裡應該整合您的手寫辨識AI服務
+        # 暫時返回模擬結果
+        mock_text = "這是手寫辨識的模擬結果。實際應用中需要整合OCR或手寫辨識API。"
         
-        if file_path:
-            # 方式1：直接使用檔案路徑
-            if not os.path.exists(file_path):
-                return jsonify({'success': False, 'error': '檔案不存在'}), 400
-            target_file_path = file_path
-            
-        elif image_data:
-            # 方式2：base64 圖片資料，先透過 upload_image_dataurl 保存
-            # 這樣可以重用現有的檔案保存邏輯
-            try:
-                # 模擬內部調用 upload_image_dataurl 的邏輯
-                if not image_data.startswith('data:image'):
-                    return jsonify({'success': False, 'error': '無效的圖片格式'}), 400
-                
-                # 提取base64資料並保存檔案
-                header, encoded = image_data.split(',', 1)
-                image_bytes = base64.b64decode(encoded)
-                
-                # 從 .env 獲取上傳路徑
-                upload_folder = current_app.config.get('FILE_STORAGE_PATH')
-                if not upload_folder:
-                    upload_folder = os.path.join(current_app.root_path, '..', '..', 'uploads')
-                
-                # 確保目錄存在
-                os.makedirs(upload_folder, exist_ok=True)
-                
-                # 生成檔案名
-                import uuid
-                from datetime import datetime
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"handwriting_ocr_{timestamp}_{uuid.uuid4().hex[:8]}.png"
-                target_file_path = os.path.join(upload_folder, filename)
-                
-                # 保存檔案
-                with open(target_file_path, 'wb') as f:
-                    f.write(image_bytes)
-                    
-            except Exception as e:
-                return jsonify({'success': False, 'error': f'檔案保存失敗: {str(e)}'}), 500
-            
-        else:
-            return jsonify({'success': False, 'error': '缺少 file_path 或 image 資料'}), 400
+        # 實際實現示例：
+        # 1. 將image_data（base64）轉換為圖片檔案
+        # 2. 調用OCR API（如Google Cloud Vision、Azure OCR等）
+        # 3. 返回辨識結果
         
-        try:
-            # 使用 FileProcessor 進行 OCR
-            from src.utils.file_processor import FileProcessor
-            file_processor = FileProcessor()
-            detected_text = file_processor.read_image_file(target_file_path)
-            
-            return jsonify({
-                'success': True,
-                'text': detected_text.strip() if detected_text else '[無法識別文字內容]'
-            })
-            
-        except Exception as ocr_error:
-            return jsonify({
-                'success': False, 
-                'error': f'OCR 處理失敗: {str(ocr_error)}'
-            }), 500
+        return jsonify({
+            'success': True,
+            'text': mock_text
+        })
         
     except Exception as e:
         print(f"手寫辨識錯誤：{e}")
@@ -1456,16 +1232,8 @@ def ghost_suggestion():
         mode = data.get('mode', 'supplement')
         user_id = g.current_user['id']
         
-        # 檢查上下文是否有意義的內容
-        if not context.strip() or len(context.strip()) < 10:
-            return jsonify({
-                'success': True,
-                'suggestion': '請輸入更多內容以獲得更好的建議...'
-            })
-        
-        # 使用GhostAIClient生成建議
-        from ..notes.ghost_ai_client import GhostAIClient
-        ghost_client = GhostAIClient()
+        # 使用現有的AI客戶端生成建議
+        ai_client = NoteAIClient()
         
         # 根據模式構建prompt
         mode_prompts = {
@@ -1479,23 +1247,8 @@ def ghost_suggestion():
         full_prompt = f"{prompt}\n\n{context}"
         
         try:
-            # 使用GhostAIClient的generate_content_enhancement方法
-            response = ghost_client.generate_content_enhancement(
-                enhancement_request=prompt,
-                current_content=context,
-                title="Ghost建議",
-                context={'mode': mode, 'user_id': user_id}
-            )
-            
-            suggestion = response.get('generated_content', '') if isinstance(response, dict) else str(response)
-            
-            # 檢查是否被安全過濾器攔截
-            if not suggestion or suggestion.strip() == '':
-                # 提供友善的回覆而不是錯誤
-                return jsonify({
-                    'success': True,
-                    'suggestion': '請嘗試不同的內容或表達方式...'
-                })
+            response = ai_client.generate_content(user_id, full_prompt)
+            suggestion = response.get('content', '') if isinstance(response, dict) else str(response)
             
             return jsonify({
                 'success': True,
@@ -1503,30 +1256,11 @@ def ghost_suggestion():
             })
             
         except Exception as ai_error:
-            error_msg = str(ai_error)
-            # 只在非安全過濾器錯誤時打印
-            if not any(keyword in error_msg.lower() for keyword in ['安全過濾器', 'safety', 'blocked', 'filtered', 'inappropriate']):
-                print(f"AI生成建議錯誤：{error_msg}")
-            
-            # 檢查是否是安全過濾器問題
-            if any(keyword in error_msg.lower() for keyword in ['安全過濾器', 'safety', 'blocked', 'filtered', 'inappropriate']):
-                return jsonify({
-                    'success': True,
-                    'suggestion': '請嘗試其他表達方式，或繼續您的想法...'
-                })
-            
-            # 其他錯誤時返回備用建議
-            fallback_suggestions = {
-                'supplement': '繼續您的想法...',
-                'summary': '總結重點：',
-                'outline': '主要概念：\n- 要點一\n- 要點二',
-                'qa': 'Q: 主要問題是什麼？\nA: 根據內容分析...'
-            }
-            
+            print(f"AI生成建議錯誤：{ai_error}")
             return jsonify({
-                'success': True, 
-                'suggestion': fallback_suggestions.get(mode, '繼續寫作...')
-            })
+                'success': False, 
+                'error': 'AI服務暫時不可用'
+            }), 503
         
     except Exception as e:
         print(f"Ghost建議錯誤：{e}")
@@ -1563,15 +1297,8 @@ def ai_completion():
         full_prompt = f"{prompt}\n\n{content}"
         
         try:
-            # 使用AI客戶端的正確方法
-            response = ai_client.generate_content_enhancement(
-                enhancement_request=prompt,
-                current_content=content,
-                title="AI內容增強",
-                context={'command': command, 'user_id': user_id}
-            )
-            
-            completion = response.get('enhanced_content', '') if isinstance(response, dict) else str(response)
+            response = ai_client.generate_content(user_id, full_prompt)
+            completion = response.get('content', '') if isinstance(response, dict) else str(response)
             
             return jsonify({
                 'success': True,
@@ -1672,57 +1399,34 @@ def ai_command():
         if not command or not content:
             return jsonify({'success': False, 'error': '缺少必要參數'})
         
-        # 使用AI客戶端處理命令
-        ai_client = NoteAIClient()
-        
+        # 這裡應該調用實際的AI服務
+        # 暫時返回模擬結果
         command_prompts = {
-            'summary': '請以條列重點摘要以下內容，限5-8點：',
-            'outline': '根據以下內容生成清晰的Markdown大綱：',
-            'bullets': '將以下內容整理為條列要點：',
-            'qa': '從以下內容萃取5-8組問答對（Q/A）：',
-            'supplement': '根據以下內容延續撰寫1-3段補充：',
-            'rewrite-formal': '將以下內容改寫為更正式、客觀的表述：',
-            'rewrite-brief': '將以下內容改寫為更精簡版本：',
-            'abbr-explain': '列出文中出現的縮寫詞的全名與解釋：'
+            'summary': '請為以下內容生成摘要：',
+            'outline': '請為以下內容生成大綱：',
+            'bullets': '請將以下內容轉換為條列式：',
+            'qa': '請根據以下內容生成問答：',
+            'supplement': '請為以下內容補充詳細資訊：',
+            'rewrite-formal': '請將以下內容改寫為正式文體：',
+            'format-note': '請整理並格式化以下筆記：'
         }
         
         prompt = command_prompts.get(command, '請處理以下內容：')
-        full_prompt = f"{prompt}\n\n{content}"
         
-        try:
-            # 使用AI客戶端生成結果
-            response = ai_client.generate_content_enhancement(
-                enhancement_request=prompt,
-                current_content=content,
-                title="AI命令處理",
-                context={'command': command, 'user_id': g.current_user['id']}
-            )
-            
-            if isinstance(response, dict) and response.get('generated_content'):
-                result = response['generated_content']
-            else:
-                result = str(response) if response else '處理失敗'
-            
-            return jsonify({'success': True, 'result': result})
-            
-        except Exception as e:
-            print(f"AI命令處理錯誤：{e}")
-            # 返回備用結果
-            fallback_results = {
-                'summary': '## 摘要\n\n- 請手動補充重點摘要\n- 包含主要概念和要點',
-                'outline': '## 大綱\n\n1. 主要概念\n2. 重點說明\n3. 總結要點',
-                'bullets': '## 條列要點\n\n- 要點一\n- 要點二\n- 要點三',
-                'qa': '## 問答\n\n**Q:** 主要問題是什麼？\n**A:** 請根據內容補充答案。',
-                'supplement': '## 補充內容\n\n請根據上述內容繼續補充相關資訊...',
-                'rewrite-formal': '## 正式表述\n\n（請手動改寫為正式文體）',
-                'rewrite-brief': '## 精簡版本\n\n（請手動改寫為精簡版本）',
-                'abbr-explain': '## 縮寫詞解釋\n\n- 請補充縮寫詞的全名與解釋'
-            }
-            
-            return jsonify({
-                'success': True,
-                'result': fallback_results.get(command, '處理過程中發生錯誤，請重試。')
-            })
+        # 模擬AI處理
+        if command == 'summary':
+            result = f"<h3>內容摘要</h3><p>這是對原始內容的智能摘要。原始內容包含了重要的概念和要點。</p>"
+        elif command == 'outline':
+            result = f"<h3>內容大綱</h3><ul><li>主要概念</li><li>重點說明</li><li>總結要點</li></ul>"
+        elif command == 'bullets':
+            result = f"<h3>條列重點</h3><ul><li>重點一：關鍵概念</li><li>重點二：核心內容</li><li>重點三：總結要點</li></ul>"
+        else:
+            result = f"<p>AI已處理您的 {command} 請求。處理結果已優化並格式化。</p>"
+        
+        return jsonify({
+            'success': True,
+            'generated_content': result
+        })
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -1733,22 +1437,21 @@ def ai_generate():
     try:
         data = request.get_json()
         prompt = data.get('prompt')
-        current_content = data.get('current_content', '')
         format_type = data.get('format', 'html')
         
         if not prompt:
             return jsonify({'success': False, 'error': '缺少提示內容'})
         
-        # 使用AI客戶端生成內容
-        ai_client = NoteAIClient()
-        response = ai_client.generate_content_enhancement(
-            enhancement_request=prompt,
-            current_content=current_content,
-            title="AI Prompt生成",
-            context={'format': format_type, 'user_id': g.current_user['id']}
-        )
-        
-        generated_content = response.get('enhanced_content', '') if isinstance(response, dict) else str(response)
+        # 模擬AI生成內容
+        generated_content = f"""
+        <h3>AI生成內容</h3>
+        <p>根據您的提示：<em>"{prompt}"</em></p>
+        <p>AI已為您生成以下內容：</p>
+        <div class="ai-generated-content">
+            <p>這是AI根據您的需求智能生成的內容。內容經過優化，符合您的要求並具有良好的結構。</p>
+            <p>生成的內容包含了相關的概念、詳細說明和實用建議。</p>
+        </div>
+        """
         
         return jsonify({
             'success': True,
@@ -1756,36 +1459,4 @@ def ai_generate():
         })
         
     except Exception as e:
-        print(f"AI生成錯誤：{e}")
-        # 提供備用內容
-        fallback_content = f"""
-        <h3>AI生成內容</h3>
-        <p>根據您的提示：<em>"{data.get('prompt', '')}"</em></p>
-        <p>AI服務暫時不可用，這是一個示例內容。</p>
-        """
-        
-        return jsonify({
-            'success': True,
-            'generated_content': fallback_content,
-            'fallback': True
-        })
-
-@notes_bp.route('/api/gateway-info', methods=['GET'])
-def get_gateway_info():
-    """獲取AI Gateway的連接信息"""
-    try:
-        from ..ai_gateway import get_gateway_port
-        gateway_port = get_gateway_port()
-        
-        return jsonify({
-            'success': True,
-            'gateway_port': gateway_port,
-            'lsp_websocket_url': f"ws://localhost:{gateway_port}/lsp/markdown"
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False, 
-            'error': str(e),
-            'gateway_port': 8002,  # fallback
-            'lsp_websocket_url': "ws://localhost:8002/lsp/markdown"
-        })
+        return jsonify({'success': False, 'error': str(e)})

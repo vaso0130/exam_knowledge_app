@@ -17,7 +17,7 @@
             <a href="{{ url_for('question_detail', q_id=note.source_question.id) }}"
                 class="btn btn-outline-primary btn-sm me-1">返回原始題目</a>
             {% endif %}
-            <a href="{{ url_for('notes.edit_note', note_id=note.id) }}" class="btn btn-secondary btn-sm">
+            <a href="{{ url_for('notes.edit_note_wysiwyg', note_id=note.id) }}" class="btn btn-secondary btn-sm">
                 <i class="fas fa-edit me-1"></i> 編輯
             </a>
             <form action="{{ url_for('notes.delete_note', note_id=note.id) }}" method="POST" class="d-inline"

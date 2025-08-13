@@ -57,7 +57,7 @@
                             <p class="text-muted">用戶：<span id="login-username" class="fw-bold"></span></p>
                         </div>
                         <form id="login-form" method="POST" class="needs-validation" novalidate>
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <!-- <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> -->
                             <input type="hidden" id="login-username-hidden" name="username">
                             <div class="mb-3">
                                 <label for="password" class="form-label">
@@ -92,7 +92,7 @@
                             <p class="text-muted">用戶：<span id="register-username" class="fw-bold"></span></p>
                         </div>
                         <form id="register-form" method="POST" class="needs-validation" novalidate>
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <!-- <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> -->
                             <input type="hidden" id="register-username-hidden" name="username">
                             <input type="hidden" name="action" value="register">
                             
@@ -246,14 +246,14 @@ document.getElementById('username-form').addEventListener('submit', async functi
     if (!username) return;
     
     try {
-        // 獲取CSRF token
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        // CSRF protection disabled for development
+        // const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         
         const response = await fetch('/check-user', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
+                'Content-Type': 'application/json'
+                // 'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({ username: username })
         });

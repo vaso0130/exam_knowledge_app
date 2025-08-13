@@ -216,7 +216,7 @@ class NoteAIClient:
         """
         try:
             if use_simple_model:
-                response = await self.gemini_client.generate_simple_async(prompt)
+                response = await self.gemini_client.generate_async_simple(prompt)
             else:
                 response = await self.gemini_client.generate_async(prompt)
             
@@ -225,7 +225,12 @@ class NoteAIClient:
             
             # Try to parse as JSON first
             try:
-                return json.loads(response)
+                parsed_json = json.loads(response)
+                # 確保返回的數據包含success字段
+                return {
+                    'success': True,
+                    'data': parsed_json
+                }
             except json.JSONDecodeError:
                 # If not JSON, return as content
                 return {
@@ -298,7 +303,9 @@ class NoteAIClient:
         try:
             result = self._run_async(self._safe_generate_json(prompt, use_simple_model=True))
             if result.get('success'):
-                return result
+                # 提取實際的AI回應數據
+                ai_data = result.get('data', result.get('content', result))
+                return ai_data if isinstance(ai_data, dict) else result
             else:
                 return self._get_default_analysis_structure()
         except Exception as e:
@@ -330,7 +337,9 @@ class NoteAIClient:
         try:
             result = self._run_async(self._safe_generate_json(prompt, use_simple_model=True))
             if result.get('success'):
-                return result
+                # 提取實際的AI回應數據
+                ai_data = result.get('data', result.get('content', result))
+                return ai_data if isinstance(ai_data, dict) else result
             else:
                 return {"related_notes": [], "suggested_topics": [], "knowledge_gaps": []}
         except Exception as e:
@@ -340,103 +349,149 @@ class NoteAIClient:
     # === Note Organization Methods ===
 
     def organize_with_mindmap(self, content: str) -> Dict[str, Any]:
-        """Organize content using mindmap structure"""
+        """將筆記轉換成心智圖結構化格式，專為 ECharts 優化"""
         prompt = f"""
-        請將以下內容組織成心智圖結構：
+        請將以下筆記內容轉換成心智圖的結構化 JSON 格式。這是一個嚴格的格式化任務，必須精確遵循規範。
 
-        內容：
+        筆記內容：
+        ---
         {content}
+        ---
 
-        請以JSON格式回傳心智圖結構：
+        **重要格式規範**：
+        1. 你需要提供一個符合 ECharts 樹狀圖 (Tree Chart) 格式的 JSON
+        2. JSON 中的 `mindmap_data` 必須是一個包含 `name` 和 `children` 的巢狀物件
+        3. 每個節點都必須有 `name` 屬性，而 `children` 是可選的
+        4. 節點名稱應簡潔明了，控制在20個字以內，避免過長文字
+        5. 最終的樹結構應該水平均衡分佈，讓整體結構更加平衡美觀
+
+        **--- JSON 格式範例 START ---**
         {{
-            "central_topic": "中心主題",
-            "main_branches": [
-                {{
-                    "name": "主分支1",
-                    "sub_branches": [
-                        {{"name": "子分支1", "details": ["詳細1", "詳細2"]}},
-                        {{"name": "子分支2", "details": ["詳細1", "詳細2"]}}
-                    ]
-                }}
-            ],
-            "connections": [
-                {{"from": "分支A", "to": "分支B", "relationship": "關聯描述"}}
-            ]
+            "central_topic": "雲端計算基礎",
+            "main_branches": ["服務模式", "部署模型", "關鍵技術"],
+            "mindmap_data": {{
+                "name": "雲端計算基礎",
+                "children": [
+                    {{
+                        "name": "服務模式",
+                        "children": [
+                            {{ 
+                                "name": "SaaS", 
+                                "children": [
+                                    {{ "name": "即用即付" }},
+                                    {{ "name": "無需本地安裝" }}
+                                ]
+                            }},
+                            {{ 
+                                "name": "PaaS",
+                                "children": [
+                                    {{ "name": "開發環境" }},
+                                    {{ "name": "中介層服務" }}
+                                ]
+                            }},
+                            {{ "name": "IaaS" }}
+                        ]
+                    }},
+                    {{
+                        "name": "部署模型",
+                        "children": [
+                            {{ "name": "公有雲" }},
+                            {{ "name": "私有雲" }},
+                            {{ "name": "混合雲" }}
+                        ]
+                    }},
+                    {{
+                        "name": "關鍵技術",
+                        "children": [
+                            {{ "name": "虛擬化" }},
+                            {{ "name": "分佈式系統" }}
+                        ]
+                    }}
+                ]
+            }}
         }}
-        """
+        **--- JSON 格式範例 END ---**
 
-        try:
-            result = self._run_async(self._safe_generate_json(prompt))
-            if result.get('success'):
-                return result
-            else:
-                return self._get_default_organize_result("mindmap")
-        except Exception as e:
-            print(f"Error organizing with mindmap: {e}")
-            return self._get_default_organize_result("mindmap")
+        請嚴格按照上述範例的 `mindmap_data` 結構生成 JSON。確保生成的心智圖結構均衡、清晰且組織合理，每個節點的名稱簡潔明瞭，不要太長或太複雜。
+        """
+        # 不再需要 mermaid_code，而是 mindmap_data
+        return self._safe_ai_call(prompt, "mindmap", use_simple_model=True)
 
     def organize_hierarchically(self, content: str) -> Dict[str, Any]:
-        """Organize content in hierarchical structure"""
+        """層次化重點整理"""
         prompt = f"""
-        請將以下內容組織成階層結構：
+        請將以下筆記內容按重要性和邏輯關係分層整理，製作成更易讀且結構化的格式。這是一個嚴格的資料結構化任務，你必須產生完全符合規格的 JSON 格式。
 
-        內容：
+        筆記內容：
+        ---
         {content}
+        ---
 
-        請以JSON格式回傳階層結構：
+        請回傳嚴格符合以下格式的 JSON 結構，這非常重要：
         {{
-            "title": "主標題",
-            "levels": [
+            "title": "整理後的標題",
+            "main_points": ["重點1", "重點2", "重點3"],
+            "sub_points": [
                 {{
-                    "level": 1,
-                    "title": "一級標題",
-                    "content": "內容",
-                    "sub_levels": [
-                        {{"level": 2, "title": "二級標題", "content": "內容"}}
-                    ]
+                    "title": "小節標題1",
+                    "content": "該小節的詳細內容，支援 Markdown 格式"
+                }},
+                {{
+                    "title": "小節標題2", 
+                    "content": "該小節的詳細內容，支援 Markdown 格式"
                 }}
-            ]
+            ],
+            "key_concepts": [
+                {{
+                    "term": "概念名稱1",
+                    "definition": "概念定義1"
+                }},
+                {{
+                    "term": "概念名稱2",
+                    "definition": "概念定義2"
+                }}
+            ],
+            "learning_tips": "學習本主題的建議和技巧"
         }}
-        """
 
-        try:
-            result = self._run_async(self._safe_generate_json(prompt))
-            if result.get('success'):
-                return result
-            else:
-                return self._get_default_organize_result("hierarchical")
-        except Exception as e:
-            print(f"Error organizing hierarchically: {e}")
-            return self._get_default_organize_result("hierarchical")
+        嚴格規範：
+        1. main_points 必須是一個字符串數組，每個元素為一個重點
+        2. sub_points 必須是一個對象數組，每個對象必須包含 title 和 content 屬性
+        3. key_concepts 必須是一個對象數組，每個對象必須包含 term 和 definition 屬性
+        4. 所有字段都是必須的，不要省略任何字段
+        5. 不允許添加額外的字段
+        6. 確保 JSON 格式完全正確，不能有缺失的逗號或多餘的逗號
+        7. 不要在 JSON 外添加任何額外的文字或標記
+
+        請嚴格按照上述格式回傳 JSON，這對於前端正確顯示層次化筆記至關重要。
+        """
+        # 層次化整理：使用輔助模型
+        return self._safe_ai_call(prompt, "hierarchical", use_simple_model=True)
 
     def organize_with_feynman_technique(self, content: str) -> Dict[str, Any]:
-        """Organize content using Feynman technique"""
+        """費曼技巧解析 - 用簡單易懂的方式重新解釋概念"""
         prompt = f"""
-        請用費曼學習法組織以下內容：
+        請使用費曼技巧將以下筆記內容重新解釋，用最簡單易懂的方式表達。
 
-        內容：
+        筆記內容：
+        ---
         {content}
+        ---
 
-        請以JSON格式回傳費曼學習法結構：
+        請直接以以下 JSON 格式回傳，**必須**是完全符合以下的JSON結構：
         {{
-            "concept": "核心概念",
-            "simple_explanation": "簡單解釋（用自己的話）",
-            "examples": ["例子1", "例子2"],
-            "analogies": ["類比1", "類比2"],
-            "knowledge_gaps": ["需要進一步了解的部分"],
-            "teaching_points": ["教學要點"]
+            "simple_explanation": "用最簡單的語言解釋主要概念的內容",
+            "analogies": ["類比1", "類比2", "類比3"],
+            "step_by_step": ["步驟1說明", "步驟2說明", "步驟3說明"],
+            "examples": ["具體例子1", "具體例子2"],
+            "potential_gaps": ["可能的理解盲點1", "盲點2"],
+            "teaching_points": ["教學重點1", "重點2", "重點3"]
         }}
-        """
 
-        try:
-            result = self._run_async(self._safe_generate_json(prompt))
-            if result.get('success'):
-                return result
-            else:
-                return self._get_default_organize_result("feynman")
-        except Exception as e:
-            print(f"Error organizing with Feynman technique: {e}")
-            return self._get_default_organize_result("feynman")
+        目標是讓程式可以完全處理這個JSON格式，所以請不要回傳多餘的東西。
+        """
+        # 費曼技巧：使用主模型（需要深度理解和解釋）
+        return self._safe_ai_call(prompt, "feynman", use_simple_model=False)
 
     def organize_with_qa_learning(self, content: str) -> Dict[str, Any]:
         """Organize content using Q&A learning approach"""
@@ -466,8 +521,10 @@ class NoteAIClient:
             result = self._run_async(self._safe_generate_json(prompt))
             
             if result.get('success'):
+                # 提取實際的AI回應數據
+                ai_data = result.get('data', result.get('content', result))
                 # Post-process the result to ensure proper structure
-                return self._post_process_qa_learning_result(result)
+                return self._post_process_qa_learning_result(ai_data)
             else:
                 return self._get_default_organize_result("qa_learning")
         except Exception as e:
@@ -511,175 +568,342 @@ class NoteAIClient:
             return False
 
     def _format_qa_content_with_ai(self, raw_qa_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Use AI to reformat Q&A content if structure is invalid"""
+        """使用輔助模型格式化問答式學習內容"""
         try:
-            content_text = str(raw_qa_data)
-            
-            prompt = f"""
-            以下是需要重新格式化的問答內容，請整理成標準的JSON格式：
+            # 構建給AI的提示，要求其格式化和驗證問答內容
+            format_prompt = f"""
+            請將以下問答式學習內容格式化成標準的JSON格式。這是一個格式化任務，確保輸出符合規範。
 
             原始內容：
-            {content_text}
+            ---
+            {json.dumps(raw_qa_data, ensure_ascii=False, indent=2)}
+            ---
 
-            請輸出標準的JSON格式：
+            請回傳嚴格符合以下結構的 JSON 格式，**不得有任何額外文字或標記**：
+
             {{
-                "topic": "主題名稱",
-                "qa_pairs": [
-                    {{
-                        "question": "問題",
-                        "answer": "答案",
-                        "explanation": "詳細解釋",
-                        "key_points": ["要點1", "要點2"]
-                    }}
+                "basic_questions": [
+                    "基礎問題1",
+                    "基礎問題2",
+                    "基礎問題3"
                 ],
-                "summary": "內容總結",
-                "review_questions": ["復習問題1", "復習問題2"]
+                "intermediate_questions": [
+                    "中級問題1", 
+                    "中級問題2"
+                ],
+                "advanced_questions": [
+                    "高級問題1",
+                    "高級問題2"
+                ],
+                "critical_thinking": [
+                    "批判性思考問題1",
+                    "批判性思考問題2"
+                ],
+                "answers": {{
+                    "基礎問題1": "詳細答案1",
+                    "基礎問題2": "詳細答案2",
+                    "基礎問題3": "詳細答案3",
+                    "中級問題1": "詳細答案1",
+                    "中級問題2": "詳細答案2",
+                    "高級問題1": "詳細答案1",
+                    "高級問題2": "詳細答案2",
+                    "批判性思考問題1": "詳細答案1",
+                    "批判性思考問題2": "詳細答案2"
+                }},
+                "learning_progression": "學習進度建議"
             }}
+
+            **格式化要求**：
+            1. 確保所有問題都有對應的答案
+            2. 移除任何無效或空白的問題
+            3. 確保answers物件包含所有問題的答案
+            4. 確保JSON格式完全正確，無語法錯誤
+            5. 只回傳JSON，不要包含任何其他文字
+
+            請處理並格式化上述內容。
             """
             
-            result = self._run_async(self._safe_generate_json(prompt))
-            if result.get('success') and self._validate_qa_structure(result):
-                return result
-            else:
-                return self._get_default_organize_result("qa_learning")
-                
+            # 使用輔助模型進行格式化（簡單的格式處理任務）
+            formatted_response = self._run_async(
+                self.gemini_client.generate_async_simple(format_prompt, is_json=True)
+            )
+            
+            # 清理和解析回應
+            cleaned_response = formatted_response.strip()
+            
+            # 移除可能的標記
+            prefixes_to_remove = ['```json', '```JSON', '```', 'json', 'JSON']
+            suffixes_to_remove = ['```', '```json', '```JSON']
+            
+            for prefix in prefixes_to_remove:
+                if cleaned_response.startswith(prefix):
+                    cleaned_response = cleaned_response[len(prefix):].strip()
+                    break
+                    
+            for suffix in suffixes_to_remove:
+                if cleaned_response.endswith(suffix):
+                    cleaned_response = cleaned_response[:-len(suffix)].strip()
+                    break
+            
+            # 嘗試解析格式化後的JSON
+            if cleaned_response.startswith('{') and cleaned_response.endswith('}'):
+                try:
+                    formatted_data = json.loads(cleaned_response)
+                    
+                    # 驗證必要欄位
+                    required_fields = ['basic_questions', 'answers']
+                    if all(field in formatted_data for field in required_fields):
+                        return {
+                            **formatted_data,
+                            'success': True,
+                            'model_used': 'simple',
+                            'post_processed': True,
+                            'formatting_note': '已通過輔助模型二次格式化和驗證'
+                        }
+                except json.JSONDecodeError as e:
+                    print(f"輔助模型格式化後的JSON解析失敗: {e}")
+                    print(f"格式化後內容: {cleaned_response[:500]}...")
+            
+            # 格式化失敗，返回錯誤
+            return {
+                'error': 'AI格式化失敗',
+                'success': False,
+                'raw_formatted_response': cleaned_response[:500] + '...' if len(cleaned_response) > 500 else cleaned_response
+            }
+            
         except Exception as e:
-            print(f"Error formatting Q&A content with AI: {e}")
-            return self._get_default_organize_result("qa_learning")
+            print(f"使用AI格式化問答內容時發生錯誤: {e}")
+            return {
+                'error': f'格式化過程發生錯誤: {str(e)}',
+                'success': False
+            }
 
     def organize_with_comparison(self, content: str) -> Dict[str, Any]:
-        """Organize content using comparison approach"""
+        """對比分析整理 - 找出關鍵概念間的異同和關聯"""
         prompt = f"""
-        請將以下內容組織成比較分析格式：
+            請對以下筆記內容進行對比分析，找出關鍵概念間的異同點和關聯性。
 
-        內容：
-        {content}
+            筆記內容：
+            ---
+            {content}
+            ---
 
-        請以JSON格式回傳比較結構：
-        {{
-            "comparison_title": "比較主題",
-            "items": [
+            請嚴格按照下方 JSON 格式範例回傳內容，**不得有任何多餘的文字或標記**，只允許回傳有效的 JSON 物件：
+
+            **--- JSON 格式範例 START ---**
+            {{
+                "key_concepts": ["概念A", "概念B", "概念C"],
+                "similarities": [
+                "概念A與概念B都屬於資料結構，皆可用於資料儲存與檢索。",
+                "三者皆可用於解決排序問題。"
+                ],
+                "differences": [
+                "概念A是線性結構，概念B是樹狀結構。",
+                "概念C支援多重父節點，A與B僅有單一父節點。"
+                ],
+                "relationships": [
+                "概念A可視為概念B的特殊情況。",
+                "概念C可與A或B結合應用於複雜場景。"
+                ],
+                "comparison_table": [
                 {{
-                    "name": "項目1",
-                    "features": {{"特徵A": "值1", "特徵B": "值2"}},
-                    "advantages": ["優點1", "優點2"],
-                    "disadvantages": ["缺點1", "缺點2"]
+                    "項目": "結構類型",
+                    "概念A": "線性",
+                    "概念B": "樹狀",
+                    "概念C": "圖狀"
+                }},
+                {{
+                    "項目": "應用場景",
+                    "概念A": "簡單資料儲存",
+                    "概念B": "階層資料管理",
+                    "概念C": "複雜關聯建模"
                 }}
-            ],
-            "comparison_table": [
-                {{"feature": "特徵", "item1": "項目1值", "item2": "項目2值"}}
-            ],
-            "conclusion": "比較結論"
-        }}
-        """
+                ],
+                "pros_and_cons": [
+                {{
+                    "concept": "概念A",
+                    "pros": ["實作簡單", "存取速度快"],
+                    "cons": ["彈性較低", "不適合複雜關聯"]
+                }},
+                {{
+                    "concept": "概念B",
+                    "pros": ["階層清楚", "易於擴展"],
+                    "cons": ["搜尋效率依結構而異"]
+                }},
+                {{
+                    "concept": "概念C",
+                    "pros": ["彈性高", "可表現複雜關係"],
+                    "cons": ["實作較複雜", "維護成本高"]
+                }}
+                ]
+            }}
+            **--- JSON 格式範例 END ---**
 
-        try:
-            result = self._run_async(self._safe_generate_json(prompt))
-            if result.get('success'):
-                return result
-            else:
-                return self._get_default_organize_result("comparison")
-        except Exception as e:
-            print(f"Error organizing with comparison: {e}")
-            return self._get_default_organize_result("comparison")
+            請根據上述範例，**務必以相同結構的 JSON 格式回傳**，所有欄位皆為必填，不可省略或添加額外欄位。
+        """
+        # 對比分析：使用主模型（需要複雜的概念分析）
+        return self._safe_ai_call(prompt, "comparison", use_simple_model=False)
 
     def organize_with_memory_palace(self, content: str) -> Dict[str, Any]:
-        """Organize content using memory palace technique"""
+        """記憶宮殿法 - 將內容轉換成故事或空間記憶結構"""
         prompt = f"""
-        請將以下內容組織成記憶宮殿結構：
+        請將以下筆記內容轉換成記憶宮殿的格式，用故事或空間記憶法來幫助記憶。
 
-        內容：
+        筆記內容：
+        ---
         {content}
+        ---
 
-        請以JSON格式回傳記憶宮殿結構：
+        **--- JSON 格式範例 START ---**
         {{
-            "palace_theme": "宮殿主題",
-            "rooms": [
+            "memory_story": "想像一個古老的圖書館，每個書架代表一個重要概念。圖書管理員帶你參觀，首先來到了「二進位系統」的書架，上面擺放著只有0和1兩種顏色的書籍。接著，你們走向「資料表示」區域，那裡有一面牆展示著如何用0和1的組合形成各種數字、字母與符號。最後，你們來到了「計算機架構」展示廳，裡面有一個巨大的模型，展示電流如何通過電晶體表示0和1的狀態。",
+            "spatial_layout": "整個記憶宮殿是一座三層樓的圖書館。一樓是基礎概念區，二樓是應用區，三樓是前沿研究區。各樓層之間由螺旋樓梯連接，每個概念都有專屬的展示空間。",
+            "key_anchors": [
                 {{
-                    "room_name": "房間名稱",
-                    "description": "房間描述",
-                    "memory_anchors": [
-                        {{
-                            "anchor": "記憶錨點",
-                            "content": "相關內容",
-                            "visual_cue": "視覺提示"
-                        }}
-                    ]
+                    "anchor": "黑白書架",
+                    "content": "代表二進位的0和1",
+                    "visual": "書架上只有純黑和純白兩種顏色的書"
+                }},
+                {{
+                    "anchor": "彩色編碼牆",
+                    "content": "代表如何用二進位編碼表示各種資料",
+                    "visual": "牆上有色彩鮮豔的編碼表，0和1的組合對應著不同的文字和圖像"
                 }}
             ],
-            "journey_path": ["房間1", "房間2", "房間3"],
-            "memory_tips": ["記憶技巧1", "記憶技巧2"]
+            "visual_imagery": "整個圖書館充滿古典氣息，但裝有現代科技裝置。陽光從彩色玻璃窗射入，在地板上形成二進位碼的圖案。",
+            "memory_cues": ["每當看到黑白對比時，聯想到二進位的0和1", "看到電腦時，想像內部的電流如何表示數據"],
+            "practice_routine": "每天睡前，在腦海中走過圖書館的每個區域，回顧每個關鍵錨點。每週實際寫出至少三個二進位轉換範例鞏固記憶。"
         }}
-        """
+        **--- JSON 格式範例 END ---**
 
-        try:
-            result = self._run_async(self._safe_generate_json(prompt))
-            if result.get('success'):
-                return result
-            else:
-                return self._get_default_organize_result("memory_palace")
-        except Exception as e:
-            print(f"Error organizing with memory palace: {e}")
-            return self._get_default_organize_result("memory_palace")
+        請**務必**以以下 JSON 格式回傳，**必須**是有效的JSON結構，包含：
+        {{
+            "memory_story": "將所有概念編成一個有趣且連貫的故事",
+            "spatial_layout": "描述想像的空間和遊覽路線",
+            "key_anchors": [
+                {{
+                    "anchor": "錨點名稱1",
+                    "content": "關聯的內容或概念",
+                    "visual": "視覺想像描述"
+                }},
+                {{
+                    "anchor": "錨點名稱2",
+                    "content": "關聯的內容或概念",
+                    "visual": "視覺想像描述"
+                }}
+            ],
+            "visual_imagery": "生動的視覺想像描述",
+            "memory_cues": ["記憶提示1", "提示2", "提示3"],
+            "practice_routine": "記憶練習和復習建議"
+        }}
+
+        請特別注意，`key_anchors` 必須是一個包含物件的陣列，每個物件都有 anchor、content 和 visual 三個屬性，如範例所示。
+        
+        要讓內容容易記憶和回憶，創造生動有趣的故事和視覺畫面。回傳的必須是有效的JSON格式，並且沒有其他內容，好讓程式處理這個JSON。
+        """
+        # 記憶宮殿：使用輔助模型（創意性較強但不需要太複雜推理）
+        return self._safe_ai_call(prompt, "memory_palace", use_simple_model=True)
 
     def organize_with_mandala_ninegrid(self, content: str) -> Dict[str, Any]:
-        """Organize content using Mandala Nine-Grid thinking method"""
+        """曼陀羅九宮格思考法 - 將內容轉換成九宮格結構化思考"""
         prompt = f"""
-        請將以下內容組織成曼陀羅九宮格思考法結構：
+        請將以下筆記內容轉換成曼陀羅九宮格思考法的格式，將核心主題放在中央，周圍8個格子包含相關的子主題或關鍵要素。
 
-        內容：
+        筆記內容：
+        ---
         {content}
+        ---
 
-        請以JSON格式回傳曼陀羅九宮格結構：
+        **--- JSON 格式範例 START ---**
         {{
-            "central_theme": "中心主題",
+            "central_theme": "人工智慧",
             "grid_layout": {{
-                "top_left": "左上角內容",
-                "top_center": "上方中央內容",
-                "top_right": "右上角內容",
-                "middle_left": "左側中央內容",
-                "center": "中心主題內容",
-                "middle_right": "右側中央內容",
-                "bottom_left": "左下角內容",
-                "bottom_center": "下方中央內容",
-                "bottom_right": "右下角內容"
+                "center": "人工智慧",
+                "top_left": "機器學習",
+                "top_center": "深度學習", 
+                "top_right": "自然語言處理",
+                "middle_left": "電腦視覺",
+                "middle_right": "專家系統",
+                "bottom_left": "神經網路",
+                "bottom_center": "資料科學",
+                "bottom_right": "演算法"
             }},
             "detailed_explanations": {{
-                "top_left": "左上角內容的詳細說明",
-                "top_center": "上方中央內容的詳細說明",
-                "top_right": "右上角內容的詳細說明",
-                "middle_left": "左側中央內容的詳細說明",
-                "center": "中心主題的詳細說明",
-                "middle_right": "右側中央內容的詳細說明",
-                "bottom_left": "左下角內容的詳細說明",
-                "bottom_center": "下方中央內容的詳細說明",
-                "bottom_right": "右下角內容的詳細說明"
+                "center": "人工智慧是讓機器模擬人類智慧的技術領域",
+                "top_left": "機器學習讓電腦從資料中自動學習模式",
+                "top_center": "深度學習是機器學習的進階技術，模擬人腦神經網路",
+                "top_right": "自然語言處理讓電腦理解和生成人類語言",
+                "middle_left": "電腦視覺讓機器能夠理解和分析圖像",
+                "middle_right": "專家系統模擬領域專家的決策過程",
+                "bottom_left": "神經網路是深度學習的基礎架構",
+                "bottom_center": "資料科學提供AI所需的資料分析技能",
+                "bottom_right": "演算法是AI系統的核心邏輯"
             }},
             "connections": [
-                {{"from": "center", "to": "top_left", "relation": "關聯描述"}},
-                {{"from": "center", "to": "top_center", "relation": "關聯描述"}},
-                {{"from": "center", "to": "top_right", "relation": "關聯描述"}},
-                {{"from": "center", "to": "middle_left", "relation": "關聯描述"}},
-                {{"from": "center", "to": "middle_right", "relation": "關聯描述"}},
-                {{"from": "center", "to": "bottom_left", "relation": "關聯描述"}},
-                {{"from": "center", "to": "bottom_center", "relation": "關聯描述"}},
-                {{"from": "center", "to": "bottom_right", "relation": "關聯描述"}}
+                {{
+                    "from": "center",
+                    "to": "top_left", 
+                    "relation": "機器學習是AI的核心技術之一"
+                }},
+                {{
+                    "from": "top_left",
+                    "to": "top_center",
+                    "relation": "深度學習是機器學習的子領域"
+                }}
             ],
-            "thinking_process": "整體思考過程描述",
-            "practical_applications": ["實際應用1", "實際應用2", "實際應用3"],
+            "thinking_process": "從核心概念出發，探索相關的技術領域和應用方向，建立完整的知識架構",
+            "practical_applications": ["智慧型手機助理", "自動駕駛", "醫療診斷", "金融風控"],
+            "learning_path": "建議從機器學習基礎開始，逐步深入各個專業領域"
+        }}
+        **--- JSON 格式範例 END ---**
+
+        請**務必**以以下 JSON 格式回傳，**必須**是有效的JSON結構：
+        {{
+            "central_theme": "核心主題名稱",
+            "grid_layout": {{
+                "center": "中央主題",
+                "top_left": "左上子主題",
+                "top_center": "正上子主題",
+                "top_right": "右上子主題", 
+                "middle_left": "左側子主題",
+                "middle_right": "右側子主題",
+                "bottom_left": "左下子主題",
+                "bottom_center": "正下子主題",
+                "bottom_right": "右下子主題"
+            }},
+            "detailed_explanations": {{
+                "center": "中央主題的詳細說明",
+                "top_left": "左上子主題的詳細說明",
+                "top_center": "正上子主題的詳細說明",
+                "top_right": "右上子主題的詳細說明",
+                "middle_left": "左側子主題的詳細說明", 
+                "middle_right": "右側子主題的詳細說明",
+                "bottom_left": "左下子主題的詳細說明",
+                "bottom_center": "正下子主題的詳細說明",
+                "bottom_right": "右下子主題的詳細說明"
+            }},
+            "connections": [
+                {{
+                    "from": "起始位置",
+                    "to": "目標位置",
+                    "relation": "關聯性描述"
+                }}
+            ],
+            "thinking_process": "整體思考過程和邏輯",
+            "practical_applications": ["實際應用1", "應用2", "應用3"],
             "learning_path": "學習建議和路徑"
         }}
-        """
 
-        try:
-            result = self._run_async(self._safe_generate_json(prompt))
-            if result.get('success'):
-                return result
-            else:
-                return self._get_default_organize_result("mandala_ninegrid")
-        except Exception as e:
-            print(f"Error organizing with mandala ninegrid: {e}")
-            return self._get_default_organize_result("mandala_ninegrid")
+        重點：
+        1. central_theme 是整個九宮格的核心概念
+        2. grid_layout 包含9個位置的主題名稱（要簡潔）
+        3. detailed_explanations 包含每個位置的詳細說明
+        4. connections 描述各格子之間的關聯性
+        5. 確保各個子主題都與中央主題有邏輯連結
+        6. 回傳格式必須是有效的JSON，不要包含其他文字
+        """
+        # 曼陀羅九宮格：使用主模型（需要結構化思考和關聯分析）
+        return self._safe_ai_call(prompt, "mandala_ninegrid", use_simple_model=False)
 
     def format_and_enhance_content(self, content: str) -> Dict[str, Any]:
         """Format and enhance content - now returns plain markdown"""
@@ -747,7 +971,9 @@ class NoteAIClient:
         try:
             result = self._run_async(self._safe_generate_json(prompt))
             if result.get('success'):
-                return result
+                # 提取實際的AI回應數據
+                ai_data = result.get('data', result.get('content', result))
+                return ai_data if isinstance(ai_data, dict) else result
             else:
                 return self._get_default_organize_result("quiz")
         except Exception as e:
@@ -779,7 +1005,9 @@ class NoteAIClient:
         try:
             result = self._run_async(self._safe_generate_json(prompt))
             if result.get('success'):
-                return result
+                # 提取實際的AI回應數據
+                ai_data = result.get('data', result.get('content', result))
+                return ai_data if isinstance(ai_data, dict) else result
             else:
                 return self._get_default_organize_result("note_from_questions")
         except Exception as e:
@@ -1390,7 +1618,7 @@ class NoteAIClient:
         """安全的AI呼叫包裝器"""
         try:
             if use_simple_model:
-                result = self._run_async(self.gemini_client.generate_simple_async(prompt))
+                result = self._run_async(self.gemini_client.generate_async_simple(prompt))
             else:
                 result = self._run_async(self.gemini_client.generate_async(prompt))
             

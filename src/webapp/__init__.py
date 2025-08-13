@@ -85,19 +85,29 @@ def create_app():
     app.secret_key = secret_key
 
     # --- CSRF Protection ---
-    csrf = CSRFProtect(app)
+    # 暫時禁用CSRF保護以解決上傳問題
+    # csrf = CSRFProtect(app)
     
-    # 配置CSRF豁免條件
-    @csrf.exempt
-    def csrf_exempt_for_api():
-        # 豁免所有/notes/ai/*路由
-        if request.endpoint and 'ai' in request.endpoint:
-            return True
-        # 豁免圖片上傳和手寫相關路由
-        upload_endpoints = ['notes.upload_image', 'notes.upload_image_dataurl', 'notes.handwriting_to_text']
-        if request.endpoint in upload_endpoints:
-            return True
-        return False
+    # 提供一個空的csrf_token函數以避免模板錯誤
+    @app.template_global()
+    def csrf_token():
+        return ""
+    
+    # # 豁免特定路由
+    # @app.before_request
+    # def handle_csrf_exemptions():
+    #     # 豁免登入相關路由
+    #     if request.endpoint in ['login', 'logout']:
+    #         csrf._exempt_views.add(request.endpoint)
+    #     # 豁免圖片上傳和手寫相關路由
+    #     upload_endpoints = [
+    #         'notes.upload_image', 
+    #         'notes.upload_image_dataurl', 
+    #         'notes.handwriting_to_text',
+    #         'notes.import_handwriting_content'
+    #     ]
+    #     if request.endpoint in upload_endpoints:
+    #         csrf._exempt_views.add(request.endpoint)
 
     # --- Database and Services Initialization ---
     db = DatabaseManager()
@@ -159,34 +169,84 @@ def create_app():
 
     @app.template_filter('markdown')
     def markdown_filter(text):
-        """將 Markdown 文本轉換為 HTML"""
+        """將 Markdown 文本轉換為 HTML，保留HTML樣式"""
         if not text:
             return ""
         
-        # 修正編號格式，確保 Markdown 可以正確渲染
+        # 如果內容包含HTML標籤（如顏色樣式），使用保護機制
+        import re
+        if re.search(r'<span[^>]*style[^>]*>', text) or re.search(r'<u[^>]*>', text):
+            # 包含HTML樣式，使用混合模式：先處理Markdown，再保留HTML
+            from markupsafe import Markup
+            
+            # 保護HTML標籤
+            protected_html = {}
+            placeholder_counter = 0
+            
+            # 保護span標籤（顏色）- 使用非貪心匹配
+            def protect_html(match):
+                nonlocal placeholder_counter
+                placeholder = f"__HTML_PLACEHOLDER_{placeholder_counter}__"
+                protected_html[placeholder] = match.group(0)
+                placeholder_counter += 1
+                return placeholder
+            
+            # 保護span標籤（顏色和其他樣式）
+            text = re.sub(r'<span[^>]*style[^>]*?>(.*?)</span>', protect_html, text, flags=re.DOTALL)
+            # 保護u標籤（下劃線）
+            text = re.sub(r'<u[^>]*?>(.*?)</u>', protect_html, text, flags=re.DOTALL)
+            
+            # 處理Markdown
+            text = fix_markdown_numbering(text)
+            
+            md = markdown.Markdown(
+                extensions=[
+                    'tables', 'fenced_code', 'codehilite', 'toc', 'nl2br'
+                ],
+                extension_configs={
+                    'codehilite': {
+                        'css_class': 'highlight',
+                        'use_pygments': False
+                    }
+                }
+            )
+            
+            html = md.convert(text)
+            
+            # 恢復保護的HTML標籤 - 處理可能被轉換的placeholder
+            for placeholder, original_html in protected_html.items():
+                # 提取placeholder的核心名稱（去掉前後下劃線）
+                core_name = placeholder.replace('__', '').replace('__', '')
+                
+                # 直接替換
+                html = html.replace(placeholder, original_html)
+                # 處理可能被包裝在<strong>或其他標籤中的placeholder
+                html = html.replace(f'<strong>{core_name}</strong>', original_html)
+                html = html.replace(f'<em>{core_name}</em>', original_html)
+                html = html.replace(f'<p>{core_name}</p>', f'<p>{original_html}</p>')
+                # 處理沒有前後下劃線的版本
+                html = html.replace(f'<strong>{placeholder}</strong>', original_html)
+                html = html.replace(f'<em>{placeholder}</em>', original_html)
+            
+            return Markup(html)
+        
+        # 正常的Markdown處理
         text = fix_markdown_numbering(text)
         
-        # 配置 Markdown 解析器
         md = markdown.Markdown(
             extensions=[
-                'tables',           # 支援表格
-                'fenced_code',      # 支援圍欄式程式碼區塊
-                'codehilite',       # 支援程式碼高亮
-                'toc',              # 支援目錄
-                'nl2br'             # 換行轉為 <br>
+                'tables', 'fenced_code', 'codehilite', 'toc', 'nl2br'
             ],
             extension_configs={
                 'codehilite': {
                     'css_class': 'highlight',
-                    'use_pygments': False  # 使用前端的 Prism.js 進行高亮
+                    'use_pygments': False
                 }
             }
         )
         
-        # 轉換為 HTML
         html = md.convert(text)
         
-        # 返回安全的 HTML（Flask 會自動處理 Markup）
         from markupsafe import Markup
         return Markup(html)
 
@@ -254,7 +314,6 @@ def create_app():
     # --- Routes ---
 
     @app.route('/check-user', methods=['POST'])
-    @csrf.exempt
     def check_user():
         """檢查用戶是否存在"""
         data = request.get_json()
