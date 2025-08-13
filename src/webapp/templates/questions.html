@@ -117,7 +117,7 @@
                                     <div class="btn-group" role="group">
                                         <a href="/question/{{ q.id }}" class="btn btn-outline-primary btn-sm">查看</a>
                                         {% if g.current_user and g.current_user.role == 'admin' %}
-                                        <a href="{{ url_for('notes.create_note_from_question', question_id=q.id) }}" class="btn btn-outline-dark btn-sm btn-notes">筆記</a>
+                                        <a href="{{ url_for('notes.create_note_from_question_wysiwyg', question_id=q.id) }}" class="btn btn-outline-dark btn-sm btn-notes">筆記</a>
                                         {% endif %}
                                         {% if g.current_user and g.current_user.role == 'admin' %}
                                         <a href="/edit_question/{{ q.id }}" class="btn btn-outline-secondary btn-sm">編輯</a>

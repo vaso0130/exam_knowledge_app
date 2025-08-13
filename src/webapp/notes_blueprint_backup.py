@@ -42,8 +42,8 @@ def note_list():
 
 @notes_bp.route('/new', methods=['GET', 'POST'])
 def create_note():
-    """Handles the creation of a new note."""
-    if request.method == 'POST':
+    """Redirect to WYSIWYG editor for new notes."""
+    return redirect(url_for('notes.create_note_wysiwyg'))
         user_id = g.current_user['id']
         action = request.form.get('action')
         
@@ -263,6 +263,45 @@ def create_note_wysiwyg():
     return render_template('notes/note_edit_wysiwyg.html', title="新增筆記 - WYSIWYG", note=None)
 
 
+@notes_bp.route('/edit-wysiwyg/<int:note_id>', methods=['GET', 'POST'])
+def edit_note_wysiwyg(note_id):
+    """Handles editing a note using WYSIWYG editor."""
+    user_id = g.current_user['id']
+    note = note_manager.get_user_note(user_id, note_id)
+    
+    if not note:
+        flash("找不到指定的筆記。", "danger")
+        return redirect(url_for('.note_list'))
+    
+    if request.method == 'POST':
+        try:
+            title = request.form.get('title', '').strip()
+            content = request.form.get('content', '').strip()
+            tags = request.form.get('tags', '').strip()
+            
+            if not title:
+                flash("請輸入筆記標題。", "danger")
+                return render_template('notes/note_edit_wysiwyg.html', 
+                                     title="編輯筆記 - WYSIWYG", note=note)
+            
+            # 更新筆記
+            success = note_manager.update_note(user_id, note_id, title, content, tags)
+            
+            if success:
+                flash("筆記已成功更新！", "success")
+                return redirect(url_for('.note_detail', note_id=note_id))
+            else:
+                flash("更新筆記時發生錯誤。", "danger")
+                
+        except Exception as e:
+            flash(f"更新筆記時發生錯誤：{str(e)}", "danger")
+            print(f"更新筆記錯誤：{e}")
+            traceback.print_exc()
+
+    return render_template('notes/note_edit_wysiwyg.html', 
+                         title="編輯筆記 - WYSIWYG", note=note)
+
+
 @notes_bp.route('/from-question-wysiwyg/<string:question_id>', methods=['GET', 'POST'])
 def create_note_from_question_wysiwyg(question_id):
     """Create a note referencing a question using WYSIWYG editor."""
@@ -404,45 +443,6 @@ def create_note_from_question_wysiwyg(question_id):
                          note=None,
                          default_title=default_title,
                          source_question=question)
-
-
-@notes_bp.route('/edit-wysiwyg/<int:note_id>', methods=['GET', 'POST'])
-def edit_note_wysiwyg(note_id):
-    """Handles editing a note using WYSIWYG editor."""
-    user_id = g.current_user['id']
-    note = note_manager.get_user_note(user_id, note_id)
-    
-    if not note:
-        flash("找不到指定的筆記。", "danger")
-        return redirect(url_for('.note_list'))
-    
-    if request.method == 'POST':
-        try:
-            title = request.form.get('title', '').strip()
-            content = request.form.get('content', '').strip()
-            tags = request.form.get('tags', '').strip()
-            
-            if not title:
-                flash("請輸入筆記標題。", "danger")
-                return render_template('notes/note_edit_wysiwyg.html', 
-                                     title="編輯筆記 - WYSIWYG", note=note)
-            
-            # 更新筆記
-            success = note_manager.update_note(user_id, note_id, title, content, tags)
-            
-            if success:
-                flash("筆記已成功更新！", "success")
-                return redirect(url_for('.note_detail', note_id=note_id))
-            else:
-                flash("更新筆記時發生錯誤。", "danger")
-                
-        except Exception as e:
-            flash(f"更新筆記時發生錯誤：{str(e)}", "danger")
-            print(f"更新筆記錯誤：{e}")
-            traceback.print_exc()
-
-    return render_template('notes/note_edit_wysiwyg.html', 
-                         title="編輯筆記 - WYSIWYG", note=note)
 
 
 @notes_bp.route('/from-question/<string:question_id>', methods=['GET', 'POST'])

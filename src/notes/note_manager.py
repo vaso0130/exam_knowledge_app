@@ -498,7 +498,7 @@ class NoteManager:
 
     # === 從題庫/教材生成筆記 ===
 
-    def create_note_from_questions(self, user_id: int, questions_data: List[Dict], title: str = None) -> Optional[str]:
+    def create_note_from_questions(self, user_id: int, questions_data: List[Dict], title: str = None, additional_content: str = None, tags: str = None) -> Optional[str]:
         """從題庫資料生成筆記"""
         try:
             ai_result = self.ai_client.generate_note_from_questions(questions_data)
@@ -506,13 +506,33 @@ class NoteManager:
             note_title = title or ai_result.get('title', '從題庫生成的筆記')
             note_content = ai_result.get('content', '')
             
+            # 如果有額外內容，則附加到生成的內容後面
+            if additional_content and additional_content.strip():
+                note_content += f"\n\n## 額外補充\n\n{additional_content}"
+            
+            # 處理標籤
+            final_tags = []
+            
+            # 添加 AI 建議的標籤
+            ai_tags = ai_result.get('suggested_tags', [])
+            if ai_tags:
+                final_tags.extend(ai_tags)
+            
+            # 添加用戶提供的標籤
+            if tags and tags.strip():
+                user_tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
+                final_tags.extend(user_tags)
+            
+            # 去除重複標籤
+            final_tags = list(set(final_tags))
+            
             # 創建筆記
             note_id = self.db_manager.create_note(
                 user_id=user_id,
                 title=note_title,
                 content=note_content,
                 content_type='markdown',
-                tags=json.dumps(ai_result.get('suggested_tags', []), ensure_ascii=False),
+                tags=json.dumps(final_tags, ensure_ascii=False),
                 ai_summary=ai_result.get('study_tips'),
                 ai_keywords=json.dumps(ai_result.get('key_concepts', []), ensure_ascii=False)
             )
@@ -522,7 +542,9 @@ class NoteManager:
                 self.db_manager.save_ai_analysis(user_id, note_id, 'generated_from_questions', {
                     'source_type': 'questions',
                     'source_count': len(questions_data),
-                    'generation_result': ai_result
+                    'generation_result': ai_result,
+                    'has_additional_content': bool(additional_content and additional_content.strip()),
+                    'user_tags': tags
                 })
             
             return note_id
