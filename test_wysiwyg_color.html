@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>WYSIWYG編輯器顏色測試</title>
+    <link rel="stylesheet" href="/static/css/wysiwyg_editor.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div style="padding: 20px;">
+        <h1>WYSIWYG編輯器顏色測試</h1>
+        
+        <div id="editor-container"></div>
+        
+        <div style="margin-top: 20px;">
+            <button onclick="testColorSaving()">測試顏色保存</button>
+            <button onclick="showContent()">顯示內容</button>
+            <button onclick="showMarkdown()">顯示Markdown</button>
+        </div>
+        
+        <div id="output" style="margin-top: 20px; padding: 20px; border: 1px solid #ccc; background: #f9f9f9;"></div>
+    </div>
+
+    <script src="/static/js/wysiwyg_editor.js"></script>
+    <script>
+        let editor = null;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化編輯器
+            editor = new WYSIWYGEditor('editor-container', {
+                theme: 'light',
+                placeholder: '測試顏色功能...',
+                enableHandwriting: false,
+                enableLSP: false,
+                enableGhost: false
+            });
+            
+            // 設置測試內容
+            setTimeout(() => {
+                editor.setContent('<p>這是<span style="color: red;">紅色文字</span>，這是<span style="color: blue;">藍色文字</span>。</p><p>還有<span style="background-color: yellow;">黃色背景</span>的文字。</p>', 'html');
+            }, 1000);
+        });
+        
+        function testColorSaving() {
+            if (!editor) return;
+            
+            const htmlContent = editor.getContent('html');
+            const markdownContent = editor.getContent('markdown');
+            
+            document.getElementById('output').innerHTML = 
+                '<h3>HTML內容:</h3><pre>' + htmlContent.replace(/</g, '&lt;') + '</pre>' +
+                '<h3>Markdown內容:</h3><pre>' + markdownContent.replace(/</g, '&lt;') + '</pre>';
+        }
+        
+        function showContent() {
+            if (!editor) return;
+            const content = editor.getContent('html');
+            document.getElementById('output').innerHTML = '<h3>HTML渲染:</h3>' + content;
+        }
+        
+        function showMarkdown() {
+            if (!editor) return;
+            const markdown = editor.getContent('markdown');
+            document.getElementById('output').innerHTML = '<h3>Markdown:</h3><pre>' + markdown.replace(/</g, '&lt;') + '</pre>';
+        }
+    </script>
+</body>
+</html>

@@ -285,9 +285,20 @@ class NoteManager:
 
         if enable_ai_reanalysis and 'content' in updates:
             analysis_results = self.ai_client.analyze_note_content(updates['content'])
+            
+            # 合併 AI 建議的標籤和現有標籤
+            existing_tags = updates.get('tags', [])
+            if isinstance(existing_tags, str):
+                existing_tags = [tag.strip() for tag in existing_tags.split(',') if tag.strip()]
+            
+            ai_suggested_tags = analysis_results.get('suggested_tags', [])
+            # 合併標籤，避免重複
+            combined_tags = list(set(existing_tags + ai_suggested_tags))
+            
             updates.update({
                 'ai_summary': analysis_results.get('summary'),
-                'ai_keywords': analysis_results.get('keywords', [])
+                'ai_keywords': analysis_results.get('keywords', []),
+                'tags': combined_tags
             })
             # 保存重新分析結果
             self.db_manager.save_ai_analysis(user_id, note_id, 'content_update_analysis', analysis_results)

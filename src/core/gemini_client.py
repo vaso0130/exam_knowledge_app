@@ -34,7 +34,7 @@ class GeminiClient:
         self.generation_config = genai.types.GenerationConfig(
             temperature=0.2,
             top_p=0.9,
-            max_output_tokens=8192,
+            max_output_tokens=16384,  # 增加到 16K tokens (約 12000-16000 字)
             response_mime_type="application/json"
         )
         
@@ -42,7 +42,7 @@ class GeminiClient:
         self.mindmap_config = genai.types.GenerationConfig(
             temperature=0.3,
             top_p=0.9,
-            max_output_tokens=4096,
+            max_output_tokens=8192,  # 增加到 8K tokens
             response_mime_type="text/plain"
         )
     
@@ -70,7 +70,7 @@ class GeminiClient:
             text_generation_config = genai.types.GenerationConfig(
                 temperature=0.3,
                 top_p=0.9,
-                max_output_tokens=4096
+                max_output_tokens=12288  # 增加到 12K tokens
             )
             
             # 根據參數選擇模型
@@ -113,7 +113,7 @@ class GeminiClient:
             config = self.generation_config if is_json else genai.types.GenerationConfig(
                 temperature=0.3,
                 top_p=0.9,
-                max_output_tokens=8192
+                max_output_tokens=16384  # 增加到 16K tokens
             )
             response = await asyncio.to_thread(
                 self.model.generate_content,
@@ -158,7 +158,7 @@ class GeminiClient:
             config = genai.types.GenerationConfig(
                 temperature=0.3,
                 top_p=0.9,
-                max_output_tokens=8192
+                max_output_tokens=16384  # 增加到 16K tokens
             )
             response = await asyncio.to_thread(
                 self.model.generate_content,
@@ -176,7 +176,7 @@ class GeminiClient:
             config = self.generation_config if is_json else genai.types.GenerationConfig(
                 temperature=0.2,
                 top_p=0.9,
-                max_output_tokens=2048
+                max_output_tokens=8192  # 增加到 8K tokens
             )
             response = await asyncio.to_thread(
                 self.secondary_model.generate_content,
@@ -579,7 +579,7 @@ class GeminiClient:
             text_generation_config = genai.types.GenerationConfig(
                 temperature=0.2,
                 top_p=0.9,
-                max_output_tokens=4096,
+                max_output_tokens=12288,  # 增加到 12K tokens
                 response_mime_type="application/json"
             )
             response = await asyncio.to_thread(
@@ -782,7 +782,7 @@ class GeminiClient:
             text_generation_config = genai.types.GenerationConfig(
                 temperature=0.3,
                 top_p=0.9,
-                max_output_tokens=2048,
+                max_output_tokens=8192,  # 增加到 8K tokens
             )
             response = await asyncio.to_thread(
                 self.secondary_model.generate_content,
@@ -858,7 +858,7 @@ class GeminiClient:
             json_config = genai.types.GenerationConfig(
                 temperature=0.2,
                 top_p=0.9,
-                max_output_tokens=1024,
+                max_output_tokens=4096,  # 增加到 4K tokens
                 response_mime_type="application/json"
             )
             response = await asyncio.to_thread(

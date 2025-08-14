@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>顏色功能調試測試</title>
+    <meta charset="UTF-8">
+    <script src="src/webapp/static/js/wysiwyg_editor.js"></script>
+</head>
+<body>
+    <h1>顏色功能調試測試</h1>
+    
+    <div>
+        <h3>編輯器</h3>
+        <div id="editor" style="border: 1px solid #ccc; min-height: 200px; padding: 10px;">
+            輸入一些文字，然後選中它並設定顏色
+        </div>
+    </div>
+    
+    <div>
+        <button onclick="setTextColor()">設定文字為紅色</button>
+        <button onclick="checkMarkdown()">檢查 Markdown 輸出</button>
+    </div>
+    
+    <div>
+        <h3>Markdown 輸出</h3>
+        <textarea id="markdownOutput" style="width: 100%; height: 200px;"></textarea>
+    </div>
+    
+    <div>
+        <h3>控制台輸出</h3>
+        <div id="console" style="border: 1px solid #ccc; height: 200px; padding: 10px; overflow-y: auto; background: #f5f5f5;"></div>
+    </div>
+
+    <script>
+        // 重定向 console.log 到頁面上
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const consoleDiv = document.getElementById('console');
+            const message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+            consoleDiv.innerHTML += '<div>' + message + '</div>';
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        };
+
+        // 初始化編輯器
+        let editor;
+        document.addEventListener('DOMContentLoaded', function() {
+            editor = new WysiwygEditor('editor');
+        });
+
+        function setTextColor() {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0 && !selection.isCollapsed) {
+                const range = selection.getRangeAt(0);
+                const span = document.createElement('span');
+                span.style.color = 'red';
+                
+                try {
+                    range.surroundContents(span);
+                    console.log('已設定選中文字為紅色');
+                } catch (e) {
+                    console.error('設定顏色失敗:', e);
+                }
+            } else {
+                console.log('請先選中一些文字');
+            }
+        }
+
+        function checkMarkdown() {
+            if (editor) {
+                const editorContent = document.getElementById('editor').innerHTML;
+                console.log('編輯器HTML內容:', editorContent);
+                
+                const markdown = editor.htmlToMarkdown(editorContent);
+                document.getElementById('markdownOutput').value = markdown;
+                console.log('轉換後的Markdown:', markdown);
+            } else {
+                console.log('編輯器未初始化');
+            }
+        }
+    </script>
+</body>
+</html>

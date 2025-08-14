@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown 一致性測試</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/js/wysiwyg_editor.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .test-section { margin-bottom: 30px; border: 1px solid #ddd; padding: 20px; border-radius: 5px; }
+        .test-input { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 3px; white-space: pre-wrap; }
+        .test-output { border: 1px solid #ccc; padding: 10px; margin: 10px 0; border-radius: 3px; }
+        .marked-output { background: #e8f5e8; }
+        .wysiwyg-output { background: #e8e8f5; }
+        h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Markdown 渲染一致性測試</h1>
+    
+    <div class="test-section">
+        <h2>測試案例 1：代碼塊格式問題</h2>
+        
+        <h3>輸入 Markdown（錯誤格式）：</h3>
+        <div class="test-input" id="input1">- **遍歷 (Traversal)**：使用多層巢狀迴圈來訪問陣列中的每個元素。例如，一個三維陣列需要三個巢狀迴圈。```cpp
+for (int i = 0; i < D0; ++i) {
+    for (int j = 0; j < D1; ++j) {
+        for (int k = 0; k < D2; ++k) {
+            // 處理 A[i][j][k]
+        }
+    }
+}
+```</div>
+        
+        <h3>輸入 Markdown（正確格式）：</h3>
+        <div class="test-input" id="input2">- **遍歷 (Traversal)**：使用多層巢狀迴圈來訪問陣列中的每個元素。例如，一個三維陣列需要三個巢狀迴圈。
+
+```cpp
+for (int i = 0; i < D0; ++i) {
+    for (int j = 0; j < D1; ++j) {
+        for (int k = 0; k < D2; ++k) {
+            // 處理 A[i][j][k]
+        }
+    }
+}
+```</div>
+        
+        <h3>Marked.js 渲染結果（錯誤格式）：</h3>
+        <div class="test-output marked-output" id="marked-output1"></div>
+        
+        <h3>Marked.js 渲染結果（正確格式）：</h3>
+        <div class="test-output marked-output" id="marked-output2"></div>
+        
+        <h3>WYSIWYG Editor 渲染結果（錯誤格式）：</h3>
+        <div class="test-output wysiwyg-output" id="wysiwyg-output1"></div>
+        
+        <h3>WYSIWYG Editor 渲染結果（正確格式）：</h3>
+        <div class="test-output wysiwyg-output" id="wysiwyg-output2"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const input1 = document.getElementById('input1').textContent;
+            const input2 = document.getElementById('input2').textContent;
+            
+            // 測試 Marked.js
+            if (window.marked) {
+                document.getElementById('marked-output1').innerHTML = marked.parse(input1);
+                document.getElementById('marked-output2').innerHTML = marked.parse(input2);
+            } else {
+                document.getElementById('marked-output1').innerHTML = '<span style="color: red;">Marked.js 未載入</span>';
+                document.getElementById('marked-output2').innerHTML = '<span style="color: red;">Marked.js 未載入</span>';
+            }
+            
+            // 測試 WYSIWYG Editor
+            if (window.WYSIWYGEditor) {
+                const editor = new WYSIWYGEditor('test-container', {});
+                
+                // 使用編輯器的 markdownToHtml 方法
+                if (editor.markdownToHtml) {
+                    document.getElementById('wysiwyg-output1').innerHTML = editor.markdownToHtml(input1);
+                    document.getElementById('wysiwyg-output2').innerHTML = editor.markdownToHtml(input2);
+                } else {
+                    document.getElementById('wysiwyg-output1').innerHTML = '<span style="color: red;">WYSIWYG markdownToHtml 方法不可用</span>';
+                    document.getElementById('wysiwyg-output2').innerHTML = '<span style="color: red;">WYSIWYG markdownToHtml 方法不可用</span>';
+                }
+            } else {
+                document.getElementById('wysiwyg-output1').innerHTML = '<span style="color: red;">WYSIWYGEditor 類別未載入</span>';
+                document.getElementById('wysiwyg-output2').innerHTML = '<span style="color: red;">WYSIWYGEditor 類別未載入</span>';
+            }
+        });
+    </script>
+    
+    <!-- 隱藏的測試容器 -->
+    <div id="test-container" style="display: none;"></div>
+</body>
+</html>

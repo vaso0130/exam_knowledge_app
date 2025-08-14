@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-tw">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>顏色轉換測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        textarea { width: 100%; height: 100px; font-family: monospace; }
+        button { margin: 5px; padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        .output { background: #f8f9fa; padding: 10px; border-radius: 3px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>顏色轉換測試</h1>
+        
+        <div class="test-section">
+            <h3>測試輸入</h3>
+            <button onclick="test1()">測試 font 標籤</button>
+            <button onclick="test2()">測試 span 標籤</button>
+            <button onclick="test3()">測試混合內容</button>
+        </div>
+        
+        <div class="test-section">
+            <h3>轉換結果</h3>
+            <div class="output" id="result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>控制台輸出</h3>
+            <div class="output" id="console" style="background: #2d2d2d; color: white; font-family: monospace; max-height: 400px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <!-- 載入必要的腳本 -->
+    <script src="src/webapp/static/js/markdown_converter.js"></script>
+    <script src="src/webapp/static/js/wysiwyg_editor.js"></script>
+    
+    <script>
+        // 重定向控制台輸出
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const consoleDiv = document.getElementById('console');
+            const message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+            const timestamp = new Date().toLocaleTimeString();
+            consoleDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        };
+
+        // 初始化編輯器
+        let editor;
+        document.addEventListener('DOMContentLoaded', function() {
+            editor = new WysiwygEditor(document.createElement('div')); // 創建虛擬編輯器用於測試
+            console.log('編輯器初始化完成');
+        });
+
+        function test1() {
+            console.log('=== 測試 font 標籤 ===');
+            const input = '<font color="#ff0000">紅色文字</font>';
+            console.log('輸入:', input);
+            
+            if (editor) {
+                const result = editor.htmlToMarkdown(input);
+                console.log('輸出:', result);
+                document.getElementById('result').innerHTML = `
+                    <strong>輸入:</strong> ${escapeHtml(input)}<br>
+                    <strong>輸出:</strong> ${escapeHtml(result)}
+                `;
+            }
+        }
+
+        function test2() {
+            console.log('=== 測試 span 標籤 ===');
+            const input = '<span style="color: #0000ff;">藍色文字</span>';
+            console.log('輸入:', input);
+            
+            if (editor) {
+                const result = editor.htmlToMarkdown(input);
+                console.log('輸出:', result);
+                document.getElementById('result').innerHTML = `
+                    <strong>輸入:</strong> ${escapeHtml(input)}<br>
+                    <strong>輸出:</strong> ${escapeHtml(result)}
+                `;
+            }
+        }
+
+        function test3() {
+            console.log('=== 測試混合內容 ===');
+            const input = '<h1>標題</h1><p>這是<font color="#ff0000">紅色</font>和<span style="color: #00ff00;">綠色</span>文字。</p>';
+            console.log('輸入:', input);
+            
+            if (editor) {
+                const result = editor.htmlToMarkdown(input);
+                console.log('輸出:', result);
+                document.getElementById('result').innerHTML = `
+                    <strong>輸入:</strong> ${escapeHtml(input)}<br>
+                    <strong>輸出:</strong> ${escapeHtml(result)}
+                `;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

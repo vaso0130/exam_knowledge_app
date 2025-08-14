@@ -155,7 +155,8 @@ class NotesDatabaseManager:
                 if hasattr(note, key):
                     # Handle JSON fields
                     if key in ['tags', 'ai_keywords'] and isinstance(value, (list, dict)):
-                        setattr(note, key, json.dumps(value, ensure_ascii=False))
+                        json_value = json.dumps(value, ensure_ascii=False)
+                        setattr(note, key, json_value)
                     else:
                         setattr(note, key, value)
             

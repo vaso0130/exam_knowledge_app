@@ -5,6 +5,8 @@
 
 {% block head %}
 {{ super() }}
+<!-- 筆記詳情樣式 (優先載入以統一渲染效果) -->
+<link rel="stylesheet" href="/static/css/note_detail.css">
 <!-- WYSIWYG編輯器樣式 -->
 <link rel="stylesheet" href="/static/css/wysiwyg_editor.css">
 <!-- Bootstrap Icons (for toolbar icons) -->
@@ -22,33 +24,6 @@
     
     .editor-container {
         margin: 20px 0;
-    }
-    
-    .preview-container {
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
-        padding: 20px;
-        background: #f8f9fa;
-        min-height: 200px;
-    }
-    
-    .preview-container h1,
-    .preview-container h2,
-    .preview-container h3,
-    .preview-container h4,
-    .preview-container h5,
-    .preview-container h6 {
-        margin-top: 1.5em;
-        margin-bottom: 0.5em;
-    }
-    
-    .preview-container p {
-        margin-bottom: 1em;
-    }
-    
-    .preview-container img {
-        max-width: 100%;
-        height: auto;
     }
     
     .action-buttons {
@@ -163,6 +138,7 @@
 
         <!-- 主表單 -->
         <form method="POST" action="" id="noteForm">
+            <!-- <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> -->
             <div class="card shadow-sm">
                 <div class="card-body">
                     <!-- 標題輸入 -->
@@ -175,64 +151,64 @@
                                placeholder="請輸入筆記標題..." required>
                     </div>
 
-                    <!-- AI輔助面板 -->
-                    <div class="ai-panel">
-                        <h6><i class="fas fa-magic me-2"></i>AI輔助功能</h6>
-                        <div class="row">
-                            <div class="col-md-8">
-                                <div class="d-flex flex-wrap">
-                                    <button type="button" class="btn ai-cmd-btn" data-command="summary">
-                                        <i class="fas fa-list me-1"></i>摘要
-                                    </button>
-                                    <button type="button" class="btn ai-cmd-btn" data-command="outline">
-                                        <i class="fas fa-sitemap me-1"></i>大綱
-                                    </button>
-                                    <button type="button" class="btn ai-cmd-btn" data-command="bullets">
-                                        <i class="fas fa-list-ul me-1"></i>條列
-                                    </button>
-                                    <button type="button" class="btn ai-cmd-btn" data-command="qa">
-                                        <i class="fas fa-question me-1"></i>問答
-                                    </button>
-                                    <button type="button" class="btn ai-cmd-btn" data-command="supplement">
-                                        <i class="fas fa-plus me-1"></i>補充
-                                    </button>
-                                    <button type="button" class="btn ai-cmd-btn" data-command="rewrite-formal">
-                                        <i class="fas fa-pen me-1"></i>正式化
-                                    </button>
-                                    <button type="button" class="btn ai-cmd-btn" data-command="format-note">
-                                        <i class="fas fa-magic me-1"></i>整體格式化
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="ai-prompt-section">
-                                    <label class="form-label text-white small">AI Prompt 生成</label>
-                                    <div class="input-group input-group-sm">
-                                        <input type="text" class="form-control" id="aiPromptInput" 
-                                               placeholder="描述您想要的內容...">
-                                        <button class="btn btn-outline-light" type="button" id="generateFromPrompt">
-                                            <i class="fas fa-wand-magic-sparkles"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- AI 智慧助理設定 -->
+                    <!-- 編輯時AI功能設定 -->
                     <div class="card mb-4">
                         <div class="card-header bg-primary text-white">
                             <h6 class="mb-0">
-                                <i class="fas fa-robot me-2"></i>AI 智慧功能設定
+                                <i class="fas fa-edit me-2"></i>編輯時AI功能設定
                             </h6>
                         </div>
                         <div class="card-body">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="aiAssistantToggle" checked>
-                                <label class="form-check-label" for="aiAssistantToggle">
-                                    <strong>AI 智慧助理</strong>
-                                    <small class="text-muted d-block">自動生成摘要、關鍵字、相關建議</small>
-                                </label>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="lspToggle" checked>
+                                        <label class="form-check-label" for="lspToggle">
+                                            <strong>LSP 語言伺服器</strong>
+                                            <small class="text-muted d-block">智慧代碼補全與語法檢查</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="ghostToggle">
+                                        <label class="form-check-label" for="ghostToggle">
+                                            <strong>Ghost AI</strong>
+                                            <small class="text-muted d-block">幽靈文字提示與自動完成</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="smart_ai_mode" name="smart_ai_mode" checked>
+                                        <label class="form-check-label" for="smart_ai_mode">
+                                            <strong>AI 生成筆記</strong>
+                                            <small class="text-muted d-block">智慧生成與優化筆記內容</small>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- AI 生成筆記控制項 -->
+                            <div id="ai-assist-controls" class="mt-3">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text"><i class="fas fa-robot"></i></span>
+                                    <input type="text" class="form-control" id="ai_prompt" name="ai_prompt"
+                                        placeholder="給AI的額外指示（例如：請特別關注重點概念、請用簡單易懂的方式說明...）">
+                                    <button type="button" class="btn btn-warning" id="generate-smart-content">
+                                        🚀 AI生成筆記
+                                    </button>
+                                </div>
+                                <div class="mt-1">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        {% if source_question %}
+                                        AI將結合題目、答案和您的指示來生成筆記內容。即使內容區為空也能生成！
+                                        {% else %}
+                                        AI將結合您現有的筆記內容和指示來優化或擴充筆記。請先輸入一些內容，再點擊「AI生成筆記」按鈕！
+                                        {% endif %}
+                                    </small>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -251,12 +227,6 @@
                                 <i class="fab fa-markdown me-1"></i>Markdown
                             </button>
                         </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="preview-tab" data-bs-toggle="tab" 
-                                    data-bs-target="#preview-panel" type="button" role="tab">
-                                <i class="fas fa-eye me-1"></i>預覽
-                            </button>
-                        </li>
                     </ul>
 
                     <!-- 編輯器內容區 -->
@@ -264,7 +234,7 @@
                         <!-- WYSIWYG編輯器 -->
                         <div class="tab-pane fade show active" id="wysiwyg-panel" role="tabpanel">
                             <div class="editor-container">
-                                <div id="wysiwyg-editor-container"></div>
+                                <div id="wysiwyg-editor-container" class="note-content markdown-content"></div>
                             </div>
                         </div>
 
@@ -273,15 +243,6 @@
                             <div class="editor-container">
                                 <textarea class="form-control" id="markdown-textarea" name="content" 
                                           rows="20" placeholder="請輸入Markdown內容...">{{ note.content if note else '' }}</textarea>
-                            </div>
-                        </div>
-
-                        <!-- 預覽面板 -->
-                        <div class="tab-pane fade" id="preview-panel" role="tabpanel">
-                            <div class="editor-container">
-                                <div id="preview-container" class="preview-container">
-                                    <p class="text-muted text-center">預覽內容將在這裡顯示...</p>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -295,32 +256,90 @@
                             <strong><i class="fas fa-tags me-1"></i>標籤</strong>
                         </label>
                         <input type="text" class="form-control" id="tags" name="tags" 
-                               value="{{ note.tags if note else '' }}" 
+                               value="{{ note.tags|join(', ') if note and note.tags else '' }}" 
                                placeholder="使用逗號分隔多個標籤，例如：數學, 微積分, 考試">
                         <small class="form-text text-muted">
                             使用標籤可以幫助您更好地組織和搜尋筆記
                         </small>
                     </div>
+                </div>
+            </div>
 
-                    <!-- 筆記整理選項 -->
+            <!-- AI 智慧功能設定 - 儲存時執行 -->
+            <div class="card bg-light mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-robot me-2"></i>AI 智慧功能設定 <small class="text-muted">（儲存時執行）</small></h6>
+                </div>
+                <div class="card-body">
                     {% if not note %}
-                    <div class="mb-4">
-                        <h6 class="mb-3">
-                            <i class="fas fa-cogs me-2"></i>自動整理選項
-                            <small class="text-muted">（可選，將在筆記建立後執行）</small>
-                        </h6>
+                    <!-- 新建筆記時的設定 -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="enable_ai_analysis"
+                                    name="enable_ai_analysis" checked>
+                                <label class="form-check-label" for="enable_ai_analysis">
+                                    <strong>AI 智慧助理</strong>
+                                    <small class="text-muted d-block">自動生成摘要、關鍵字、相關建議</small>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="enable_ai_organization"
+                                    name="enable_ai_organization">
+                                <label class="form-check-label" for="enable_ai_organization">
+                                    <strong>AI 整理功能</strong>
+                                    <small class="text-muted d-block">預先生成6種整理方式</small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <!-- 編輯現有筆記時的設定 -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="enable_ai_reanalysis"
+                                    name="enable_ai_reanalysis">
+                                <label class="form-check-label" for="enable_ai_reanalysis">
+                                    <strong>重新分析內容</strong>
+                                    <small class="text-muted d-block">重新生成摘要、關鍵字、相關建議</small>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            {% if note.ai_summary or note.ai_keywords %}
+                            <div class="alert alert-success mb-2">
+                                <i class="fas fa-check-circle me-1"></i>
+                                <small>此筆記已啟用AI智慧助理</small>
+                            </div>
+                            {% else %}
+                            <div class="alert alert-warning mb-2">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                <small>此筆記尚未啟用AI功能，勾選重新分析即可啟用</small>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if not note %}
+                    <!-- AI 整理方式選擇（僅在新建筆記時顯示） -->
+                    <div id="organization-options" class="mt-3 d-none">
+                        <h6 class="text-muted">選擇要預先生成的整理方式：</h6>
                         <div class="row">
                             <div class="col-md-4">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="org_mindmap" 
-                                           name="organization_types" value="mindmap">
+                                    <input class="form-check-input" type="checkbox" id="org_mindmap"
+                                        name="organization_types" value="mindmap" checked>
                                     <label class="form-check-label" for="org_mindmap">
-                                        <small><i class="fas fa-project-diagram me-1"></i>心智圖</small>
+                                        <small><i class="fas fa-sitemap me-1"></i>心智圖結構化</small>
                                     </label>
                                 </div>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="org_hierarchical" 
-                                           name="organization_types" value="hierarchical">
+                                    <input class="form-check-input" type="checkbox" id="org_hierarchical"
+                                        name="organization_types" value="hierarchical" checked>
                                     <label class="form-check-label" for="org_hierarchical">
                                         <small><i class="fas fa-list me-1"></i>層次化整理</small>
                                     </label>
@@ -328,15 +347,15 @@
                             </div>
                             <div class="col-md-4">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="org_feynman" 
-                                           name="organization_types" value="feynman">
+                                    <input class="form-check-input" type="checkbox" id="org_feynman"
+                                        name="organization_types" value="feynman">
                                     <label class="form-check-label" for="org_feynman">
                                         <small><i class="fas fa-lightbulb me-1"></i>費曼技巧</small>
                                     </label>
                                 </div>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="org_qa_learning" 
-                                           name="organization_types" value="qa_learning">
+                                    <input class="form-check-input" type="checkbox" id="org_qa_learning"
+                                        name="organization_types" value="qa_learning">
                                     <label class="form-check-label" for="org_qa_learning">
                                         <small><i class="fas fa-question me-1"></i>問答式學習</small>
                                     </label>
@@ -344,15 +363,22 @@
                             </div>
                             <div class="col-md-4">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="org_comparison" 
-                                           name="organization_types" value="comparison">
+                                    <input class="form-check-input" type="checkbox" id="org_comparison"
+                                        name="organization_types" value="comparison">
                                     <label class="form-check-label" for="org_comparison">
                                         <small><i class="fas fa-balance-scale me-1"></i>對比分析</small>
                                     </label>
                                 </div>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="org_format_enhance" 
-                                           name="organization_types" value="format_enhance">
+                                    <input class="form-check-input" type="checkbox" id="org_memory_palace"
+                                        name="organization_types" value="memory_palace">
+                                    <label class="form-check-label" for="org_memory_palace">
+                                        <small><i class="fas fa-home me-1"></i>記憶宮殿法</small>
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="org_format_enhance"
+                                        name="organization_types" value="format_enhance">
                                     <label class="form-check-label" for="org_format_enhance">
                                         <small><i class="fas fa-magic me-1"></i>格式化與補強</small>
                                     </label>
@@ -380,7 +406,7 @@
                 </button>
                 
                 {% if note %}
-                <a href="{{ url_for('notes.note_detail', id=note.id) }}" class="btn btn-outline-info btn-lg">
+                <a href="{{ url_for('notes.note_detail', note_id=note.id) }}" class="btn btn-outline-info btn-lg">
                     <i class="fas fa-eye me-2"></i>檢視筆記
                 </a>
                 {% endif %}
@@ -414,19 +440,32 @@
 <!-- WYSIWYG編輯器 -->
 <script src="/static/js/wysiwyg_editor.js"></script>
 <script>
+// CSRF protection disabled for development
+// window.csrfToken = '{{ csrf_token() }}';
+window.csrfToken = '';
+
 document.addEventListener('DOMContentLoaded', function() {
+    // 防止重複初始化
+    if (window.wysiwygEditorInitialized) {
+        return;
+    }
+    window.wysiwygEditorInitialized = true;
+    
     // 初始化WYSIWYG編輯器
     let wysiwygEditor = null;
+    let originalContent = ''; // 追蹤原始內容
+    let contentChanged = false; // 追蹤內容是否真的有變更
     
     function initWYSIWYGEditor() {
         const existingContent = document.getElementById('hidden-content').value || '';
+        originalContent = existingContent; // 保存原始內容
         
         wysiwygEditor = new WYSIWYGEditor('wysiwyg-editor-container', {
             theme: 'light',
             placeholder: '開始輸入您的筆記內容...',
             enableHandwriting: true,
             enableLSP: true,
-            enableGhost: true
+            enableGhost: false  // 預設關閉Ghost，與HTML toggle狀態一致
         });
         
         // 設置初始內容
@@ -437,42 +476,90 @@ document.addEventListener('DOMContentLoaded', function() {
         // 監聽內容變更
         wysiwygEditor.on('contentChange', function(content) {
             updateHiddenContent();
-            updatePreview();
+            
+            // 檢查內容是否真的有變更
+            const currentMarkdown = wysiwygEditor.getContent('markdown');
+            contentChanged = (currentMarkdown !== originalContent);
+            
+            // 更新UI指示
+            updateChangeIndicator();
         });
         
         wysiwygEditor.on('ready', function() {
             console.log('WYSIWYG編輯器已就緒');
+            
+            // 觸發初始語法高亮
+            setTimeout(() => {
+                if (typeof Prism !== 'undefined') {
+                    Prism.highlightAll();
+                }
+            }, 200);
         });
         
         return wysiwygEditor;
+    }
+    
+    // 更新變更指示器
+    function updateChangeIndicator() {
+        if (!contentChanged) return;
+        
+        // 更新儲存按鈕的狀態
+        const saveBtn = document.querySelector('button[type="submit"]');
+        const saveDraftBtn = document.getElementById('saveDraftBtn');
+        
+        if (saveBtn) {
+            if (contentChanged) {
+                saveBtn.classList.add('btn-warning');
+                saveBtn.classList.remove('btn-primary');
+                const icon = saveBtn.querySelector('i');
+                if (icon) {
+                    icon.className = 'fas fa-exclamation-triangle me-2';
+                }
+                saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>有未儲存的變更';
+            } else {
+                saveBtn.classList.remove('btn-warning');
+                saveBtn.classList.add('btn-primary');
+                const icon = saveBtn.querySelector('i');
+                if (icon) {
+                    icon.className = 'fas fa-save me-2';
+                }
+                saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>{{ "更新筆記" if note else "建立筆記" }}';
+            }
+        }
+        
+        // 顯示變更指示
+        if (contentChanged && saveDraftBtn) {
+            saveDraftBtn.classList.add('btn-outline-warning');
+            saveDraftBtn.classList.remove('btn-outline-secondary');
+        }
     }
     
     // 更新隱藏內容欄位
     function updateHiddenContent() {
         if (!wysiwygEditor) return;
         
-        const markdownContent = wysiwygEditor.getContent('markdown');
-        document.getElementById('hidden-content').value = markdownContent;
-        
-        // 同步到Markdown文本區域
-        const markdownTextarea = document.getElementById('markdown-textarea');
-        if (markdownTextarea) {
-            markdownTextarea.value = markdownContent;
+        try {
+            const markdownContent = wysiwygEditor.getContent('markdown');
+            document.getElementById('hidden-content').value = markdownContent;
+            
+            // 同步到Markdown文本區域
+            const markdownTextarea = document.getElementById('markdown-textarea');
+            if (markdownTextarea) {
+                markdownTextarea.value = markdownContent;
+            }
+        } catch (error) {
+            console.error('更新隱藏內容時發生錯誤:', error);
         }
     }
     
-    // 更新預覽
+    // 更新預覽 (現在主要用於觸發語法高亮)
     function updatePreview() {
-        const content = document.getElementById('hidden-content').value || '';
-        const previewContainer = document.getElementById('preview-container');
-        
-        if (content.trim()) {
-            // 使用marked.js轉換Markdown為HTML
-            const html = marked.parse(content);
-            previewContainer.innerHTML = html;
-        } else {
-            previewContainer.innerHTML = '<p class="text-muted text-center">預覽內容將在這裡顯示...</p>';
-        }
+        // 觸發語法高亮
+        setTimeout(() => {
+            if (typeof Prism !== 'undefined') {
+                Prism.highlightAll();
+            }
+        }, 100);
     }
     
     // 主題切換
@@ -507,9 +594,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (wysiwygEditor && markdownContent !== wysiwygEditor.getContent('markdown')) {
                         wysiwygEditor.setContent(markdownContent, 'markdown');
                     }
-                } else if (targetId === '#preview-panel') {
-                    // 切換到預覽模式
-                    updatePreview();
+                    
+                    // 觸發語法高亮
+                    setTimeout(() => {
+                        if (typeof Prism !== 'undefined') {
+                            Prism.highlightAll();
+                        }
+                    }, 100);
                 }
             });
         });
@@ -535,7 +626,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (markdownTextarea) {
             markdownTextarea.addEventListener('input', function() {
                 document.getElementById('hidden-content').value = this.value;
-                updatePreview();
             });
         }
     }
@@ -597,6 +687,109 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // AI生成筆記功能設置
+    function setupAIGeneration() {
+        const smartAiModeToggle = document.getElementById('smart_ai_mode');
+        const aiAssistControls = document.getElementById('ai-assist-controls');
+        const generateBtn = document.getElementById('generate-smart-content');
+        
+        // AI模式開關控制
+        if (smartAiModeToggle && aiAssistControls) {
+            smartAiModeToggle.addEventListener('change', function() {
+                aiAssistControls.style.display = this.checked ? 'block' : 'none';
+            });
+        }
+        
+        // AI生成筆記按鈕
+        if (generateBtn) {
+            generateBtn.addEventListener('click', function() {
+                handleAIGeneration();
+            });
+        }
+
+        // AI 整理功能選項控制
+        const enableOrgCheckbox = document.getElementById('enable_ai_organization');
+        const orgOptionsDiv = document.getElementById('organization-options');
+
+        if (enableOrgCheckbox && orgOptionsDiv) {
+            enableOrgCheckbox.addEventListener('change', function () {
+                orgOptionsDiv.style.display = this.checked ? 'block' : 'none';
+            });
+        }
+    }
+    
+    // 處理AI生成筆記
+    function handleAIGeneration() {
+        const generateBtn = document.getElementById('generate-smart-content');
+        const aiPrompt = document.getElementById('ai_prompt').value;
+        const title = document.getElementById('title').value;
+        
+        // 獲取當前內容（從WYSIWYG編輯器或Markdown文本區域）
+        let currentContent = '';
+        if (wysiwygEditor) {
+            currentContent = wysiwygEditor.getContent('markdown');
+        } else {
+            currentContent = document.getElementById('markdown-textarea').value || '';
+        }
+        
+        // 顯示載入狀態
+        generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>AI生成中...';
+        generateBtn.disabled = true;
+        
+        // 準備請求數據
+        const formData = new URLSearchParams({
+            'action': 'smart_ai_generate',
+            'ai_prompt': aiPrompt,
+            'current_content': currentContent,
+            'title': title,
+            'csrf_token': window.csrfToken
+        });
+        
+        // 發送AJAX請求
+        fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // 更新編輯器內容
+                const generatedContent = data.generated_content;
+                
+                if (wysiwygEditor) {
+                    // 如果在WYSIWYG模式，更新編輯器
+                    wysiwygEditor.setContent(generatedContent, 'markdown');
+                } else {
+                    // 如果在Markdown模式，更新文本區域
+                    const markdownTextarea = document.getElementById('markdown-textarea');
+                    if (markdownTextarea) {
+                        markdownTextarea.value = generatedContent;
+                    }
+                }
+                
+                // 更新隱藏欄位
+                document.getElementById('hidden-content').value = generatedContent;
+                
+                // 顯示成功提示
+                showAlert('success', 'AI已成功生成筆記內容！');
+            } else {
+                showAlert('error', 'AI生成失敗：' + (data.error || '未知錯誤'));
+            }
+        })
+        .catch(error => {
+            console.error('AI生成筆記錯誤:', error);
+            showAlert('error', '發生錯誤：' + error.message);
+        })
+        .finally(() => {
+            // 恢復按鈕狀態
+            generateBtn.innerHTML = '🚀 AI生成筆記';
+            generateBtn.disabled = false;
+        });
+    }
+    
     // 檔案上傳處理
     function setupFileUpload() {
         const fileInput = document.getElementById('hidden-file-input');
@@ -646,7 +839,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const content = document.getElementById('hidden-content').value;
         
         if (title.trim() || content.trim()) {
-            saveDraft();
+            const tags = document.getElementById('tags').value;
+            
+            const draftData = {
+                title: title,
+                content: content,
+                tags: tags,
+                timestamp: new Date().toISOString()
+            };
+            
+            localStorage.setItem('noteDraft', JSON.stringify(draftData));
+            // 不顯示通知，靜默儲存
         }
     }
     
@@ -665,7 +868,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         wysiwygEditor.setContent(draftData.content || '', 'markdown');
                     }
                     
-                    updatePreview();
                     localStorage.removeItem('noteDraft');
                 }
             } catch (e) {
@@ -767,15 +969,13 @@ ${marked.parse(content)}
         setupDraftSaving();
         setupExport();
         setupFileUpload();
+        setupAIGeneration(); // 添加AI生成筆記功能
         
         // 載入草稿（如果是新筆記且沒有現有內容）
         const hasExistingContent = document.getElementById('hidden-content').value.trim();
         if (!hasExistingContent) {
             setTimeout(loadDraft, 1000);
         }
-        
-        // 初始預覽更新
-        updatePreview();
     }
     
     // 開始初始化

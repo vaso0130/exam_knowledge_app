@@ -89,7 +89,17 @@ class MarkdownConverter {
             
             // 分隔符
             div: (node) => this.processChildren(node) + '\n',
-            span: (node) => this.processInlineElements(node)
+            span: (node) => {
+                // 檢查是否有顏色樣式
+                const style = node.getAttribute('style');
+                if (style && (style.includes('color') || style.includes('background'))) {
+                    // 保留帶有顏色樣式的 span 標籤
+                    const content = this.processInlineElements(node);
+                    return `<span style="${style}">${content}</span>`;
+                }
+                // 沒有顏色樣式的 span 只處理內容
+                return this.processInlineElements(node);
+            }
         };
     }
     

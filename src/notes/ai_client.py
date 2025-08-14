@@ -286,13 +286,16 @@ class NoteAIClient:
     def analyze_note_content(self, content: str) -> Dict[str, Any]:
         """Analyze note content for key concepts and structure"""
         prompt = f"""
-        請分析以下筆記內容，提取關鍵概念和建議的改進方向：
+        請以繁體中文（台灣用語）分析以下筆記內容，提取關鍵概念和建議的改進方向：
 
         內容：
         {content}
 
-        請以JSON格式回傳分析結果：
+        請以JSON格式回傳分析結果，所有回應內容請使用繁體中文：
         {{
+            "summary": "簡短摘要",
+            "keywords": ["關鍵詞1", "關鍵詞2", "關鍵詞3"],
+            "suggested_tags": ["標籤1", "標籤2", "標籤3"],
             "key_concepts": ["概念1", "概念2", "概念3"],
             "content_quality": {{"score": 0-10, "notes": "評估說明"}},
             "suggestions": ["建議1", "建議2", "建議3"],
@@ -496,25 +499,54 @@ class NoteAIClient:
     def organize_with_qa_learning(self, content: str) -> Dict[str, Any]:
         """Organize content using Q&A learning approach"""
         prompt = f"""
-        請將以下內容組織成問答式學習格式：
+        請將以下內容組織成問答式學習格式，建立完整的學習體系：
 
         內容：
         {content}
 
-        請以JSON格式回傳問答結構：
+        請深入分析內容，創建多層次的問答學習結構。請以JSON格式回傳，包含以下要素：
+
         {{
-            "topic": "主題",
+            "topic": "主題名稱",
             "qa_pairs": [
                 {{
-                    "question": "問題1",
-                    "answer": "答案1",
-                    "explanation": "詳細解釋",
-                    "key_points": ["要點1", "要點2"]
+                    "question": "基礎理解問題",
+                    "answer": "詳細答案，包含具體說明",
+                    "explanation": "深入解釋概念原理",
+                    "key_points": ["關鍵要點1", "關鍵要點2", "關鍵要點3"]
+                }},
+                {{
+                    "question": "應用分析問題", 
+                    "answer": "實際應用的詳細說明",
+                    "explanation": "為什麼這樣應用，背後的邏輯",
+                    "key_points": ["應用要點1", "應用要點2"]
+                }},
+                {{
+                    "question": "批判思考問題",
+                    "answer": "深度思考的答案",
+                    "explanation": "多角度分析和評估",
+                    "key_points": ["分析角度1", "分析角度2"]
                 }}
             ],
-            "summary": "總結",
-            "review_questions": ["復習問題1", "復習問題2"]
+            "summary": "整體學習重點總結",
+            "review_questions": [
+                "復習檢測問題1",
+                "復習檢測問題2", 
+                "復習檢測問題3"
+            ],
+            "learning_tips": [
+                "學習建議1",
+                "學習建議2"
+            ]
         }}
+
+        要求：
+        1. 問題要有層次性：從基礎理解→實際應用→批判思考
+        2. 答案要詳細具體，避免空泛
+        3. 解釋要深入，說明why而不只是what
+        4. 關鍵要點要精準，便於記憶
+        5. 創建至少5-8個高質量問答對
+        6. 復習問題要能檢測學習效果
         """
 
         try:
@@ -1101,17 +1133,26 @@ class NoteAIClient:
 ## 🎯 學習目標
 [根據題目和答案設定學習目標]
 
-## � 核心概念
+## 💡 核心概念
 [詳細解釋相關概念]
 
-## 💡 重點解析
+## 📚 重點解析
 [深入分析題目考點]
 
 ## 🔍 延伸思考
 [擴展相關知識]
 
-## � 實戰應用
+## 🚀 實戰應用
 [實際應用場景]
+
+## 🧠 學習技巧與記憶方法
+[提供記憶技巧、學習策略或相關的學習資源]
+
+## 📌 重點整理
+| 概念 | 重要性 | 應用場景 |
+|------|-------|---------|
+| [概念1] | ⭐⭐⭐⭐⭐ | [應用說明] |
+| [概念2] | ⭐⭐⭐⭐ | [應用說明] |
 
 請立即開始輸出Markdown內容："""
 
@@ -1195,6 +1236,8 @@ class NoteAIClient:
 6. **📊 重點整理** - 表格或清單形式的總結
 7. **🧠 延伸思考** - 進階概念和相關主題
 8. **📝 學習建議** - 具體的學習策略
+
+
 
 【重要注意事項】
 - 絕對不要使用JSON格式輸出
@@ -1608,6 +1651,9 @@ class NoteAIClient:
     def _get_default_analysis_structure(self, error_message: str = "") -> Dict[str, Any]:
         """獲取預設的分析結構"""
         return {
+            'summary': '',
+            'keywords': [],
+            'suggested_tags': [],
             'key_concepts': [],
             'content_quality': {'score': 0, 'notes': error_message or '分析功能暫時不可用'},
             'suggestions': [],
