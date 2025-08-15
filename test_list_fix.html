@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>列表換行測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .test-box { border: 1px solid #ccc; padding: 15px; margin: 15px 0; }
+        .output { background: #f8f9fa; padding: 10px; border-left: 4px solid #007bff; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>列表換行修復測試</h1>
+        
+        <div class="test-box">
+            <h3>測試HTML內容：</h3>
+            <div id="html-input">
+                <h4>(二) 裝置安全與健康狀態監控</h4>
+                <ol>
+                    <li><strong>裝置識別與註冊</strong>：
+                        <ul>
+                            <li>所有嘗試連接企業資源的裝置都必須被唯一識別、註冊並納入管理。</li>
+                        </ul>
+                    </li>
+                    <li><strong>裝置健康狀態評估</strong>：
+                        <ul>
+                            <li>持續監控裝置的安全性狀態，包括：
+                                <ul>
+                                    <li>作業系統和應用程式是否已安裝最新安全補丁。</li>
+                                    <li>防毒軟體或EDR代理程式是否正常運行且定義檔最新。</li>
+                                </ul>
+                            </li>
+                            <li>不符合安全標準的裝置將被自動隔離、限制存取權限。</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+        </div>
+        
+        <div class="test-box">
+            <button onclick="runTest()">執行轉換測試</button>
+        </div>
+        
+        <div class="test-box">
+            <h3>轉換後的Markdown：</h3>
+            <div class="output">
+                <pre id="markdown-output">點擊上面的按鈕執行測試</pre>
+            </div>
+        </div>
+        
+        <div class="test-box">
+            <h3>原始HTML（用於對比）：</h3>
+            <div class="output">
+                <pre id="html-output"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 簡化版的轉換函數，模擬 wysiwyg_editor.js 的邏輯
+        function htmlToMarkdown(html) {
+            if (!html || typeof html !== 'string') return '';
+            
+            let markdown = html;
+            
+            // 處理標題
+            markdown = markdown.replace(/<h([1-6])[^>]*>(.*?)<\/h[1-6]>/gi, (match, level, content) => {
+                const hashes = '#'.repeat(parseInt(level));
+                return `\n${hashes} ${content.trim()}\n\n`;
+            });
+            
+            // 處理粗體
+            markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gis, '**$1**');
+            markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/gis, '**$1**');
+            
+            // 處理有序列表（修復版）
+            markdown = markdown.replace(/<ol[^>]*>(.*?)<\/ol>/gis, (match, content) => {
+                let counter = 1;
+                return '\n' + content.replace(/<li[^>]*>(.*?)<\/li>/gi, (liMatch, liContent) => {
+                    // 處理列表項目內容，保留換行符
+                    let processedContent = liContent;
+                    
+                    // 處理嵌套的列表項目中的段落，轉換為換行
+                    processedContent = processedContent.replace(/<p[^>]*>(.*?)<\/p>/gis, '$1\n');
+                    
+                    // 處理 br 標籤
+                    processedContent = processedContent.replace(/<br[^>]*\/?>/gi, '\n');
+                    
+                    // 處理嵌套的無序列表
+                    processedContent = processedContent.replace(/<ul[^>]*>(.*?)<\/ul>/gis, (ulMatch, ulContent) => {
+                        return '\n' + ulContent.replace(/<li[^>]*>(.*?)<\/li>/gi, (nestedLi, nestedContent) => {
+                            let nestedProcessed = nestedContent.replace(/<p[^>]*>(.*?)<\/p>/gis, '$1\n');
+                            nestedProcessed = nestedProcessed.replace(/<br[^>]*\/?>/gi, '\n');
+                            
+                            // 處理更深層的嵌套列表
+                            nestedProcessed = nestedProcessed.replace(/<ul[^>]*>(.*?)<\/ul>/gis, (deepUlMatch, deepUlContent) => {
+                                return '\n' + deepUlContent.replace(/<li[^>]*>(.*?)<\/li>/gi, (deepLi, deepContent) => {
+                                    let deepProcessed = deepContent.replace(/<p[^>]*>(.*?)<\/p>/gis, '$1\n');
+                                    deepProcessed = deepProcessed.replace(/<br[^>]*\/?>/gi, '\n');
+                                    return `    - ${deepProcessed.trim()}\n`;
+                                });
+                            });
+                            
+                            return `  - ${nestedProcessed.trim()}\n`;
+                        });
+                    });
+                    
+                    return `${counter++}. ${processedContent.trim()}\n`;
+                }) + '\n';
+            });
+            
+            // 處理無序列表（修復版）
+            markdown = markdown.replace(/<ul[^>]*>(.*?)<\/ul>/gis, (match, content) => {
+                return '\n' + content.replace(/<li[^>]*>(.*?)<\/li>/gi, (liMatch, liContent) => {
+                    // 處理列表項目內容，保留換行符
+                    let processedContent = liContent;
+                    
+                    // 處理嵌套的列表項目中的段落，轉換為換行
+                    processedContent = processedContent.replace(/<p[^>]*>(.*?)<\/p>/gis, '$1\n');
+                    
+                    // 處理 br 標籤
+                    processedContent = processedContent.replace(/<br[^>]*\/?>/gi, '\n');
+                    
+                    return `- ${processedContent.trim()}\n`;
+                }) + '\n';
+            });
+            
+            // 移除其他HTML標籤
+            markdown = markdown.replace(/<[^>]*>/g, '');
+            
+            // 清理多餘空行
+            markdown = markdown.replace(/\n{3,}/g, '\n\n');
+            markdown = markdown.trim();
+            
+            return markdown;
+        }
+        
+        function runTest() {
+            const htmlElement = document.getElementById('html-input');
+            const htmlContent = htmlElement.innerHTML;
+            
+            // 顯示原始HTML
+            document.getElementById('html-output').textContent = htmlContent;
+            
+            // 執行轉換
+            const markdown = htmlToMarkdown(htmlContent);
+            
+            // 顯示結果
+            document.getElementById('markdown-output').textContent = markdown;
+        }
+    </script>
+</body>
+</html>

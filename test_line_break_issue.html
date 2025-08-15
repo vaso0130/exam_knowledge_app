@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>測試換行問題</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-container { margin: 20px 0; padding: 20px; border: 1px solid #ddd; }
+        .output { background: #f5f5f5; padding: 10px; margin: 10px 0; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>WYSIWYG 換行問題測試</h1>
+    
+    <div class="test-container">
+        <h3>原始HTML內容:</h3>
+        <div id="original-html" class="output"></div>
+        
+        <h3>轉換後的Markdown:</h3>
+        <div id="converted-markdown" class="output"></div>
+        
+        <button onclick="testConversion()">測試轉換</button>
+    </div>
+
+    <script src="src/webapp/static/js/markdown_converter.js"></script>
+    <script src="src/webapp/static/js/wysiwyg_editor.js"></script>
+    
+    <script>
+        function testConversion() {
+            // 模擬你的問題場景
+            const htmlContent = `
+<h4>(二) 裝置安全與健康狀態監控（Device Security and Health Monitoring）</h4>
+
+<p>在零信任環境中，任何嘗試連接資源的裝置都必須被視為潛在威脅，並經過嚴格的健康檢查。</p>
+
+<ol>
+<li><strong>裝置識別與註冊</strong>：
+<ul>
+<li>所有嘗試連接企業資源的裝置（筆電、手機、平板、IoT設備等）都必須被唯一識別、註冊並納入管理。這通常透過行動裝置管理（MDM）、統一端點管理（UEM）或端點偵測與回應（EDR）工具實現。</li>
+</ul>
+</li>
+<li><strong>裝置健康狀態評估</strong>：
+<ul>
+<li>持續監控裝置的安全性狀態，包括：
+<ul>
+<li>作業系統和應用程式是否已安裝最新安全補丁。</li>
+<li>防毒軟體或EDR代理程式是否正常運行且定義檔最新。</li>
+<li>是否存在惡意軟體、配置錯誤或異常行為。</li>
+<li>是否符合企業的安全策略（如：是否越獄/Root）。</li>
+</ul>
+</li>
+<li>不符合安全標準的裝置將被自動隔離、限制存取權限，或引導至修復流程，直至其安全狀態恢復正常。</li>
+</ul>
+</li>
+</ol>
+            `;
+            
+            document.getElementById('original-html').textContent = htmlContent;
+            
+            // 使用現有的轉換器
+            const editor = new WYSIWYGEditor(document.createElement('div'));
+            const markdown = editor.htmlToMarkdown(htmlContent);
+            
+            document.getElementById('converted-markdown').textContent = markdown;
+        }
+    </script>
+</body>
+</html>

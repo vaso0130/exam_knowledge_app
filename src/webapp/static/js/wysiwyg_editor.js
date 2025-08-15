@@ -1272,14 +1272,26 @@ console.log('Hello, World!');</code></pre>
         });
         markdown = markdown.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
         
-        // 5. 列表（先處理有序，再處理無序）
-        markdown = markdown.replace(/<ol[^>]*>(.*?)<\/ol>/gis, (match, content) => {
-            let counter = 1;
-            return '\n' + content.replace(/<li[^>]*>(.*?)<\/li>/gi, () => `${counter++}. $1\n`) + '\n';
+        // 5. 列表處理（完全重寫，使用DOM解析）
+        // 創建臨時DOM來正確處理列表結構
+        const listTempDiv = document.createElement('div');
+        listTempDiv.innerHTML = markdown;
+        
+        // 處理所有有序列表
+        const orderedLists = listTempDiv.querySelectorAll('ol');
+        orderedLists.forEach(ol => {
+            const listMarkdown = this.processOrderedList(ol);
+            ol.outerHTML = listMarkdown;
         });
-        markdown = markdown.replace(/<ul[^>]*>(.*?)<\/ul>/gis, (match, content) => {
-            return '\n' + content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n') + '\n';
+        
+        // 處理所有無序列表
+        const unorderedLists = listTempDiv.querySelectorAll('ul');
+        unorderedLists.forEach(ul => {
+            const listMarkdown = this.processUnorderedList(ul);
+            ul.outerHTML = listMarkdown;
         });
+        
+        markdown = listTempDiv.innerHTML;
         
         // 6. 表格
         markdown = markdown.replace(/<table[^>]*>(.*?)<\/table>/gis, (match, tableContent) => {
@@ -1362,8 +1374,14 @@ console.log('Hello, World!');</code></pre>
         console.log('處理顏色樣式之後:', markdown);
         
         // 10. 段落和換行（改進換行處理）
-        // 先處理段落，確保段落間有正確的間距
+        // 處理非列表上下文中的段落，確保段落間有正確的間距
+        // 注意：列表項目中的段落已經在列表處理階段被處理過了
         markdown = markdown.replace(/<p[^>]*>(.*?)<\/p>/gis, (match, content) => {
+            // 檢查這個段落是否在列表項目中（已經被處理過）
+            // 如果包含列表標記，說明已經在列表處理階段被處理過了
+            if (content.trim().match(/^(\d+\.|-)/) || content.includes('  -') || content.includes('  1.')) {
+                return content; // 保持不變，避免重複處理
+            }
             return content.trim() + '\n\n';
         });
         
@@ -1415,13 +1433,136 @@ console.log('Hello, World!');</code></pre>
         markdown = markdown.replace(/&quot;/g, '"');
         markdown = markdown.replace(/&#39;/g, "'");
         
-        // 13. 清理多餘的空行和空格
+        // 13. 清理多餘的空行和空格（但保留列表格式）
+        // 首先處理多餘的空行，但保留列表項目之間的單個空行
         markdown = markdown.replace(/\n{3,}/g, '\n\n');
-        markdown = markdown.replace(/[ \t]+$/gm, ''); // 移除行尾空格
-        markdown = markdown.replace(/^\s+|\s+$/g, ''); // 移除開頭和結尾空格
+        
+        // 移除行尾空格，但保留有意義的換行
+        markdown = markdown.replace(/[ \t]+$/gm, '');
+        
+        // 確保列表項目之間有適當的間距
+        // 在列表項目後添加換行（如果還沒有的話）
+        markdown = markdown.replace(/^(\d+\.|-)([^\n]*?)(?=\n(\d+\.|-))/gm, '$1$2\n');
+        
+        // 移除開頭和結尾的多餘空格
+        markdown = markdown.replace(/^\s+|\s+$/g, '');
         
         console.log('htmlToMarkdown 輸出:', markdown);
         return markdown;
+    }
+    
+    /**
+     * 處理有序列表
+     */
+    processOrderedList(olNode, indent = '') {
+        let result = '\n';
+        let counter = 1;
+        
+        for (let child of olNode.children) {
+            if (child.tagName.toLowerCase() === 'li') {
+                result += this.processListItem(child, `${counter}.`, indent);
+                counter++;
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * 處理無序列表
+     */
+    processUnorderedList(ulNode, indent = '') {
+        let result = '\n';
+        
+        for (let child of ulNode.children) {
+            if (child.tagName.toLowerCase() === 'li') {
+                result += this.processListItem(child, '-', indent);
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * 處理列表項目
+     */
+    processListItem(liNode, marker, indent = '') {
+        let content = '';
+        let hasNestedContent = false;
+        
+        for (let child of liNode.childNodes) {
+            if (child.nodeType === Node.TEXT_NODE) {
+                content += child.textContent || '';
+            } else if (child.nodeType === Node.ELEMENT_NODE) {
+                const tagName = child.tagName.toLowerCase();
+                
+                if (tagName === 'ol') {
+                    hasNestedContent = true;
+                    content += this.processOrderedList(child, indent + '  ');
+                } else if (tagName === 'ul') {
+                    hasNestedContent = true;
+                    content += this.processUnorderedList(child, indent + '  ');
+                } else if (tagName === 'p') {
+                    // 段落在列表項目中
+                    const pContent = this.processNodeContent(child);
+                    if (content.trim()) {
+                        content += '\n' + indent + '  ' + pContent.trim();
+                    } else {
+                        content += pContent.trim();
+                    }
+                } else if (tagName === 'br') {
+                    content += '\n' + indent + '  ';
+                } else if (tagName === 'strong' || tagName === 'b') {
+                    content += `**${child.textContent.trim()}**`;
+                } else if (tagName === 'em' || tagName === 'i') {
+                    content += `*${child.textContent.trim()}*`;
+                } else {
+                    content += this.processNodeContent(child);
+                }
+            }
+        }
+        
+        // 分割內容成行，並適當縮進
+        const lines = content.split('\n');
+        let result = `${indent}${marker} ${lines[0].trim()}\n`;
+        
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line) {
+                if (line.startsWith(indent + '  ')) {
+                    // 這是嵌套內容，保持原樣
+                    result += line + '\n';
+                } else if (line.match(/^\s*(\d+\.|-)/) && hasNestedContent) {
+                    // 這是嵌套列表項目
+                    result += line + '\n';
+                } else if (line) {
+                    // 續行內容，需要縮進
+                    result += `${indent}  ${line}\n`;
+                }
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * 處理節點內容
+     */
+    processNodeContent(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            return node.textContent || '';
+        }
+        
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+            return '';
+        }
+        
+        let result = '';
+        for (let child of node.childNodes) {
+            result += this.processNodeContent(child);
+        }
+        
+        return result;
     }
     
     /**

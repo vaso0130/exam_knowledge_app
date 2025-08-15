@@ -123,7 +123,10 @@ class MarkdownConverter {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = html;
         
-        return this.processNode(tempDiv);
+        const result = this.processNode(tempDiv);
+        
+        // 進行最終格式化
+        return this.formatMarkdown(result);
     }
     
     /**
@@ -215,7 +218,8 @@ class MarkdownConverter {
         
         for (let li of listNode.children) {
             if (li.tagName.toLowerCase() === 'li') {
-                const content = this.processChildren(li).trim();
+                // 處理列表項目內容，保留換行符和嵌套結構
+                let content = this.processListItemContent(li);
                 const actualMarker = marker === '1.' ? `${counter}.` : marker;
                 result += `${actualMarker} ${content}\n`;
                 counter++;
@@ -223,6 +227,55 @@ class MarkdownConverter {
         }
         
         return result;
+    }
+    
+    /**
+     * 處理列表項目內容，保留適當的換行和縮進
+     */
+    processListItemContent(liNode) {
+        let result = '';
+        
+        for (let child of liNode.childNodes) {
+            if (child.nodeType === Node.TEXT_NODE) {
+                const text = child.textContent.trim();
+                if (text) {
+                    result += text;
+                }
+            } else if (child.nodeType === Node.ELEMENT_NODE) {
+                const tagName = child.tagName.toLowerCase();
+                
+                if (tagName === 'p') {
+                    // 段落在列表項目中應該保持在同一行，除非有多個段落
+                    const pContent = this.processInlineElements(child);
+                    if (result.trim()) {
+                        result += '\n  ' + pContent; // 縮進續行
+                    } else {
+                        result += pContent;
+                    }
+                } else if (tagName === 'ul' || tagName === 'ol') {
+                    // 處理嵌套列表
+                    const nestedMarker = tagName === 'ol' ? '1.' : '-';
+                    const nestedContent = this.processListItems(child, nestedMarker);
+                    // 為嵌套列表添加適當的縮進
+                    const indentedContent = nestedContent.split('\n')
+                        .map(line => line.trim() ? '  ' + line : line)
+                        .join('\n');
+                    result += '\n' + indentedContent;
+                } else if (tagName === 'br') {
+                    result += '\n  '; // 換行後縮進
+                } else {
+                    // 其他內聯元素
+                    const rule = this.htmlToMarkdownRules[tagName];
+                    if (rule) {
+                        result += rule(child);
+                    } else {
+                        result += this.processInlineElements(child);
+                    }
+                }
+            }
+        }
+        
+        return result.trim();
     }
     
     /**
@@ -348,12 +401,31 @@ class MarkdownConverter {
         // 移除多餘的空行
         markdown = markdown.replace(/\n{3,}/g, '\n\n');
         
-        // 確保在標題前有空行
-        markdown = markdown.replace(/([^\n])\n(#{1,6} )/g, '$1\n\n$2');
+        // 確保在標題前有空行（但不影響列表內的內容）
+        markdown = markdown.replace(/([^\n])\n(#{1,6} )/g, (match, before, header) => {
+            // 檢查是否在列表項目內
+            if (before.match(/^\s*(\d+\.|[*\-+])/)) {
+                return match; // 保持不變
+            }
+            return `${before}\n\n${header}`;
+        });
         
-        // 確保在清單前有空行
-        markdown = markdown.replace(/([^\n])\n([*\-+] )/g, '$1\n\n$2');
-        markdown = markdown.replace(/([^\n])\n(\d+\. )/g, '$1\n\n$2');
+        // 確保在清單前有空行（但不破壞列表內的嵌套結構）
+        markdown = markdown.replace(/([^\n])\n([*\-+] )/g, (match, before, marker) => {
+            // 檢查是否是嵌套列表（前面有縮進）
+            if (marker.trim() !== marker || before.match(/^\s*(\d+\.|[*\-+])/)) {
+                return match; // 保持不變，這是嵌套列表
+            }
+            return `${before}\n\n${marker}`;
+        });
+        
+        markdown = markdown.replace(/([^\n])\n(\d+\. )/g, (match, before, marker) => {
+            // 檢查是否是嵌套列表或列表項目內的內容
+            if (marker.trim() !== marker || before.match(/^\s*(\d+\.|[*\-+])/)) {
+                return match; // 保持不變
+            }
+            return `${before}\n\n${marker}`;
+        });
         
         // 確保在引用塊前有空行
         markdown = markdown.replace(/([^\n])\n(> )/g, '$1\n\n$2');

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>修復後的列表轉換測試</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            margin: 20px; 
+            background: #f5f5f5; 
+        }
+        .container { 
+            max-width: 1000px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+        }
+        .test-section { 
+            margin: 20px 0; 
+            padding: 20px; 
+            border: 1px solid #e0e0e0; 
+            border-radius: 6px; 
+        }
+        .output { 
+            background: #f8f9fa; 
+            border: 1px solid #dee2e6; 
+            padding: 15px; 
+            margin: 15px 0; 
+            border-radius: 4px; 
+            font-family: 'Monaco', 'Consolas', 'Courier New', monospace; 
+            white-space: pre-wrap; 
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .btn { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin: 5px; 
+        }
+        .btn:hover { background: #0056b3; }
+        .success { color: #28a745; font-weight: bold; }
+        .error { color: #dc3545; font-weight: bold; }
+        .html-preview { 
+            border: 1px solid #ddd; 
+            padding: 15px; 
+            margin: 10px 0; 
+            background: white; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 列表換行修復驗證</h1>
+        <p>測試 WYSIWYG 編輯器中 HTML 轉 Markdown 時列表項目的換行是否正確保留</p>
+        
+        <div class="test-section">
+            <h3>測試控制</h3>
+            <button class="btn" onclick="runTest()">執行轉換測試</button>
+            <button class="btn" onclick="clearResults()">清除結果</button>
+            <div id="status"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>原始 HTML 內容預覽</h3>
+            <div class="html-preview" id="html-preview">
+                <h4>(二) 裝置安全與健康狀態監控（Device Security and Health Monitoring）</h4>
+                <p>在零信任環境中，任何嘗試連接資源的裝置都必須被視為潛在威脅，並經過嚴格的健康檢查。</p>
+                <ol>
+                    <li><strong>裝置識別與註冊</strong>：
+                        <ul>
+                            <li>所有嘗試連接企業資源的裝置（筆電、手機、平板、IoT設備等）都必須被唯一識別、註冊並納入管理。這通常透過行動裝置管理（MDM）、統一端點管理（UEM）或端點偵測與回應（EDR）工具實現。</li>
+                        </ul>
+                    </li>
+                    <li><strong>裝置健康狀態評估</strong>：
+                        <ul>
+                            <li>持續監控裝置的安全性狀態，包括：
+                                <ul>
+                                    <li>作業系統和應用程式是否已安裝最新安全補丁。</li>
+                                    <li>防毒軟體或EDR代理程式是否正常運行且定義檔最新。</li>
+                                    <li>是否存在惡意軟體、配置錯誤或異常行為。</li>
+                                    <li>是否符合企業的安全策略（如：是否越獄/Root）。</li>
+                                </ul>
+                            </li>
+                            <li>不符合安全標準的裝置將被自動隔離、限制存取權限，或引導至修復流程，直至其安全狀態恢復正常。</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>轉換後的 Markdown</h3>
+            <div class="output" id="markdown-output">點擊上面的按鈕執行測試</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>驗證結果</h3>
+            <div id="validation-results">等待測試結果...</div>
+        </div>
+    </div>
+
+    <!-- 載入 WYSIWYG 編輯器相關腳本 -->
+    <script src="src/webapp/static/js/markdown_converter.js"></script>
+    <script src="src/webapp/static/js/wysiwyg_editor.js"></script>
+    
+    <script>
+        function runTest() {
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML = '<span style="color: #ffc107;">⏳ 執行測試中...</span>';
+            
+            try {
+                // 取得原始 HTML
+                const htmlPreview = document.getElementById('html-preview');
+                const htmlContent = htmlPreview.innerHTML;
+                
+                // 創建 WYSIWYG 編輯器實例
+                const tempContainer = document.createElement('div');
+                const editor = new WYSIWYGEditor(tempContainer);
+                
+                // 執行轉換
+                const markdown = editor.htmlToMarkdown(htmlContent);
+                
+                // 顯示結果
+                const outputEl = document.getElementById('markdown-output');
+                outputEl.textContent = markdown;
+                
+                // 驗證結果
+                const validation = validateMarkdown(markdown);
+                displayValidationResults(validation);
+                
+                statusEl.innerHTML = '<span class="success">✅ 測試完成</span>';
+                
+            } catch (error) {
+                statusEl.innerHTML = '<span class="error">❌ 測試失敗: ' + error.message + '</span>';
+                console.error('測試錯誤:', error);
+            }
+        }
+        
+        function validateMarkdown(markdown) {
+            const lines = markdown.split('\n');
+            const results = {
+                totalLines: lines.length,
+                nonEmptyLines: lines.filter(line => line.trim()).length,
+                mainListItems: lines.filter(line => line.match(/^\d+\.\s/)).length,
+                nestedItems: lines.filter(line => line.match(/^\s{2}-\s/)).length,
+                deepNestedItems: lines.filter(line => line.match(/^\s{4}-\s/)).length,
+                hasTitle: markdown.includes('#### (二) 裝置安全與健康狀態監控'),
+                hasMainContent: markdown.includes('在零信任環境中'),
+                hasDeviceIdentification: markdown.includes('**裝置識別與註冊**'),
+                hasHealthAssessment: markdown.includes('**裝置健康狀態評估**'),
+                hasNestedContent: markdown.includes('所有嘗試連接企業資源的裝置'),
+                hasDeepNesting: markdown.includes('作業系統和應用程式'),
+                properIndentation: true
+            };
+            
+            // 檢查縮進是否正確
+            const nestedLines = lines.filter(line => line.match(/^\s{2}-\s/));
+            const deepNestedLines = lines.filter(line => line.match(/^\s{4}-\s/));
+            
+            results.properIndentation = nestedLines.every(line => line.startsWith('  -')) && 
+                                       deepNestedLines.every(line => line.startsWith('    -'));
+            
+            // 計算成功率
+            const checks = [
+                results.hasTitle,
+                results.hasMainContent,
+                results.hasDeviceIdentification,
+                results.hasHealthAssessment,
+                results.hasNestedContent,
+                results.hasDeepNesting,
+                results.properIndentation,
+                results.mainListItems >= 2,
+                results.nestedItems >= 2,
+                results.deepNestedItems >= 4
+            ];
+            
+            results.successRate = checks.filter(check => check).length / checks.length;
+            results.passed = results.successRate >= 0.8;
+            
+            return results;
+        }
+        
+        function displayValidationResults(validation) {
+            const resultsEl = document.getElementById('validation-results');
+            
+            const statusClass = validation.passed ? 'success' : 'error';
+            const statusIcon = validation.passed ? '✅' : '❌';
+            const statusText = validation.passed ? '測試通過' : '測試失敗';
+            
+            resultsEl.innerHTML = `
+                <div class="${statusClass}">${statusIcon} ${statusText} (成功率: ${(validation.successRate * 100).toFixed(1)}%)</div>
+                <div style="margin-top: 15px;">
+                    <h4>詳細檢查結果：</h4>
+                    <ul>
+                        <li>總行數: ${validation.totalLines}</li>
+                        <li>非空行數: ${validation.nonEmptyLines}</li>
+                        <li>主列表項目: ${validation.mainListItems} ${validation.mainListItems >= 2 ? '✅' : '❌'}</li>
+                        <li>嵌套列表項目: ${validation.nestedItems} ${validation.nestedItems >= 2 ? '✅' : '❌'}</li>
+                        <li>深層嵌套項目: ${validation.deepNestedItems} ${validation.deepNestedItems >= 4 ? '✅' : '❌'}</li>
+                        <li>標題保留: ${validation.hasTitle ? '✅' : '❌'}</li>
+                        <li>主要內容保留: ${validation.hasMainContent ? '✅' : '❌'}</li>
+                        <li>裝置識別章節: ${validation.hasDeviceIdentification ? '✅' : '❌'}</li>
+                        <li>健康評估章節: ${validation.hasHealthAssessment ? '✅' : '❌'}</li>
+                        <li>嵌套內容保留: ${validation.hasNestedContent ? '✅' : '❌'}</li>
+                        <li>深層嵌套保留: ${validation.hasDeepNesting ? '✅' : '❌'}</li>
+                        <li>縮進格式正確: ${validation.properIndentation ? '✅' : '❌'}</li>
+                    </ul>
+                </div>
+            `;
+        }
+        
+        function clearResults() {
+            document.getElementById('markdown-output').textContent = '點擊上面的按鈕執行測試';
+            document.getElementById('validation-results').textContent = '等待測試結果...';
+            document.getElementById('status').innerHTML = '';
+        }
+        
+        // 頁面載入後檢查依賴項目
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                if (typeof WYSIWYGEditor === 'undefined') {
+                    document.getElementById('status').innerHTML = 
+                        '<span class="error">❌ WYSIWYGEditor 未載入，請檢查檔案路徑</span>';
+                } else {
+                    document.getElementById('status').innerHTML = 
+                        '<span class="success">✅ WYSIWYGEditor 已載入，可以執行測試</span>';
+                }
+            }, 500);
+        });
+    </script>
+</body>
+</html>

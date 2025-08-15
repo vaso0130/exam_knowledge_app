@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WYSIWYG 列表換行修復驗證</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            margin: 0; 
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: #007bff;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .content { padding: 20px; }
+        .test-section { 
+            margin: 20px 0; 
+            border: 1px solid #e9ecef; 
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .section-title {
+            background: #f8f9fa;
+            padding: 12px 16px;
+            margin: 0;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .section-content { padding: 16px; }
+        .output-box { 
+            background: #f8f9fa; 
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 12px; 
+            margin: 10px 0; 
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #0056b3; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #218838; }
+        .status { 
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .status.success { 
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error { 
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .comparison { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>WYSIWYG 列表換行修復驗證</h1>
+            <p>測試 HTML 轉 Markdown 時列表項目換行是否正確保留</p>
+        </div>
+        
+        <div class="content">
+            <div class="test-section">
+                <h3 class="section-title">測試控制</h3>
+                <div class="section-content">
+                    <button class="btn" onclick="runAllTests()">執行所有測試</button>
+                    <span id="test-status" class="status" style="margin-left: 10px; display: none;"></span>
+                </div>
+            </div>
+            
+            <div class="test-section">
+                <h3 class="section-title">測試案例 1: 複雜嵌套列表</h3>
+                <div class="section-content">
+                    <div id="test1-html" style="border: 1px solid #ddd; padding: 10px; margin: 10px 0;">
+                        <h4>(二) 裝置安全與健康狀態監控（Device Security and Health Monitoring）</h4>
+                        <p>在零信任環境中，任何嘗試連接資源的裝置都必須被視為潛在威脅，並經過嚴格的健康檢查。</p>
+                        <ol>
+                            <li><strong>裝置識別與註冊</strong>：
+                                <ul>
+                                    <li>所有嘗試連接企業資源的裝置（筆電、手機、平板、IoT設備等）都必須被唯一識別、註冊並納入管理。這通常透過行動裝置管理（MDM）、統一端點管理（UEM）或端點偵測與回應（EDR）工具實現。</li>
+                                </ul>
+                            </li>
+                            <li><strong>裝置健康狀態評估</strong>：
+                                <ul>
+                                    <li>持續監控裝置的安全性狀態，包括：
+                                        <ul>
+                                            <li>作業系統和應用程式是否已安裝最新安全補丁。</li>
+                                            <li>防毒軟體或EDR代理程式是否正常運行且定義檔最新。</li>
+                                            <li>是否存在惡意軟體、配置錯誤或異常行為。</li>
+                                            <li>是否符合企業的安全策略（如：是否越獄/Root）。</li>
+                                        </ul>
+                                    </li>
+                                    <li>不符合安全標準的裝置將被自動隔離、限制存取權限，或引導至修復流程，直至其安全狀態恢復正常。</li>
+                                </ul>
+                            </li>
+                        </ol>
+                    </div>
+                    <div class="output-box" id="test1-result">等待測試...</div>
+                </div>
+            </div>
+            
+            <div class="test-section">
+                <h3 class="section-title">測試案例 2: 簡單列表</h3>
+                <div class="section-content">
+                    <div id="test2-html" style="border: 1px solid #ddd; padding: 10px; margin: 10px 0;">
+                        <h3>基本功能</h3>
+                        <ul>
+                            <li>功能一：基本操作</li>
+                            <li>功能二：進階操作</li>
+                            <li>功能三：專家級操作</li>
+                        </ul>
+                        <ol>
+                            <li>第一步：準備工作</li>
+                            <li>第二步：執行操作</li>
+                            <li>第三步：檢查結果</li>
+                        </ol>
+                    </div>
+                    <div class="output-box" id="test2-result">等待測試...</div>
+                </div>
+            </div>
+            
+            <div class="test-section">
+                <h3 class="section-title">測試案例 3: 混合內容列表</h3>
+                <div class="section-content">
+                    <div id="test3-html" style="border: 1px solid #ddd; padding: 10px; margin: 10px 0;">
+                        <h3>混合內容測試</h3>
+                        <ol>
+                            <li><strong>重要項目</strong>：這是一個包含<em>強調文字</em>的項目
+                                <ul>
+                                    <li>子項目 A：包含<code>代碼</code>的內容</li>
+                                    <li>子項目 B：普通文字內容<br>換行後的內容</li>
+                                </ul>
+                            </li>
+                            <li>普通項目：沒有特殊格式
+                                <p>這是一個段落內容</p>
+                                <p>這是另一個段落</p>
+                            </li>
+                        </ol>
+                    </div>
+                    <div class="output-box" id="test3-result">等待測試...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 載入 WYSIWYG 編輯器的相關腳本 -->
+    <script src="src/webapp/static/js/markdown_converter.js"></script>
+    <script src="src/webapp/static/js/wysiwyg_editor.js"></script>
+    
+    <script>
+        function runAllTests() {
+            const statusEl = document.getElementById('test-status');
+            statusEl.style.display = 'inline-block';
+            statusEl.className = 'status';
+            statusEl.textContent = '測試進行中...';
+            
+            try {
+                // 測試案例 1
+                runTest('test1');
+                
+                // 測試案例 2  
+                runTest('test2');
+                
+                // 測試案例 3
+                runTest('test3');
+                
+                statusEl.className = 'status success';
+                statusEl.textContent = '所有測試完成！';
+                
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '測試失敗: ' + error.message;
+                console.error('測試錯誤:', error);
+            }
+        }
+        
+        function runTest(testId) {
+            const htmlElement = document.getElementById(testId + '-html');
+            const resultElement = document.getElementById(testId + '-result');
+            
+            if (!htmlElement || !resultElement) {
+                throw new Error(`找不到測試元素: ${testId}`);
+            }
+            
+            const htmlContent = htmlElement.innerHTML;
+            
+            // 創建 WYSIWYG 編輯器實例進行測試
+            const tempDiv = document.createElement('div');
+            const editor = new WYSIWYGEditor(tempDiv);
+            
+            // 執行 HTML 轉 Markdown
+            const markdown = editor.htmlToMarkdown(htmlContent);
+            
+            // 顯示結果
+            resultElement.textContent = markdown;
+            
+            // 驗證結果
+            validateMarkdown(markdown, testId);
+        }
+        
+        function validateMarkdown(markdown, testId) {
+            console.log(`${testId} 結果:`, markdown);
+            
+            // 基本驗證：檢查是否保留了列表結構
+            const hasOrderedList = /\d+\.\s/.test(markdown);
+            const hasUnorderedList = /-\s/.test(markdown);
+            const hasNestedList = /\s{2,}-\s/.test(markdown) || /\s{2,}\d+\.\s/.test(markdown);
+            
+            console.log(`${testId} 驗證結果:`, {
+                hasOrderedList,
+                hasUnorderedList,
+                hasNestedList,
+                lineCount: markdown.split('\n').length
+            });
+            
+            // 檢查是否有適當的換行符
+            const lines = markdown.split('\n');
+            const nonEmptyLines = lines.filter(line => line.trim());
+            
+            if (nonEmptyLines.length < 5) {
+                console.warn(`${testId}: 可能有換行符丟失，非空行數量: ${nonEmptyLines.length}`);
+            }
+        }
+        
+        // 頁面載入後自動運行測試
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('頁面已載入，準備測試 WYSIWYG 編輯器...');
+            
+            // 稍微延遲以確保腳本完全載入
+            setTimeout(() => {
+                if (typeof WYSIWYGEditor !== 'undefined') {
+                    console.log('WYSIWYGEditor 已載入');
+                    runAllTests();
+                } else {
+                    console.error('WYSIWYGEditor 未找到');
+                    const statusEl = document.getElementById('test-status');
+                    statusEl.style.display = 'inline-block';
+                    statusEl.className = 'status error';
+                    statusEl.textContent = 'WYSIWYGEditor 未載入';
+                }
+            }, 500);
+        });
+    </script>
+</body>
+</html>
